@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Builds docs/data/camps-au.json, the camp database built into Camp Finder.
+
+Downloads every campground, caravan park, boat ramp and dump point in Australia from
+OpenStreetMap (via Overpass) in tiles, keeps only the details the app uses, and writes
+one compact file. Run weekly (GitHub Actions does this) or by hand:
+
+    python3 tools/build_camp_data.py            # writes docs/data/camps-au.json
+
+Uses only the Python standard library.
+"""
+import json, sys, time, urllib.parse, urllib.request, datetime, os
+
+SERVERS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
+UA = "GoneLappinCampFinder/1.0 (data build; au.com.gonelappin.campfinder)"
+KEEP = {
+    "name", "name:en", "tourism", "backcountry", "fee", "charge", "toilets", "drinking_water", "water_point",
+    "shower", "showers", "dog", "dogs", "pets", "power_supply", "openfire", "fireplace", "campfire",
+    "sanitary_dump_station", "tents", "caravans", "motorhome", "maxstay", "access", "website",
+    "contact:website", "url", "phone", "contact:phone", "operator", "description", "note", "image",
+    "wikimedia_commons", "opening_hours", "is_in", "capacity", "reservation",
+}
+# Australia split into tiles (south, west, north, east) small enough for Overpass to answer
+LATS = [-44.0, -38.0, -34.0, -30.0, -26.0, -20.0, -9.0]
+LONS = [112.0, 120.0, 129.0, 138.0, 143.0, 147.0, 151.0, 160.0]
+
+
+def query(bbox):
+    s, w, n, e = bbox
+    b = f"{s},{w},{n},{e}"
+    q = (f'[out:json][timeout:180];(nwr["tourism"~"^(camp_site|caravan_site)$"]({b});'
+         f'nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b}););out center tags;')
+    data = urllib.parse.urlencode({"data": q}).encode()
+    last = None
+    for attempt in range(6):
+        url = SERVERS[attempt % len(SERVERS)]
+        try:
+            req = urllib.request.Request(url, data=data, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=240) as r:
+                j = json.load(r)
+            if "elements" not in j or "runtime error" in j.get("remark", ""):
+                raise RuntimeError(j.get("remark", "bad response"))
+            return j["elements"]
+        except Exception as ex:  # busy server: wait and try the next one
+            last = ex
+            print(f"  {url.split('/')[2]} failed ({ex}); retrying", file=sys.stderr)
+            time.sleep(10 + attempt * 15)
+    raise RuntimeError(f"tile {bbox} failed: {last}")
+
+
+def main(out_path):
+    camps, ramps, dumps, seen = [], [], [], set()
+    tiles = [(LATS[i], LONS[j], LATS[i + 1], LONS[j + 1]) for i in range(len(LATS) - 1) for j in range(len(LONS) - 1)]
+    for k, t in enumerate(tiles, 1):
+        print(f"tile {k}/{len(tiles)} {t}", file=sys.stderr)
+        for el in query(t):
+            key = f"{el['type']}/{el['id']}"
+            if key in seen:
+                continue
+            seen.add(key)
+            lat = el.get("lat", el.get("center", {}).get("lat"))
+            lon = el.get("lon", el.get("center", {}).get("lon"))
+            if lat is None or lon is None:
+                continue
+            tags = el.get("tags", {})
+            pt = [round(lat, 5), round(lon, 5)]
+            if tags.get("tourism") in ("camp_site", "caravan_site"):
+                small = {k2: v[:400] for k2, v in tags.items() if k2 in KEEP}
+                camps.append([key, *pt, small])
+            elif tags.get("leisure") == "slipway":
+                ramps.append(pt)
+            elif tags.get("amenity") == "sanitary_dump_station":
+                dumps.append(pt)
+        time.sleep(2)
+    if len(camps) < 3000:
+        raise SystemExit(f"Only {len(camps)} camps found; keeping the old file.")
+    out = {
+        "built": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": "OpenStreetMap contributors (ODbL)",
+        "camps": camps, "ramps": ramps, "dumps": dumps,
+    }
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    tmp = out_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, out_path)
+    print(f"{len(camps)} camps, {len(ramps)} boat ramps, {len(dumps)} dump points -> {out_path}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    here = os.path.dirname(os.path.abspath(__file__))
+    main(sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "docs", "data", "camps-au.json"))

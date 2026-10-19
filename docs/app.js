@@ -20,6 +20,9 @@
     photon: "https://photon.komoot.io/api/",
     commons: "https://commons.wikimedia.org/w/api.php",
     auBox: [112.5, -44.5, 154.5, -9.5], // w,s,e,n
+    // Camp database built into the app, refreshed weekly from the published copy (tools/build_camp_data.py)
+    campData: "data/camps-au.json",
+    campDataLive: "https://will-richter.github.io/camp-finder/data/camps-au.json",
     exploreMinZoom: 9,
     boatRampKm: 5,
     dumpKm: 10,
@@ -82,6 +85,21 @@
       setTimeout(() => { if (cbs[id]) { delete cbs[id]; rej(new Error("timeout")); } }, ms + 2000);
     });
   })();
+
+  // Apple Maps bridges (iOS app): place search and driving directions without public servers
+  function nativeCall(name, done) {
+    const h = window.webkit?.messageHandlers?.[name];
+    if (!h) return null;
+    let n = 0; const cbs = {};
+    window[done] = (id, ok, v) => { const c = cbs[id]; delete cbs[id]; if (c) ok ? c.res(v) : c.rej(new Error(String(v || "Failed"))); };
+    return (msg, ms = 20000) => new Promise((res, rej) => {
+      const id = ++n; cbs[id] = { res, rej };
+      h.postMessage({ id, ...msg });
+      setTimeout(() => { if (cbs[id]) { delete cbs[id]; rej(new Error("timeout")); } }, ms);
+    });
+  }
+  const nativePlaces = nativeCall("places", "__cfPlacesDone");
+  const nativeRoute = nativeCall("route", "__cfRouteDone");
 
   // ---------------------------------------------------------------- data: Overpass
   const CAMP_SEL = 'nwr["tourism"~"^(camp_site|caravan_site)$"]';
@@ -219,6 +237,10 @@
 
   // ---------------------------------------------------------------- routing
   async function osrm(points, steps = false) {
+    if (nativeRoute) {
+      try { return await appleRoute(points, steps); }
+      catch (e) { if (/No route|directions not available/i.test(e.message)) throw new Error("No route"); /* else try the web routers */ }
+    }
     const coords = points.map((p) => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(";");
     const q = `?overview=full&geometries=geojson&steps=${steps}`;
     let lastErr;
@@ -230,6 +252,25 @@
       } catch (e) { lastErr = e; }
     }
     throw lastErr || new Error("Routing unavailable");
+  }
+
+  // Apple Maps route, shaped like an OSRM route (multi-stop = one leg per pair)
+  async function appleRoute(points, steps) {
+    const legs = [];
+    for (let i = 1; i < points.length; i++) {
+      legs.push(await nativeRoute({ from: [points[i - 1].lat, points[i - 1].lon], to: [points[i].lat, points[i].lon], steps }, 30000));
+    }
+    const coordinates = [];
+    legs.forEach((l, i) => coordinates.push(...(i ? l.coordinates.slice(1) : l.coordinates)));
+    return {
+      distance: legs.reduce((a, l) => a + l.distance, 0),
+      duration: legs.reduce((a, l) => a + l.duration, 0),
+      geometry: { type: "LineString", coordinates },
+      legs: legs.map((l) => ({
+        distance: l.distance, duration: l.duration,
+        steps: (l.steps || []).map((s) => ({ distance: s.distance, text: s.text, maneuver: { type: "apple" } })),
+      })),
+    };
   }
 
   function buildLine(route) {
@@ -259,6 +300,7 @@
 
   // Turn-by-turn text from OSRM steps
   function stepText(s) {
+    if (s.text) return s.text;
     const m = s.maneuver || {}, type = m.type, mod = m.modifier || "", road = s.name || s.ref || "";
     const onto = road ? ` onto ${road}` : "";
     const dir = mod.replace("uturn", "U-turn").replace("straight", "straight ahead");
@@ -279,7 +321,19 @@
   }
 
   // ---------------------------------------------------------------- place search (Photon)
+  const placeCache = new Map();
   async function searchPlaces(q) {
+    const key = q.toLowerCase();
+    if (placeCache.has(key)) return placeCache.get(key);
+    let out = null;
+    if (nativePlaces) { try { out = await nativePlaces({ q }, 10000); } catch { /* fall back to web search */ } }
+    if (!out || !out.length) {
+      try { out = await photonPlaces(q); } catch (e) { if (!out) throw e; }
+    }
+    placeCache.set(key, out);
+    return out;
+  }
+  async function photonPlaces(q) {
     const [w, s, e, n] = CFG.auBox;
     const url = `${CFG.photon}?q=${encodeURIComponent(q)}&limit=8&lang=en&bbox=${w},${s},${e},${n}`;
     const j = await fetchJSON(url, {}, 10000);
@@ -362,8 +416,7 @@
   // ---------------------------------------------------------------- trip logic
   function friendly(err) {
     const m = String(err?.message || err);
-    if (/abort|timeout/i.test(m)) return "That took too long. The free map servers may be busy, so try again in a minute.";
-    if (/Failed to fetch|NetworkError|HTTP 429|HTTP 50/i.test(m)) return "Couldn't reach the map servers. Check your signal and try again.";
+    if (/abort|timeout|Failed to fetch|NetworkError|HTTP \d|network|offline|internet/i.test(m)) return "No signal right now. Camps already on your phone are still shown, and routes will fill in when you're back in range.";
     if (/No route/i.test(m)) return "Couldn't find a driving route between those places.";
     return m;
   }
@@ -501,6 +554,89 @@
     return [Math.min(...la) - padDeg, Math.min(...lo) - padDeg, Math.max(...la) + padDeg, Math.max(...lo) + padDeg];
   };
 
+  // ---------------------------------------------------------------- built-in camp database (no live map server needed)
+  // File format: { built, camps: [[id, lat, lon, tags]], ramps: [[lat, lon]], dumps: [[lat, lon]] }
+  const campDB = (() => {
+    const CELL = 0.5, cellOf = (la, lo) => `${Math.floor(la / CELL)},${Math.floor(lo / CELL)}`;
+    let raw = null, grid = null, ready = null;
+    const norm = new Map();
+    const kv = (() => {
+      const open = () => new Promise((res, rej) => {
+        const r = indexedDB.open("cf-campdb", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      });
+      const run = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("kv", mode); const q = fn(t.objectStore("kv")); t.oncomplete = () => res(q.result); t.onerror = () => rej(t.error); }); };
+      return { get: (k) => run("readonly", (s) => s.get(k)), set: (k, v) => run("readwrite", (s) => s.put(v, k)) };
+    })();
+    const valid = (d) => d && Array.isArray(d.camps) && d.camps.length > 500;
+    function use(d) {
+      raw = d; norm.clear(); grid = new Map();
+      const put = (kind, la, lo, item) => {
+        const k = cellOf(la, lo); let g = grid.get(k);
+        if (!g) grid.set(k, (g = { camps: [], ramps: [], dumps: [] }));
+        g[kind].push(item);
+      };
+      d.camps.forEach((c) => put("camps", c[1], c[2], c));
+      (d.ramps || []).forEach((p, i) => put("ramps", p[0], p[1], { id: `ramp/${i}`, lat: p[0], lon: p[1] }));
+      (d.dumps || []).forEach((p, i) => put("dumps", p[0], p[1], { id: `dump/${i}`, lat: p[0], lon: p[1] }));
+    }
+    async function load() {
+      let cached = null;
+      try { cached = await kv.get("data"); } catch { /* private mode etc. */ }
+      let bundled = null;
+      try { bundled = await fetchJSON(CFG.campData, {}, 15000); } catch { /* not bundled */ }
+      const best = [cached, bundled].filter(valid).sort((a, b) => String(b.built).localeCompare(String(a.built)))[0];
+      if (best) use(best);
+      refresh(); // quietly, in the background
+      return !!best;
+    }
+    async function refresh() {
+      try {
+        if (isOffline()) return;
+        const last = +(await kv.get("checked").catch(() => 0)) || 0;
+        if (raw && Date.now() - last < 7 * 864e5) return;
+        const d = nativeFetch ? JSON.parse(await nativeFetch(CFG.campDataLive, { timeout: 60000 })) : await fetchJSON(CFG.campDataLive, {}, 60000);
+        await kv.set("checked", Date.now()).catch(() => {});
+        if (!valid(d) || (raw && String(d.built) <= String(raw.built))) return;
+        await kv.set("data", d).catch(() => {});
+        use(d);
+      } catch { /* try again next launch */ }
+    }
+    function cells([s, w, n, e]) {
+      const out = [];
+      for (let a = Math.floor(s / CELL); a <= Math.floor(n / CELL); a++)
+        for (let o = Math.floor(w / CELL); o <= Math.floor(e / CELL); o++) { const g = grid.get(`${a},${o}`); if (g) out.push(g); }
+      return out;
+    }
+    const inBox = ([s, w, n, e]) => (p) => p.lat >= s && p.lat <= n && p.lon >= w && p.lon <= e;
+    function campOf(c) {
+      let x = norm.get(c[0]);
+      if (!x) norm.set(c[0], (x = normalise({ id: c[0], lat: c[1], lon: c[2], tags: c[3] || {} })));
+      return { ...x, a: { ...x.a } }; // copies, so merging extras never changes the database
+    }
+    // Same shape as parseElements(): { camps, ramps, dumps }
+    function inArea(bbox, padDeg = 0.1) {
+      const big = [bbox[0] - padDeg, bbox[1] - padDeg, bbox[2] + padDeg, bbox[3] + padDeg];
+      const okBig = inBox(big);
+      const camps = [], ramps = [], dumps = [];
+      for (const g of cells(bbox)) for (const c of g.camps) if (c[1] >= bbox[0] && c[1] <= bbox[2] && c[2] >= bbox[1] && c[2] <= bbox[3]) camps.push(campOf(c));
+      for (const g of cells(big)) { ramps.push(...g.ramps.filter(okBig)); dumps.push(...g.dumps.filter(okBig)); }
+      return { camps, ramps, dumps };
+    }
+    return {
+      ready: () => (ready ||= load()),
+      has: () => !!raw,
+      inArea,
+      info: () => (raw ? { count: raw.camps.length, built: raw.built } : null),
+      _use: use,
+    };
+  })();
+  campDB.ready();
+
+  // Extra sources are a bonus: never wait long for them, never fail because of them
+  const soon = (p, ms, fallback) => Promise.race([p.catch(() => fallback), new Promise((r) => setTimeout(() => r(fallback), ms))]);
+
   // ---------------------------------------------------------------- offline packs (IndexedDB)
   const idb = (() => {
     let dbp;
@@ -534,6 +670,26 @@
     const all = { camps: new Map(), ramps: new Map(), dumps: new Map() };
     const padDeg = detourM / 100000 + 0.02;
     let extras = [], done = 0, usedOffline = false;
+    await campDB.ready();
+    if (campDB.has()) {
+      // Built-in database: instant, works with no signal. Official and traveller camps join in if they answer quickly.
+      const near = (c) => pts.some((p) => Math.abs(p[0] - c.lat) < padDeg + 0.2 && Math.abs(p[1] - c.lon) < padDeg + 0.25);
+      const extraJobs = parts.map((part) => soon(extrasIn(bboxOf(part, padDeg)), 9000, []));
+      for (const part of parts) {
+        const res = campDB.inArea(bboxOf(part, padDeg), CFG.dumpKm / 100);
+        res.camps.forEach((c) => { if (near(c)) all.camps.set(c.id, c); });
+        res.ramps.forEach((c) => all.ramps.set(c.id, c));
+        res.dumps.forEach((c) => all.dumps.set(c.id, c));
+      }
+      if (parts.length > 2) progress("Adding official camps and rest areas…");
+      const exAll = (await Promise.all(extraJobs)).flat();
+      const bb = bboxOf(line.pts, padDeg);
+      exAll.push(...await offlineCampsIn(bb).then((l) => l.filter((c) => c.source !== "osm")));
+      const uniq = [...new Map(exAll.map((x) => [x.id, x])).values()];
+      const camps = mergeSources([...all.camps.values()], uniq, [...all.ramps.values()], [...all.dumps.values()]);
+      for (const c of camps) Object.assign(c, project(line, c));
+      return { line, camps: camps.filter((c) => c.off <= detourM * 1.15), offline: false };
+    }
     try {
       for (const part of parts) {
         const poly = part.map(([la, lo]) => `${la.toFixed(4)},${lo.toFixed(4)}`).join(",");
@@ -932,6 +1088,15 @@
     directions(start, plan.picks[i].camp, short(start.name), stored ? { distance: stored.distance, duration: stored.duration, geometry: { coordinates: stored.pts }, legs: [{ steps: stored.steps }] } : null);
   }
   function manIcon(s) {
+    if (s.text) {
+      const x = s.text.toLowerCase();
+      if (/arrive|destination/.test(x)) return "m-arrive";
+      if (/roundabout/.test(x)) return "m-round";
+      if (/u-turn|make a u/.test(x)) return "m-uturn";
+      if (/\bleft\b/.test(x)) return "m-left";
+      if (/\bright\b/.test(x)) return "m-right";
+      return "m-straight";
+    }
     const t = s.maneuver.type, m = s.maneuver.modifier || "";
     if (t === "depart") return "m-depart";
     if (t === "arrive") return "m-arrive";
@@ -1116,6 +1281,30 @@
       return;
     }
     const keys = tileKeys(map.getBounds()).filter((k) => !exCache.has(k));
+    await campDB.ready();
+    if (keys.length && campDB.has()) {
+      if (keys.length > 40) { $("#exploreCount").textContent = "Zoom in a little further to load camps."; return; }
+      const lats = keys.map((k) => +k.split(",")[0]), lons = keys.map((k) => +k.split(",")[1]);
+      const bbox = [Math.min(...lats), Math.min(...lons), Math.max(...lats) + 0.5, Math.max(...lons) + 0.5];
+      const tileOf = (c) => `${(Math.floor(c.lat * 2) / 2).toFixed(1)},${(Math.floor(c.lon * 2) / 2).toFixed(1)}`;
+      const fill = (camps) => {
+        const byKey = new Map(keys.map((k) => [k, []]));
+        for (const c of camps) { const k = tileOf(c); if (byKey.has(k)) byKey.get(k).push(c); }
+        byKey.forEach((v, k) => exCache.set(k, v));
+        const all = new Map();
+        for (const v of exCache.values()) for (const c of v) all.set(c.id, c);
+        exploreCamps = [...all.values()]; exploreOffline = false; renderExplore();
+      };
+      const res = campDB.inArea(bbox, 0.1);
+      const local = userCampsIn(bbox);
+      fill(mergeSources(res.camps, local, res.ramps, res.dumps));
+      // then add official camps, rest areas and traveller camps when they arrive
+      const offl = (await offlineCampsIn(bbox)).filter((c) => c.source !== "osm");
+      const ex = await soon(extrasIn(bbox), 9000, []);
+      const extra = [...new Map([...offl, ...ex].map((x) => [x.id, x])).values()];
+      if (extra.length && view === "explore") fill(mergeSources(campDB.inArea(bbox, 0.1).camps, extra, res.ramps, res.dumps));
+      return;
+    }
     if (keys.length > 16) { $("#exploreCount").textContent = "Zoom in a little further to load camps."; return; }
     if (keys.length) {
       $("#exploreCount").innerHTML = `<span class="spinner"></span>Loading camps in this area`;
@@ -1385,7 +1574,7 @@
         const from = i === 0 ? plan.from : plan.picks[i - 1].camp || plan.from;
         const to = i < plan.picks.length ? plan.picks[i].camp : plan.to;
         if (!to) { steps.push(null); continue; }
-        try { const r = await osrm([from, to], true); steps.push({ distance: r.distance, duration: r.duration, steps: r.legs.flatMap((l) => l.steps).map((s) => ({ maneuver: s.maneuver, name: s.name, ref: s.ref, distance: s.distance })), pts: r.geometry.coordinates }); }
+        try { const r = await osrm([from, to], true); steps.push({ distance: r.distance, duration: r.duration, steps: r.legs.flatMap((l) => l.steps).map((s) => ({ maneuver: s.maneuver, name: s.name, ref: s.ref, text: s.text, distance: s.distance })), pts: r.geometry.coordinates }); }
         catch { steps.push(null); }
       }
       const pack = {
@@ -1663,5 +1852,5 @@
   }
   showTryExample();
 
-  window.__cf = { parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
+  window.__cf = { campDB, parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
 })();

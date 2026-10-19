@@ -1,23 +1,19 @@
 import SwiftUI
 import WebKit
 import CoreLocation
+import MapKit
 import UniformTypeIdentifiers
 
-/// On-screen log for debug builds, so problems show in the simulator without the Xcode console.
-final class DebugLog: ObservableObject {
-    static let shared = DebugLog()
-    @Published var lines: [String] = []
-    func add(_ s: String) {
-        print(s)
-        #if DEBUG
-        DispatchQueue.main.async { self.lines = Array((self.lines + [s]).suffix(10)) }
-        #endif
-    }
+/// Diagnostics go to the Xcode console only (never on screen).
+@inline(__always) func cfLog(_ s: @autoclosure () -> String) {
+    #if DEBUG
+    print("[CampFinder] \(s())")
+    #endif
 }
 
 /// Hosts the bundled Camp Finder web app (the `web` folder) in a WKWebView.
-/// Files are served from a custom `campfinder://app/` scheme so the page has a stable origin
-/// (localStorage keeps saved trips) and can call the public map APIs.
+/// Files are served from a custom `campfinder://app/` scheme so the page has a stable origin.
+/// Place search and driving directions use Apple Maps (MapKit), so they don't depend on public servers.
 struct WebAppView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -28,9 +24,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        controller.add(context.coordinator, name: "location")
-        controller.add(context.coordinator, name: "nativeFetch")
-        controller.add(context.coordinator, name: "log")
+        for name in ["location", "nativeFetch", "log", "places", "route"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -45,7 +39,6 @@ struct WebAppView: UIViewRepresentable {
         if #available(iOS 16.4, *) { webView.isInspectable = true }
         #endif
         context.coordinator.webView = webView
-        DebugLog.shared.add("starting load")
         webView.load(URLRequest(url: URL(string: "campfinder://app/index.html")!))
         return webView
     }
@@ -63,14 +56,13 @@ struct WebAppView: UIViewRepresentable {
             manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         }
 
-        /// Sends page errors and console.error/warn to the Xcode console.
+        /// Sends page errors and console messages to the Xcode console.
         static let logShim = """
         (function(){
           var post = function(kind, msg){ try { window.webkit.messageHandlers.log.postMessage(kind + ': ' + msg); } catch (e) {} };
           window.addEventListener('error', function(e){ post('error', (e.message || e.type) + ' @ ' + (e.filename || (e.target && (e.target.src || e.target.href)) || '') + ':' + (e.lineno || '')); }, true);
           window.addEventListener('unhandledrejection', function(e){ post('promise', String(e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
-          ['error','warn','log'].forEach(function(k){ var o = console[k]; console[k] = function(){ post(k, Array.prototype.map.call(arguments, String).join(' ')); o.apply(console, arguments); }; });
-          document.addEventListener('DOMContentLoaded', function(){ post('info', 'DOM ready, L=' + (typeof L) + ', app=' + (typeof window.__cf)); });
+          ['error','warn'].forEach(function(k){ var o = console[k]; console[k] = function(){ post(k, Array.prototype.map.call(arguments, String).join(' ')); o.apply(console, arguments); }; });
         })();
         """
 
@@ -93,45 +85,110 @@ struct WebAppView: UIViewRepresentable {
         })();
         """
 
-        // MARK: location bridge
-        /// Official data hosts the web app may read through the app (no browser CORS limits).
+        // MARK: replies to the page
+        private func reply(_ fn: String, _ id: Int, ok: Bool, _ value: Any) {
+            let payload = (try? JSONSerialization.data(withJSONObject: [value], options: [.fragmentsAllowed])).map { String(decoding: $0, as: UTF8.self) } ?? "[null]"
+            DispatchQueue.main.async { self.webView?.evaluateJavaScript("window.\(fn)(\(id), \(ok), \(payload)[0])") }
+        }
+
+        // MARK: data fetches through the app (no browser limits, proper app identity)
         private static let fetchHosts: Set<String> = [
             "spatial.infrastructure.gov.au", "opendata.maps.vic.gov.au",
             "catalogue.data.infrastructure.gov.au", "spatial-gis.information.qld.gov.au",
             "overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee",
+            "will-richter.github.io", "raw.githubusercontent.com",
         ]
-
         private func handleFetch(_ body: Any) {
             guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
                   let str = dict["url"] as? String, let url = URL(string: str),
                   url.scheme == "https", let host = url.host, Self.fetchHosts.contains(host) else { return }
             var req = URLRequest(url: url, timeoutInterval: (dict["timeout"] as? Double) ?? 25)
-            // OpenStreetMap services ask apps to identify themselves
             req.setValue("GoneLappinCampFinder/1.0 (iOS; au.com.gonelappin.campfinder)", forHTTPHeaderField: "User-Agent")
             if let method = dict["method"] as? String { req.httpMethod = method }
-            if let body = dict["body"] as? String { req.httpBody = body.data(using: .utf8) }
+            if let b = dict["body"] as? String { req.httpBody = b.data(using: .utf8) }
             if let ct = dict["contentType"] as? String { req.setValue(ct, forHTTPHeaderField: "Content-Type") }
             URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
                 let ok = error == nil && ((response as? HTTPURLResponse)?.statusCode ?? 0) < 400 && data != nil
                 let text = ok ? String(decoding: data!, as: UTF8.self) : (error?.localizedDescription ?? "HTTP error")
-                let payload = (try? JSONSerialization.data(withJSONObject: [text], options: [.fragmentsAllowed])).map { String(decoding: $0, as: UTF8.self) } ?? "[\"\"]"
-                DispatchQueue.main.async {
-                    self?.webView?.evaluateJavaScript("window.__cfFetchDone(\(id), \(ok), \(payload)[0])")
-                }
+                if !ok { cfLog("fetch failed \(host): \(text)") }
+                self?.reply("__cfFetchDone", id, ok: ok, text)
             }.resume()
         }
 
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "nativeFetch" { handleFetch(message.body); return }
-            if message.name == "log" { DebugLog.shared.add("web \(message.body)"); return }
-            guard message.name == "location", let id = message.body as? Int else { return }
-            pending.append(id)
-            switch manager.authorizationStatus {
-            case .notDetermined: manager.requestWhenInUseAuthorization()
-            case .denied, .restricted: finishAll(error: "Location permission is off")
-            default: manager.requestLocation()
+        // MARK: Apple Maps place search
+        private static let australia = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: -26.5, longitude: 134.0),
+                                                         span: MKCoordinateSpan(latitudeDelta: 38, longitudeDelta: 46))
+        private func handlePlaces(_ body: Any) {
+            guard let dict = body as? [String: Any], let id = dict["id"] as? Int, let q = dict["q"] as? String else { return }
+            let req = MKLocalSearch.Request()
+            req.naturalLanguageQuery = q
+            req.region = Self.australia
+            req.resultTypes = [.address, .pointOfInterest]
+            MKLocalSearch(request: req).start { [weak self] res, err in
+                guard let items = res?.mapItems, err == nil else {
+                    cfLog("place search failed: \(err?.localizedDescription ?? "none")")
+                    self?.reply("__cfPlacesDone", id, ok: false, err?.localizedDescription ?? "No results"); return
+                }
+                let out: [[String: Any]] = items.compactMap { item in
+                    let pm = item.placemark
+                    guard pm.countryCode == nil || pm.countryCode == "AU" else { return nil }
+                    let name = item.name ?? pm.locality ?? q
+                    let area = [pm.locality != name ? pm.locality : nil, pm.administrativeArea].compactMap { $0 }.joined(separator: ", ")
+                    return ["name": name, "area": area, "lat": pm.coordinate.latitude, "lon": pm.coordinate.longitude]
+                }
+                self?.reply("__cfPlacesDone", id, ok: true, Array(out.prefix(6)))
             }
         }
+
+        // MARK: Apple Maps driving directions
+        private func handleRoute(_ body: Any) {
+            guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
+                  let a = dict["from"] as? [Double], let b = dict["to"] as? [Double], a.count == 2, b.count == 2 else { return }
+            let wantSteps = (dict["steps"] as? Bool) ?? false
+            let req = MKDirections.Request()
+            req.source = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: a[0], longitude: a[1])))
+            req.destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: b[0], longitude: b[1])))
+            req.transportType = .automobile
+            MKDirections(request: req).calculate { [weak self] res, err in
+                guard let route = res?.routes.first, err == nil else {
+                    cfLog("route failed: \(err?.localizedDescription ?? "none")")
+                    self?.reply("__cfRouteDone", id, ok: false, err?.localizedDescription ?? "No route"); return
+                }
+                let n = route.polyline.pointCount
+                var pts = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: n)
+                route.polyline.getCoordinates(&pts, range: NSRange(location: 0, length: n))
+                let stride = max(1, n / 4000) // keep long routes light
+                var coords: [[Double]] = []
+                for i in Swift.stride(from: 0, to: n, by: stride) { coords.append([pts[i].longitude, pts[i].latitude]) }
+                if let last = pts.last { coords.append([last.longitude, last.latitude]) }
+                var out: [String: Any] = ["distance": route.distance, "duration": route.expectedTravelTime, "coordinates": coords]
+                if wantSteps {
+                    out["steps"] = route.steps.filter { !$0.instructions.isEmpty }.map { ["text": $0.instructions, "distance": $0.distance] }
+                }
+                self?.reply("__cfRouteDone", id, ok: true, out)
+            }
+        }
+
+        // MARK: messages from the page
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            switch message.name {
+            case "nativeFetch": handleFetch(message.body)
+            case "places": handlePlaces(message.body)
+            case "route": handleRoute(message.body)
+            case "log": cfLog("web \(message.body)")
+            case "location":
+                guard let id = message.body as? Int else { return }
+                pending.append(id)
+                switch manager.authorizationStatus {
+                case .notDetermined: manager.requestWhenInUseAuthorization()
+                case .denied, .restricted: finishAll(error: "Location permission is off")
+                default: manager.requestLocation()
+                }
+            default: break
+            }
+        }
+
+        // MARK: location
         func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
             guard !pending.isEmpty else { return }
             switch manager.authorizationStatus {
@@ -153,16 +210,16 @@ struct WebAppView: UIViewRepresentable {
             for id in ids { webView?.evaluateJavaScript("window.__cfLocation(\(id), false, 0, 0, 0, '\(error)')") }
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { DebugLog.shared.add("loaded \(webView.url?.absoluteString ?? "")") }
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { DebugLog.shared.add("load failed: \(error.localizedDescription)") }
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { DebugLog.shared.add("load failed early: \(error.localizedDescription)") }
-        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { DebugLog.shared.add("web process ended, reloading"); webView.reload() }
+        // MARK: navigation
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { cfLog("load failed: \(error)") }
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { cfLog("load failed early: \(error)") }
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { cfLog("web process ended, reloading"); webView.reload() }
 
-        // MARK: links open in Apple Maps / Safari, the app stays in the app
+        // Links open in Apple Maps / Safari; the app stays in the app
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url else { return decisionHandler(.cancel) }
             if url.scheme == "campfinder" || url.scheme == "about" { return decisionHandler(.allow) }
-            if action.targetFrame?.isMainFrame == false { return decisionHandler(.allow) } // map tiles, iframes
+            if action.targetFrame?.isMainFrame == false { return decisionHandler(.allow) }
             if action.navigationType == .linkActivated || action.targetFrame == nil {
                 UIApplication.shared.open(url)
                 return decisionHandler(.cancel)
@@ -182,12 +239,11 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let url = task.request.url else { return }
-        DebugLog.shared.add("serve \(url.path)")
         var path = url.path
         if path.isEmpty || path == "/" { path = "/index.html" }
         let file = root.appendingPathComponent(String(path.dropFirst())).standardizedFileURL
         guard file.path.hasPrefix(root.standardizedFileURL.path), let data = try? Data(contentsOf: file) else {
-            DebugLog.shared.add("missing file: \(file.lastPathComponent)")
+            cfLog("missing file: \(file.lastPathComponent)")
             task.didFailWithError(URLError(.fileDoesNotExist)); return
         }
         let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
