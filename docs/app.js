@@ -85,16 +85,19 @@
 
   // ---------------------------------------------------------------- data: Overpass
   const CAMP_SEL = 'nwr["tourism"~"^(camp_site|caravan_site)$"]';
+  // Ask all public Overpass servers at once and use the first good answer (they're often busy).
   async function overpass(query) {
-    let lastErr;
-    for (const ep of CFG.overpass) {
-      try {
-        const body = "data=" + encodeURIComponent(query);
-        if (nativeFetch) return JSON.parse(await nativeFetch(ep, { method: "POST", body, contentType: "application/x-www-form-urlencoded", timeout: 90000 }));
-        return await fetchJSON(ep, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body }, 90000);
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error("Overpass unavailable");
+    const body = "data=" + encodeURIComponent(query);
+    const one = async (ep) => {
+      const json = nativeFetch
+        ? JSON.parse(await nativeFetch(ep, { method: "POST", body, contentType: "application/x-www-form-urlencoded", timeout: 60000 }))
+        : await fetchJSON(ep, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body }, 60000);
+      if (!json || !Array.isArray(json.elements)) throw new Error("Bad response");
+      if (json.remark && /runtime error|timed out|out of memory/i.test(json.remark)) throw new Error(json.remark);
+      return json;
+    };
+    try { return await Promise.any(CFG.overpass.map(one)); }
+    catch (e) { throw (e.errors && e.errors[0]) || e; }
   }
 
   function parseElements(json) {
@@ -672,7 +675,7 @@
   });
 
   // The web view can report its size late on first launch: re-measure so Australia is centred.
-  const fixMapSize = () => { map.invalidateSize(); if (!plan && map.getZoom() <= 4) map.setView([-25.5, 134], window.innerWidth < 500 ? 3 : 4); };
+  const fixMapSize = () => { map.invalidateSize(); if (!plan && map.getZoom() <= 4) map.fitBounds([[-43.5, 113], [-10.5, 153.6]], fitPad()); };
   if (map.whenReady) map.whenReady(() => setTimeout(fixMapSize, 60));
   window.addEventListener("load", () => setTimeout(fixMapSize, 120));
   window.addEventListener("resize", () => map.invalidateSize());
