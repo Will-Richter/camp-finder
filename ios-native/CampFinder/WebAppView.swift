@@ -18,6 +18,8 @@ struct WebAppView: UIViewRepresentable {
         let controller = config.userContentController
         controller.add(context.coordinator, name: "location")
         controller.add(context.coordinator, name: "nativeFetch")
+        controller.add(context.coordinator, name: "log")
+        controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -47,6 +49,17 @@ struct WebAppView: UIViewRepresentable {
             manager.delegate = self
             manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         }
+
+        /// Sends page errors and console.error/warn to the Xcode console.
+        static let logShim = """
+        (function(){
+          var post = function(kind, msg){ try { window.webkit.messageHandlers.log.postMessage(kind + ': ' + msg); } catch (e) {} };
+          window.addEventListener('error', function(e){ post('error', (e.message || e.type) + ' @ ' + (e.filename || (e.target && (e.target.src || e.target.href)) || '') + ':' + (e.lineno || '')); }, true);
+          window.addEventListener('unhandledrejection', function(e){ post('promise', String(e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
+          ['error','warn','log'].forEach(function(k){ var o = console[k]; console[k] = function(){ post(k, Array.prototype.map.call(arguments, String).join(' ')); o.apply(console, arguments); }; });
+          document.addEventListener('DOMContentLoaded', function(){ post('info', 'DOM ready, L=' + (typeof L) + ', app=' + (typeof window.__cf)); });
+        })();
+        """
 
         /// Replaces navigator.geolocation with a bridge to Core Location.
         static let geolocationShim = """
@@ -92,6 +105,7 @@ struct WebAppView: UIViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "nativeFetch" { handleFetch(message.body); return }
+            if message.name == "log" { print("[CampFinder web] \(message.body)"); return }
             guard message.name == "location", let id = message.body as? Int else { return }
             pending.append(id)
             switch manager.authorizationStatus {
@@ -121,6 +135,11 @@ struct WebAppView: UIViewRepresentable {
             for id in ids { webView?.evaluateJavaScript("window.__cfLocation(\(id), false, 0, 0, 0, '\(error)')") }
         }
 
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { print("[CampFinder] page loaded: \(webView.url?.absoluteString ?? "")") }
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { print("[CampFinder] load failed: \(error)") }
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { print("[CampFinder] load failed early: \(error)") }
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { print("[CampFinder] web process ended, reloading"); webView.reload() }
+
         // MARK: links open in Apple Maps / Safari, the app stays in the app
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url else { return decisionHandler(.cancel) }
@@ -149,6 +168,7 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         if path.isEmpty || path == "/" { path = "/index.html" }
         let file = root.appendingPathComponent(String(path.dropFirst())).standardizedFileURL
         guard file.path.hasPrefix(root.standardizedFileURL.path), let data = try? Data(contentsOf: file) else {
+            print("[CampFinder] missing file: \(file.path)")
             task.didFailWithError(URLError(.fileDoesNotExist)); return
         }
         let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
