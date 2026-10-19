@@ -70,17 +70,28 @@
     } finally { clearTimeout(id); }
   }
 
+  // ---------------------------------------------------------------- native fetch bridge (iOS app): no CORS limits, proper app identity
+  const nativeFetch = (() => {
+    const h = window.webkit?.messageHandlers?.nativeFetch;
+    if (!h) return null;
+    let n = 0; const cbs = {};
+    window.__cfFetchDone = (id, ok, body) => { const c = cbs[id]; delete cbs[id]; if (c) ok ? c.res(body) : c.rej(new Error(body || "Network error")); };
+    return (url, opts = {}) => new Promise((res, rej) => {
+      const id = ++n, ms = opts.timeout || 30000; cbs[id] = { res, rej };
+      h.postMessage({ id, url, method: opts.method, body: opts.body, contentType: opts.contentType, timeout: ms / 1000 });
+      setTimeout(() => { if (cbs[id]) { delete cbs[id]; rej(new Error("timeout")); } }, ms + 2000);
+    });
+  })();
+
   // ---------------------------------------------------------------- data: Overpass
   const CAMP_SEL = 'nwr["tourism"~"^(camp_site|caravan_site)$"]';
   async function overpass(query) {
     let lastErr;
     for (const ep of CFG.overpass) {
       try {
-        return await fetchJSON(ep, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "data=" + encodeURIComponent(query),
-        }, 90000);
+        const body = "data=" + encodeURIComponent(query);
+        if (nativeFetch) return JSON.parse(await nativeFetch(ep, { method: "POST", body, contentType: "application/x-www-form-urlencoded", timeout: 90000 }));
+        return await fetchJSON(ep, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body }, 90000);
       } catch (e) { lastErr = e; }
     }
     throw lastErr || new Error("Overpass unavailable");
@@ -347,14 +358,6 @@
   }
 
   // ---------------------------------------------------------------- extra sources: official data, local rules, traveller-added camps
-  // Fetch through the native app when available (no browser CORS limits), else normal fetch.
-  const nativeFetch = (() => {
-    const h = window.webkit?.messageHandlers?.nativeFetch;
-    if (!h) return null;
-    let n = 0; const cbs = {};
-    window.__cfFetchDone = (id, ok, body) => { const c = cbs[id]; delete cbs[id]; if (c) ok ? c.res(body) : c.rej(new Error(body || "Network error")); };
-    return (url) => new Promise((res, rej) => { const id = ++n; cbs[id] = { res, rej }; h.postMessage({ id, url }); setTimeout(() => { if (cbs[id]) { delete cbs[id]; rej(new Error("timeout")); } }, 30000); });
-  })();
   async function getJSON(url) {
     if (nativeFetch) return JSON.parse(await nativeFetch(url));
     return fetchJSON(url, {}, 25000);

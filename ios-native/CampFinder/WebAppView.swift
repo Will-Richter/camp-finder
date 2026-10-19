@@ -98,14 +98,19 @@ struct WebAppView: UIViewRepresentable {
         private static let fetchHosts: Set<String> = [
             "spatial.infrastructure.gov.au", "opendata.maps.vic.gov.au",
             "catalogue.data.infrastructure.gov.au", "spatial-gis.information.qld.gov.au",
+            "overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee",
         ]
 
         private func handleFetch(_ body: Any) {
             guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
                   let str = dict["url"] as? String, let url = URL(string: str),
                   url.scheme == "https", let host = url.host, Self.fetchHosts.contains(host) else { return }
-            var req = URLRequest(url: url, timeoutInterval: 25)
-            req.setValue("CampFinder/1.0 (iOS)", forHTTPHeaderField: "User-Agent")
+            var req = URLRequest(url: url, timeoutInterval: (dict["timeout"] as? Double) ?? 25)
+            // OpenStreetMap services ask apps to identify themselves
+            req.setValue("GoneLappinCampFinder/1.0 (iOS; au.com.gonelappin.campfinder)", forHTTPHeaderField: "User-Agent")
+            if let method = dict["method"] as? String { req.httpMethod = method }
+            if let body = dict["body"] as? String { req.httpBody = body.data(using: .utf8) }
+            if let ct = dict["contentType"] as? String { req.setValue(ct, forHTTPHeaderField: "Content-Type") }
             URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
                 let ok = error == nil && ((response as? HTTPURLResponse)?.statusCode ?? 0) < 400 && data != nil
                 let text = ok ? String(decoding: data!, as: UTF8.self) : (error?.localizedDescription ?? "HTTP error")
