@@ -190,6 +190,13 @@
     }
   }
   function missing(c, wants) { return wants.filter((w) => !has(c, w)); }
+  // Many camps don't record every amenity. For trip planning, "not recorded" passes a must-have
+  // (with a note); only a recorded "no" rules a camp out.
+  const SHORT_LABEL = { toilets: "Toilets", water: "Drinking water", showers: "Showers", dogs: "Dogs allowed", power: "Power", fires: "Campfires", boatramp: "Boat ramp", dump: "Dump point" };
+  const AMEN_KEY = { toilets: "toilets", water: "water", showers: "showers", dogs: "dogs", power: "power", fires: "fires" };
+  const unknownFor = (c, w) => AMEN_KEY[w] ? c.a[AMEN_KEY[w]] == null : false;
+  function ruledOut(c, wants) { return wants.filter((w) => !has(c, w) && !unknownFor(c, w)); }
+  function unrecorded(c, wants) { return wants.filter((w) => !has(c, w) && unknownFor(c, w)); }
   function costOK(c, mode) { return mode === "any" || mode === "cheap" || c.cost === "free"; }
 
   function score(c, wants, costMode) {
@@ -197,8 +204,9 @@
     if (c.cost === "free") s += 40; else if (c.cost === "unknown") s += 14; else s += costMode === "any" ? 20 : 0;
     for (const id of ["toilets", "water", "showers", "dogs", "power", "fires"]) if (c.a[id] === true) s += 4;
     s += wants.filter((w) => has(c, w)).length * 12;
+    s -= wants.filter((w) => unknownFor(c, w)).length * 4;
     if (c.named) s += 5;
-    if (c.source === "rest") s -= 14; // a proper camp beats a highway rest area
+    if (c.source === "rest") s -= 22; // a proper camp beats a highway rest area
     if (c.source === "user") s += 3;
     if (c.website || c.phone) s += 2;
     if (c.desc) s += 2;
@@ -563,7 +571,7 @@
         .map((c) => ({ c, s: score(c, opts.wants, opts.cost) - Math.abs(c.along - target) / 1500 - c.off / 2500 }))
         .sort((a, b) => b.s - a.s).map((x) => x.c);
       const inWin = usable.filter((c) => Math.abs(c.along - target) <= win && !used.has(c.id));
-      let strict = rank(inWin.filter((c) => costOK(c, opts.cost) && missing(c, opts.wants).length === 0));
+      let strict = rank(inWin.filter((c) => costOK(c, opts.cost) && ruledOut(c, opts.wants).length === 0));
       if (opts.cost === "cheap") { // free or unknown first, paid only if nothing else
         const freeish = strict.filter((c) => c.cost !== "paid");
         if (freeish.length) strict = [...freeish, ...strict.filter((c) => c.cost === "paid")];
@@ -589,6 +597,7 @@
         const freeAlt = rank(inWin.filter((c) => c.cost !== "paid" && c.id !== camp.id)).slice(0, 2);
         list.splice(1, 0, ...freeAlt.filter((c) => !list.slice(1, 4).includes(c)));
       }
+      if (camp && !warn) { const u = unrecorded(camp, opts.wants); if (u.length) warn = `Not recorded whether it has ${u.map((w) => SHORT_LABEL[w] || w).join(" or ").toLowerCase()}. Check before you rely on it.`; }
       if (camp) used.add(camp.id);
       prevAlong = camp ? camp.along : target;
       picks.push({ target, camp, alts: list.slice(1, 4), warn: camp ? warn : "No camps found for this night. Try a bigger detour or fewer must-haves." });
