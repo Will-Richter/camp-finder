@@ -416,9 +416,10 @@
   // ---------------------------------------------------------------- trip logic
   function friendly(err) {
     const m = String(err?.message || err);
-    if (/abort|timeout|Failed to fetch|NetworkError|HTTP \d|network|offline|internet/i.test(m)) return "No signal right now. Camps already on your phone are still shown, and routes will fill in when you're back in range.";
+    if (navigator.onLine === false || /offline|internet connection appears/i.test(m)) return "No signal right now. Camps already on your phone are still shown, and routes will fill in when you're back in range.";
     if (/No route/i.test(m)) return "Couldn't find a driving route between those places.";
-    return m;
+    if (/^(Enter a|Couldn't find ")/.test(m)) return m; // our own plain-English messages
+    return "Camps for this area couldn't be loaded just now. Try again shortly, or download areas while you have signal.";
   }
 
   // ---------------------------------------------------------------- extra sources: official data, local rules, traveller-added camps
