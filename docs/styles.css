@@ -398,3 +398,5 @@ a { color: inherit; }
 .acct input { flex: 1; min-width: 0; border: 0; background: var(--sheet); border-radius: 11px; padding: 11px 12px; font-size: 16px; color: var(--ink); }
 .acct-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn.danger { color: var(--paid); }
+.try-example { display: block; width: 100%; border: 0; background: none; color: var(--sign); font: 700 14px var(--display); text-align: left; padding: 0 2px 16px; margin-top: -8px; cursor: pointer; }
+@media (prefers-color-scheme: dark) { .try-example { color: var(--free); } }

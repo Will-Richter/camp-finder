@@ -659,6 +659,11 @@
     if (onSat) { map.removeLayer(street); sat.addTo(map); } else { map.removeLayer(sat); street.addTo(map); }
   });
 
+  // The web view can report its size late on first launch: re-measure so Australia is centred.
+  const fixMapSize = () => { map.invalidateSize(); if (!plan && map.getZoom() <= 4) map.setView([-25.5, 134], window.innerWidth < 500 ? 3 : 4); };
+  if (map.whenReady) map.whenReady(() => setTimeout(fixMapSize, 60));
+  window.addEventListener("load", () => setTimeout(fixMapSize, 120));
+  window.addEventListener("resize", () => map.invalidateSize());
   const tripLayer = L.layerGroup().addTo(map);
   const legLayer = L.layerGroup().addTo(map);
   const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true });
@@ -1618,6 +1623,16 @@
     });
   }
 
+  // ---------------------------------------------------------------- example trip button
+  function showTryExample() { $("#tryExample").hidden = !!($("#from").value.trim() && $("#to").value.trim()); }
+  ["#from", "#to"].forEach((s) => $(s).addEventListener("input", showTryExample));
+  $("#tryExample").addEventListener("click", () => {
+    const f = $("#from"), t = $("#to");
+    f.value = "Bundaberg, Queensland"; f.dataset.lat = -24.8661; f.dataset.lon = 152.3489; $("#useHere").hidden = true;
+    t.value = "Agnes Water, Queensland"; t.dataset.lat = -24.2117; t.dataset.lon = 151.9035;
+    setNights(1); showTryExample();
+  });
+
   // ---------------------------------------------------------------- first open: example trip
   if (!store.get("cf-seen", false)) {
     const f = $("#from"), t = $("#to");
@@ -1626,6 +1641,7 @@
     $("#planMsg").textContent = "We've filled in an example trip. Change it to yours, or tap Find camps to see how it works.";
     store.set("cf-seen", true);
   }
+  showTryExample();
 
   window.__cf = { parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
 })();

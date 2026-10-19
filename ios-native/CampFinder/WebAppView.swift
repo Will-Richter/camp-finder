@@ -3,6 +3,18 @@ import WebKit
 import CoreLocation
 import UniformTypeIdentifiers
 
+/// On-screen log for debug builds, so problems show in the simulator without the Xcode console.
+final class DebugLog: ObservableObject {
+    static let shared = DebugLog()
+    @Published var lines: [String] = []
+    func add(_ s: String) {
+        print(s)
+        #if DEBUG
+        DispatchQueue.main.async { self.lines = Array((self.lines + [s]).suffix(10)) }
+        #endif
+    }
+}
+
 /// Hosts the bundled Camp Finder web app (the `web` folder) in a WKWebView.
 /// Files are served from a custom `campfinder://app/` scheme so the page has a stable origin
 /// (localStorage keeps saved trips) and can call the public map APIs.
@@ -33,6 +45,7 @@ struct WebAppView: UIViewRepresentable {
         if #available(iOS 16.4, *) { webView.isInspectable = true }
         #endif
         context.coordinator.webView = webView
+        DebugLog.shared.add("starting load")
         webView.load(URLRequest(url: URL(string: "campfinder://app/index.html")!))
         return webView
     }
@@ -105,7 +118,7 @@ struct WebAppView: UIViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "nativeFetch" { handleFetch(message.body); return }
-            if message.name == "log" { print("[CampFinder web] \(message.body)"); return }
+            if message.name == "log" { DebugLog.shared.add("web \(message.body)"); return }
             guard message.name == "location", let id = message.body as? Int else { return }
             pending.append(id)
             switch manager.authorizationStatus {
@@ -135,10 +148,10 @@ struct WebAppView: UIViewRepresentable {
             for id in ids { webView?.evaluateJavaScript("window.__cfLocation(\(id), false, 0, 0, 0, '\(error)')") }
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { print("[CampFinder] page loaded: \(webView.url?.absoluteString ?? "")") }
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { print("[CampFinder] load failed: \(error)") }
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { print("[CampFinder] load failed early: \(error)") }
-        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { print("[CampFinder] web process ended, reloading"); webView.reload() }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { DebugLog.shared.add("loaded \(webView.url?.absoluteString ?? "")") }
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { DebugLog.shared.add("load failed: \(error.localizedDescription)") }
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { DebugLog.shared.add("load failed early: \(error.localizedDescription)") }
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { DebugLog.shared.add("web process ended, reloading"); webView.reload() }
 
         // MARK: links open in Apple Maps / Safari, the app stays in the app
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -164,11 +177,12 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let url = task.request.url else { return }
+        DebugLog.shared.add("serve \(url.path)")
         var path = url.path
         if path.isEmpty || path == "/" { path = "/index.html" }
         let file = root.appendingPathComponent(String(path.dropFirst())).standardizedFileURL
         guard file.path.hasPrefix(root.standardizedFileURL.path), let data = try? Data(contentsOf: file) else {
-            print("[CampFinder] missing file: \(file.path)")
+            DebugLog.shared.add("missing file: \(file.lastPathComponent)")
             task.didFailWithError(URLError(.fileDoesNotExist)); return
         }
         let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
