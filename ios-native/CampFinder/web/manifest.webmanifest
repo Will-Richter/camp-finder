@@ -1,0 +1,15 @@
+{
+  "name": "Gone Lappin' Camp Finder",
+  "short_name": "Camp Finder",
+  "description": "Find free and cheap campsites along your route anywhere in Australia.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0E5A3E",
+  "theme_color": "#0E5A3E",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
