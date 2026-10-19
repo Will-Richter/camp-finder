@@ -11,14 +11,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Download camps from OpenStreetMap
-        run: python3 tools/build_camp_data.py
+        run: python3 -u tools/build_camp_data.py 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
       - name: Commit if changed
         run: |
           git config user.name "camp-data-bot"
@@ -26,3 +26,14 @@ jobs:
           git add docs/data/camps-au.json
           git diff --cached --quiet || git commit -m "Weekly camp database update"
           git push
+      - name: Keep the build log
+        if: always()
+        run: |
+          git config user.name "camp-data-bot"
+          git config user.email "camp-data-bot@users.noreply.github.com"
+          git fetch origin build-log || true
+          git checkout --orphan build-log-new
+          git rm -rf --cached . > /dev/null
+          git add -f build.log
+          git commit -m "Build log $(date -u +%FT%TZ)"
+          git push -f origin build-log-new:build-log

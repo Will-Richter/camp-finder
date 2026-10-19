@@ -52,12 +52,67 @@ def query(bbox):
     raise RuntimeError(f"tile {bbox} failed: {last}")
 
 
-def main(out_path):
-    camps, ramps, dumps, seen = [], [], [], set()
+OHSOME = "https://api.ohsome.org/v1/elements/centroid"
+AU = "112,-44,154,-9"
+
+
+def ohsome(filt):
+    """One request for all of Australia via the ohsome API (HeiGIT), as Overpass-style elements."""
+    data = urllib.parse.urlencode({"bboxes": AU, "filter": filt, "properties": "tags"}).encode()
+    last = None
+    for attempt in range(4):
+        try:
+            req = urllib.request.Request(OHSOME, data=data, headers={"User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded"})
+            with urllib.request.urlopen(req, timeout=600) as r:
+                j = json.load(r)
+            out = []
+            for f in j.get("features", []):
+                p = f.get("properties", {})
+                osm = p.get("@osmId", "")
+                if "/" not in osm:
+                    continue
+                typ, oid = osm.split("/", 1)
+                lon, lat = f["geometry"]["coordinates"][:2]
+                tags = {k: str(v) for k, v in p.items() if not k.startswith("@")}
+                out.append({"type": typ, "id": oid, "lat": lat, "lon": lon, "tags": tags})
+            return out
+        except Exception as ex:
+            last = ex
+            print(f"  ohsome failed ({ex}); retrying", file=sys.stderr)
+            time.sleep(20 + attempt * 20)
+    raise RuntimeError(f"ohsome failed: {last}")
+
+
+def all_elements():
+    try:
+        els = ohsome("tourism in (camp_site, caravan_site)")
+        print(f"ohsome: {len(els)} camps", file=sys.stderr)
+        if len(els) < 3000:
+            raise RuntimeError("too few camps from ohsome")
+        els += ohsome("leisure=slipway")
+        els += ohsome("amenity=sanitary_dump_station")
+        return els
+    except Exception as ex:
+        print(f"ohsome unavailable ({ex}); using Overpass tiles", file=sys.stderr)
+    els, failed = [], []
     tiles = [(LATS[i], LONS[j], LATS[i + 1], LONS[j + 1]) for i in range(len(LATS) - 1) for j in range(len(LONS) - 1)]
     for k, t in enumerate(tiles, 1):
         print(f"tile {k}/{len(tiles)} {t}", file=sys.stderr)
-        for el in query(t):
+        try:
+            els += query(t)
+        except Exception as ex:
+            print(f"  tile failed: {ex}", file=sys.stderr)
+            failed.append(t)
+        time.sleep(2)
+    if len(failed) > 4:
+        raise RuntimeError(f"{len(failed)} tiles failed")
+    return els
+
+
+def main(out_path):
+    camps, ramps, dumps, seen = [], [], [], set()
+    if True:
+        for el in all_elements():
             key = f"{el['type']}/{el['id']}"
             if key in seen:
                 continue
@@ -75,7 +130,6 @@ def main(out_path):
                 ramps.append(pt)
             elif tags.get("amenity") == "sanitary_dump_station":
                 dumps.append(pt)
-        time.sleep(2)
     if len(camps) < 3000:
         raise SystemExit(f"Only {len(camps)} camps found; keeping the old file.")
     out = {
