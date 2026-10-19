@@ -2,6 +2,6 @@
   "appId": "au.com.gonelappin.campfinder",
   "appName": "Camp Finder",
   "webDir": "docs",
-  "ios": { "contentInset": "never", "backgroundColor": "#24453A" },
-  "android": { "backgroundColor": "#24453A" }
+  "ios": { "contentInset": "never", "backgroundColor": "#0E5A3E" },
+  "android": { "backgroundColor": "#0E5A3E" }
 }

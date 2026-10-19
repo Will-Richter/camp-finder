@@ -333,106 +333,8 @@
     return out;
   }
 
-  // ---------------------------------------------------------------- map
-  const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([-23.5, 134], 4);
-  const street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(map);
-  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
-  });
-  let onSat = false;
-  $("#layerBtn").addEventListener("click", () => {
-    onSat = !onSat;
-    if (onSat) { map.removeLayer(street); sat.addTo(map); } else { map.removeLayer(sat); street.addTo(map); }
-  });
-  L.control.zoom({ position: "topleft" }).addTo(map);
 
-  const tripLayer = L.layerGroup().addTo(map);
-  const legLayer = L.layerGroup().addTo(map);
-  const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45, chunkedLoading: true });
-  map.addLayer(cluster);
-
-  function pinIcon(cls, label = "") {
-    return L.divIcon({ className: "", html: `<div class="pin ${cls}"><b>${esc(label)}</b></div>`, iconSize: [28, 28], iconAnchor: [14, 28] });
-  }
-  function campMarker(c, opts = {}) {
-    const m = L.marker([c.lat, c.lon], { icon: pinIcon(opts.night ? "night" : c.cost, opts.label || "") , title: c.name });
-    m.on("click", () => openDetail(c, opts.ctx));
-    return m;
-  }
-
-  let me = null;
-  $("#locateBtn").addEventListener("click", () => {
-    if (!navigator.geolocation) return toast("Location isn't available on this device.");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        me = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        L.circleMarker([me.lat, me.lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#2F6FD6", fillOpacity: 1 }).addTo(map);
-        map.setView([me.lat, me.lon], 11);
-      },
-      () => toast("Couldn't get your location. Check location permission for your browser."),
-      { enableHighAccuracy: true, timeout: 12000 }
-    );
-  });
-
-  // ---------------------------------------------------------------- sheet & tabs
-  const sheet = $("#sheet");
-  $("#sheetHandle").addEventListener("click", () => {
-    if (sheet.classList.contains("is-peek")) { sheet.classList.remove("is-peek"); }
-    else if (sheet.classList.contains("is-full")) { sheet.classList.remove("is-full"); sheet.classList.add("is-peek"); }
-    else sheet.classList.add("is-full");
-    setTimeout(() => map.invalidateSize(), 300);
-  });
-  let view = "plan";
-  $$(".tab").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
-  function setView(v) {
-    view = v;
-    $$(".tab").forEach((b) => { const on = b.dataset.view === v; b.classList.toggle("is-on", on); b.setAttribute("aria-selected", on); });
-    $$(".view").forEach((el) => (el.hidden = el.id !== `view-${v}`));
-    if (v === "explore") { tripLayer.clearLayers(); legLayer.clearLayers(); cluster.clearLayers(); loadExplore(); }
-    if (v === "plan") { cluster.clearLayers(); if (plan) drawPlan(); }
-    if (v === "saved") renderSaved();
-  }
-
-  function chipsInto(fs, prefix, saved) {
-    fs.insertAdjacentHTML("beforeend", AMENITIES.map((a) =>
-      `<label class="chip"><input type="checkbox" id="${prefix}-${a.id}" value="${a.id}" ${saved.includes(a.id) ? "checked" : ""}><span>${a.label}</span></label>`).join(""));
-  }
-  const prefs = store.get("cf-prefs", { wants: ["toilets"], exWants: [] });
-  chipsInto($("#planChips"), "pc", prefs.wants);
-  chipsInto($("#exploreChips"), "ec", prefs.exWants);
-  const wantsOf = (fs) => $$("input:checked", fs).map((i) => i.value);
-
-  // ---------------------------------------------------------------- PLAN
-  let plan = null; // { from, to, route, line, nights, picks: [{target, camp, alts, warn}], camps }
-  attachSuggest($("#from"));
-  attachSuggest($("#to"));
-
-  $("#planForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const msg = $("#planMsg"), btn = $("#findBtn");
-    msg.className = "form-msg"; btn.disabled = true;
-    const say = (t) => (msg.innerHTML = `<span class="spinner"></span>${esc(t)}`);
-    try {
-      const nights = Math.max(0, Math.min(30, parseInt($("#nights").value || "0", 10)));
-      const opts = { rig: $("#rig").value, cost: $("#cost").value, detour: +$("#detour").value, wants: wantsOf($("#planChips")) };
-      store.set("cf-prefs", { ...prefs, wants: opts.wants });
-      say("Finding places…");
-      const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
-      say("Working out the route…");
-      const route = await osrm([from, to]);
-      say("Searching for camps along the route…");
-      const data = await campsAlong(route, opts.detour, (t) => say(t));
-      plan = makePlan({ from, to, route, nights, opts, data });
-      msg.textContent = "";
-      showPlan();
-    } catch (err) {
-      msg.className = "form-msg is-error";
-      msg.textContent = friendly(err);
-    } finally { btn.disabled = false; }
-  });
-
+  // ---------------------------------------------------------------- trip logic
   function friendly(err) {
     const m = String(err?.message || err);
     if (/abort|timeout/i.test(m)) return "That took too long. The free map servers may be busy, so try again in a minute.";
@@ -512,224 +414,437 @@
     return { from, to, route, line, nights, opts, picks, camps: usable, at: Date.now() };
   }
 
+
+  // ---------------------------------------------------------------- icons & small renderers
+  const icon = (id, cls = "ic") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+  const RIGS = [
+    { id: "tent", label: "Tent or swag" },
+    { id: "rooftop", label: "Car or rooftop" },
+    { id: "camper", label: "Camper trailer" },
+    { id: "caravan", label: "Caravan" },
+    { id: "motorhome", label: "Motor&shy;home" },
+  ];
+  const AMEN_ICON = { toilets: "toilets", water: "water", showers: "showers", dogs: "dogs", boatramp: "boatramp", dump: "dump", power: "power", fires: "fires" };
+  const SHORT = { toilets: "Toilets", water: "Water", showers: "Showers", dogs: "Dogs", boatramp: "Boat ramp", dump: "Dump point", power: "Power", fires: "Fires" };
+
+  function priceTag(c) {
+    if (c.cost === "free") return `<span class="price free">${c.donation ? "DONATION" : "FREE"}</span>`;
+    if (c.cost === "paid") {
+      const amt = (c.charge.match(/\$?\s?(\d+(?:\.\d+)?)/) || [])[1];
+      return `<span class="price paid">${amt ? "$" + amt : "PAID"}</span>`;
+    }
+    return `<span class="price unknown">PRICE ?</span>`;
+  }
+  function amenIcons(c) {
+    const out = [];
+    for (const id of ["toilets", "water", "showers", "dogs", "power", "fires"]) if (c.a[id] === true) out.push(`<span title="${SHORT[id]}">${icon(AMEN_ICON[id])}<span class="sr">${SHORT[id]}</span></span>`);
+    if (c.rampM <= CFG.boatRampKm * 1000) out.push(`<span title="Boat ramp">${icon("boatramp")}${km(c.rampM)}</span>`);
+    if (c.dumpM <= CFG.dumpKm * 1000) out.push(`<span title="Dump point">${icon("dump")}${c.dumpM === 0 ? "On site" : km(c.dumpM)}</span>`);
+    return out.length ? `<div class="icons">${out.join("")}</div>` : "";
+  }
+  function metaLine(c, ctx = {}) {
+    if (ctx.fromCenter != null) return `${c.kind}, ${km(ctx.fromCenter)} from map centre`;
+    if (c.off != null) return c.off < 1000 ? `${c.kind}, right on your route` : `${c.kind}, ${km(c.off)} off your route`;
+    return c.kind;
+  }
+  function campCard(c, ctx) {
+    return `<button type="button" class="camp-card" data-id="${esc(c.id)}">
+      <div class="cc-top"><div><div class="cc-name">${esc(c.name)}</div><div class="cc-meta">${esc(metaLine(c, ctx))}</div></div>${priceTag(c)}</div>
+      ${amenIcons(c)}
+    </button>`;
+  }
+
+  // ---------------------------------------------------------------- map
+  const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([-25.5, 134], 4);
+  const street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+  });
+  let onSat = false;
+  $("#layerBtn").addEventListener("click", (e) => {
+    onSat = !onSat;
+    e.currentTarget.setAttribute("aria-pressed", onSat);
+    e.currentTarget.setAttribute("aria-label", onSat ? "Switch to map view" : "Switch to satellite view");
+    if (onSat) { map.removeLayer(street); sat.addTo(map); } else { map.removeLayer(sat); street.addTo(map); }
+  });
+
+  const tripLayer = L.layerGroup().addTo(map);
+  const legLayer = L.layerGroup().addTo(map);
+  const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true });
+  map.addLayer(cluster);
+
+  const divIcon = (html, size) => L.divIcon({ className: "", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] });
+  function campMarker(c, opts = {}) {
+    const ic = opts.night
+      ? divIcon(`<div class="mk-night">${esc(opts.label)}</div>`, [34, 32])
+      : divIcon(`<div class="mk ${c.cost}"></div>`, [16, 16]);
+    const m = L.marker([c.lat, c.lon], { icon: ic, title: c.name, keyboard: true, zIndexOffset: opts.night ? 1000 : 0 });
+    m.on("click", () => openDetail(c));
+    return m;
+  }
+
+  // safe-area aware padding for fitting the map around the panel
+  function fitPad() {
+    const wide = window.innerWidth >= 900;
+    const sheetH = $("#sheet").getBoundingClientRect().height || window.innerHeight * 0.6;
+    return wide ? { paddingTopLeft: [450, 40], paddingBottomRight: [70, 40] } : { paddingTopLeft: [24, 70], paddingBottomRight: [70, sheetH + 70] };
+  }
+
+  let me = null;
+  let meDot = null;
+  function locate(then) {
+    if (!navigator.geolocation) { toast("Location isn't available on this device"); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        me = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        if (meDot) map.removeLayer(meDot);
+        meDot = L.circleMarker([me.lat, me.lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#2F6FD6", fillOpacity: 1 }).addTo(map);
+        then(me);
+      },
+      () => toast("Turn on location for Camp Finder in your phone's settings"),
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  }
+  $("#locateBtn").addEventListener("click", () => locate((p) => map.setView([p.lat, p.lon], 11)));
+
+  // ---------------------------------------------------------------- sheet & tabs
+  const sheet = $("#sheet");
+  function setSheet(state) {
+    sheet.classList.toggle("is-peek", state === "peek");
+    sheet.classList.toggle("is-full", state === "full");
+    setTimeout(() => map.invalidateSize(), 320);
+  }
+  $("#sheetHandle").addEventListener("click", () => {
+    setSheet(sheet.classList.contains("is-peek") ? "half" : sheet.classList.contains("is-full") ? "peek" : "full");
+  });
+  // drag the grabber to resize
+  (() => {
+    let y0 = null, h0 = 0;
+    const g = $("#sheetHandle");
+    g.addEventListener("pointerdown", (e) => { y0 = e.clientY; h0 = sheet.getBoundingClientRect().height; sheet.style.transition = "none"; g.setPointerCapture(e.pointerId); });
+    g.addEventListener("pointermove", (e) => { if (y0 == null) return; sheet.style.height = Math.max(140, h0 + (y0 - e.clientY)) + "px"; });
+    g.addEventListener("pointerup", (e) => {
+      if (y0 == null) return;
+      const dy = y0 - e.clientY; y0 = null; sheet.style.transition = ""; sheet.style.height = "";
+      if (Math.abs(dy) < 8) return; // treated as a tap by the click handler
+      const h = h0 + dy, vh = window.innerHeight;
+      setSheet(h < vh * 0.35 ? "peek" : h > vh * 0.72 ? "full" : "half");
+      g.dataset.dragged = "1"; setTimeout(() => delete g.dataset.dragged, 50);
+    });
+    g.addEventListener("click", (e) => { if (g.dataset.dragged) e.stopImmediatePropagation(); }, true);
+  })();
+
+  let view = "plan";
+  $$(".tabbtn").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+  function setView(v) {
+    view = v;
+    $$(".tabbtn").forEach((b) => { const on = b.dataset.view === v; b.classList.toggle("is-on", on); on ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"); });
+    $$(".view").forEach((el) => (el.hidden = el.id !== `view-${v}`));
+    closeDetail();
+    $("#sheetScroll").scrollTop = 0;
+    if (sheet.classList.contains("is-peek")) setSheet("half");
+    if (v === "explore") { tripLayer.clearLayers(); legLayer.clearLayers(); loadExplore(); }
+    else cluster.clearLayers();
+    if (v === "plan" && plan) drawPlan();
+    if (v === "saved") renderSaved();
+  }
+
+  // ---------------------------------------------------------------- form controls
+  const prefs = store.get("cf-prefs", { wants: ["toilets"], exWants: [], rig: "camper", exFree: true });
+  $("#rigs").innerHTML = RIGS.map((r) => `<label class="rig"><input type="radio" name="rig" value="${r.id}" ${r.id === prefs.rig ? "checked" : ""}><span>${icon(r.id)}${r.label}</span></label>`).join("");
+  $("#planWants").innerHTML = AMENITIES.map((a) => `<label><input type="checkbox" value="${a.id}" ${prefs.wants.includes(a.id) ? "checked" : ""}><span>${icon(AMEN_ICON[a.id], "ic sm")}${esc(a.label)}</span></label>`).join("");
+  $("#explorePills").innerHTML =
+    `<label class="pill"><input type="checkbox" id="exFree" ${prefs.exFree ? "checked" : ""}><span>Free only</span></label>` +
+    AMENITIES.map((a) => `<label class="pill"><input type="checkbox" value="${a.id}" ${prefs.exWants.includes(a.id) ? "checked" : ""}><span>${icon(AMEN_ICON[a.id])}${SHORT[a.id]}</span></label>`).join("");
+  const radio = (name) => $(`input[name="${name}"]:checked`)?.value;
+  const wantsOf = (el) => $$("input[value]:checked", el).map((i) => i.value).filter((v) => AMENITIES.some((a) => a.id === v));
+  function savePrefs() {
+    Object.assign(prefs, { wants: wantsOf($("#planWants")), exWants: wantsOf($("#explorePills")), rig: radio("rig"), exFree: $("#exFree").checked });
+    store.set("cf-prefs", prefs);
+  }
+
+  const nightsIn = $("#nights");
+  function setNights(n) {
+    n = Math.max(0, Math.min(30, n));
+    nightsIn.value = n; $("#nightsOut").textContent = n;
+    $("#nightsDown").disabled = n === 0; $("#nightsUp").disabled = n === 30;
+    $("#nightsHelp").textContent = n === 0 ? "Straight through, no overnight stops" : `One camp for each night, ${n + 1} days of driving`;
+  }
+  $("#nightsDown").addEventListener("click", () => setNights(+nightsIn.value - 1));
+  $("#nightsUp").addEventListener("click", () => setNights(+nightsIn.value + 1));
+  setNights(6);
+  $("#detourSeg").addEventListener("change", () => ($("#detourShown").textContent = (+radio("detour") / 1000) + " km"));
+
+  $("#useHere").addEventListener("click", () => {
+    const f = $("#from");
+    f.value = "Finding you…";
+    locate((p) => { f.value = "My location"; f.dataset.lat = p.lat; f.dataset.lon = p.lon; });
+  });
+  $("#from").addEventListener("input", () => ($("#useHere").hidden = !!$("#from").value));
+  attachSuggest($("#from"), () => ($("#useHere").hidden = true));
+  attachSuggest($("#to"));
+
+  // ---------------------------------------------------------------- PLAN
+  let plan = null;
+  $("#planForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("#planMsg"), btn = $("#findBtn");
+    msg.className = "msg"; btn.disabled = true;
+    const say = (t) => (btn.innerHTML = `<span class="spinner"></span>${esc(t)}`);
+    try {
+      savePrefs();
+      const nights = +nightsIn.value;
+      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")) };
+      say("Finding places");
+      const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
+      say("Planning the route");
+      const route = await osrm([from, to]);
+      say("Looking for camps");
+      const data = await campsAlong(route, opts.detour, (t) => say(t.replace("Searching for camps along the route… ", "Looking for camps ")));
+      plan = makePlan({ from, to, route, nights, opts, data });
+      msg.textContent = "";
+      showPlan();
+    } catch (err) {
+      msg.className = "msg is-error";
+      msg.textContent = friendly(err);
+    } finally { btn.disabled = false; btn.textContent = "Find camps"; }
+  });
+
   function nightKm(i) {
     const prevAlong = i === 0 ? 0 : (plan.picks[i - 1].camp?.along ?? plan.picks[i - 1].target);
     const here = plan.picks[i].camp?.along ?? plan.picks[i].target;
     return here - prevAlong;
   }
-
-  function campRow(c, ctx = {}) {
-    const a = c.a;
-    const chip = (ok, label) => ok === true ? `<span>${label}</span>` : ok === false ? `<span class="no">${label}</span>` : "";
-    const extra = [];
-    if (c.rampM <= CFG.boatRampKm * 1000) extra.push(`<span>Boat ramp ${km(c.rampM)}</span>`);
-    if (c.dumpM <= CFG.dumpKm * 1000) extra.push(`<span>${c.dumpM === 0 ? "Dump point on site" : "Dump point " + km(c.dumpM)}</span>`);
-    const badge = c.cost === "free" ? `<span class="badge free">${c.donation ? "Donation" : "Free"}</span>`
-      : c.cost === "paid" ? `<span class="badge paid">${esc(c.charge ? c.charge.slice(0, 18) : "Paid")}</span>`
-      : `<span class="badge unknown">Cost unknown</span>`;
-    const sub = [c.kind, c.off != null ? `${km(c.off)} off route` : "", ctx.fromCenter != null ? `${km(ctx.fromCenter)} away` : "", c.maxstay ? `Max stay ${c.maxstay}` : ""].filter(Boolean).join(" · ");
-    return `<div class="camp" data-id="${esc(c.id)}" tabindex="0" role="button" aria-label="${esc(c.name)} details">
-      <div class="camp-name">${esc(c.name)}</div>${badge}
-      <div class="camp-sub">${esc(sub)}</div>
-      <div class="amen">${chip(a.toilets, "Toilets")}${chip(a.water, "Water")}${chip(a.showers, "Showers")}${chip(a.dogs, "Dogs OK")}${chip(a.power, "Power")}${chip(a.fires, "Fires")}${extra.join("")}</div>
-    </div>`;
-  }
+  const short = (s) => String(s).split(",")[0];
 
   function showPlan() {
     const p = plan;
     $("#planForm").hidden = true; $("#results").hidden = false;
-    $("#tripTitle").textContent = `${p.from.name} to ${p.to.name}`;
-    const perDay = p.line.total / (p.nights + 1);
-    $("#tripMeta").textContent = `${km(p.route.distance)} · ${hrs(p.route.duration)} driving · ${p.nights} night${p.nights === 1 ? "" : "s"} · about ${km(perDay)} a day`;
-    const list = $("#nightList");
-    list.innerHTML = p.picks.map((pk, i) => `
-      <li class="night">
-        <div class="night-head"><span class="night-num">${i + 1}</span><b>Night ${i + 1}</b><span class="km">${km(nightKm(i))} drive</span></div>
-        ${pk.warn ? `<div class="night-warn">${esc(pk.warn)}</div>` : ""}
-        ${pk.camp ? campRow(pk.camp) : ""}
-        ${pk.camp ? `<div class="camp-actions" style="padding:0 12px 12px">
-            <button class="btn ghost small" data-act="leg" data-i="${i}" type="button">Directions here</button>
-            <a class="btn ghost small" href="${navUrl(pk.camp, "apple")}" target="_blank" rel="noopener">Apple Maps</a>
-            <a class="btn ghost small" href="${navUrl(pk.camp, "google")}" target="_blank" rel="noopener">Google Maps</a>
-          </div>` : ""}
-        ${pk.alts.length ? `<details class="alts"><summary>${pk.alts.length} other option${pk.alts.length > 1 ? "s" : ""}</summary>
-          ${pk.alts.map((c) => `${campRow(c)}<div style="padding:0 12px 10px"><button class="btn ghost small" data-act="swap" data-i="${i}" data-id="${esc(c.id)}" type="button">Use this one</button></div>`).join("")}
+    $("#tripTitle").textContent = `${short(p.from.name)} to ${short(p.to.name)}`;
+    const days = p.nights + 1;
+    $("#tripMeta").textContent = `${km(p.route.distance)} and ${hrs(p.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`;
+    const stops = [];
+    stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
+    p.picks.forEach((pk, i) => {
+      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}</p>`;
+      if (!pk.camp) {
+        stops.push(`<li class="stop"><div class="plate" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">${leg}<p class="note">${esc(pk.warn)}</p></div></li>`);
+        return;
+      }
+      stops.push(`<li class="stop"><div class="plate" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">
+        ${leg}
+        ${pk.warn ? `<p class="note">${esc(pk.warn)}</p>` : ""}
+        ${campCard(pk.camp)}
+        <div class="stop-actions">
+          <button class="btn" data-act="leg" data-i="${i}" type="button">${icon("route")}Directions</button>
+          <a class="btn line" href="${navUrl(pk.camp, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
+        </div>
+        ${pk.alts.length ? `<details class="alt-wrap"><summary>${pk.alts.length} other camp${pk.alts.length > 1 ? "s" : ""} near here ${icon("chev", "ic sm")}</summary>
+          ${pk.alts.map((c) => `<div class="alt">${campCard(c)}<button class="btn" data-act="swap" data-i="${i}" data-id="${esc(c.id)}" type="button">${icon("swap")}Stay here instead</button></div>`).join("")}
         </details>` : ""}
-      </li>`).join("") + `
-      <li class="night"><div class="night-head"><span class="night-num">✓</span><b>Arrive ${esc(p.to.name)}</b><span class="km">${km(p.line.total - (p.picks.at(-1)?.camp?.along ?? 0))} drive</span></div></li>`;
+      </div></li>`);
+    });
+    const lastAlong = p.picks.at(-1)?.camp?.along ?? 0;
+    stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
+    $("#nightList").innerHTML = stops.join("");
     const along = [...p.camps].sort((a, b) => a.along - b.along);
     $("#alongCount").textContent = along.length;
-    $("#alongList").innerHTML = along.map((c) => `<li>${campRow(c)}</li>`).join("") || `<li class="empty">No camps found within your detour distance.</li>`;
+    $("#alongList").innerHTML = along.map((c) => `<li>${campCard(c)}</li>`).join("") || `<li class="empty">No camps within your detour distance. Try a longer detour.</li>`;
+    $("#saveTrip").classList.remove("is-on");
+    $("#sheetScroll").scrollTop = 0;
     drawPlan();
-    if (window.innerWidth < 900) { sheet.classList.remove("is-full", "is-peek"); }
   }
 
   function drawPlan() {
     tripLayer.clearLayers(); legLayer.clearLayers();
     const p = plan; if (!p) return;
-    const line = L.polyline(p.line.pts, { color: "#24453A", weight: 5, opacity: .85 }).addTo(tripLayer);
-    L.marker([p.from.lat, p.from.lon], { icon: pinIcon("unknown", "A") }).addTo(tripLayer);
-    L.marker([p.to.lat, p.to.lon], { icon: pinIcon("unknown", "B") }).addTo(tripLayer);
+    L.polyline(p.line.pts, { color: "#ffffff", weight: 9, opacity: .9 }).addTo(tripLayer);
+    const line = L.polyline(p.line.pts, { color: "#0E5A3E", weight: 5, opacity: .95 }).addTo(tripLayer);
+    L.marker([p.from.lat, p.from.lon], { icon: divIcon(`<div class="mk-start"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
+    L.marker([p.to.lat, p.to.lon], { icon: divIcon(`<div class="mk-end"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
     const pickIds = new Set(p.picks.map((x) => x.camp?.id));
-    for (const c of p.camps) if (!pickIds.has(c.id)) L.circleMarker([c.lat, c.lon], { radius: 5, weight: 1, color: "#fff", fillColor: c.cost === "free" ? "#2F7D4F" : c.cost === "paid" ? "#A8472A" : "#6B7A72", fillOpacity: .9 })
-      .on("click", () => openDetail(c)).addTo(tripLayer);
+    for (const c of p.camps) if (!pickIds.has(c.id)) campMarker(c).addTo(tripLayer);
     p.picks.forEach((pk, i) => { if (pk.camp) campMarker(pk.camp, { night: true, label: String(i + 1) }).addTo(tripLayer); });
-    map.fitBounds(line.getBounds(), { paddingTopLeft: window.innerWidth >= 900 ? [450, 30] : [30, 30], paddingBottomRight: window.innerWidth >= 900 ? [30, 30] : [30, Math.round(window.innerHeight * 0.62)] });
+    map.fitBounds(line.getBounds(), fitPad());
   }
 
   $("#nightList").addEventListener("click", (e) => {
     const b = e.target.closest("[data-act]");
     if (b?.dataset.act === "swap") {
-      const pk = plan.picks[+b.dataset.i];
+      const i = +b.dataset.i, pk = plan.picks[i];
       const alt = pk.alts.find((c) => c.id === b.dataset.id);
       pk.alts = [pk.camp, ...pk.alts.filter((c) => c.id !== alt.id)];
       pk.camp = alt; pk.warn = "";
-      showPlan(); toast(`Night ${+b.dataset.i + 1} changed to ${alt.name}`);
+      showPlan(); toast(`Night ${i + 1}: ${alt.name}`);
       return;
     }
     if (b?.dataset.act === "leg") { showLeg(+b.dataset.i); return; }
-    const row = e.target.closest(".camp");
-    if (row) openDetail(findCamp(row.dataset.id));
+    const card = e.target.closest(".camp-card");
+    if (card) openDetail(findCamp(card.dataset.id));
   });
-  $("#alongList").addEventListener("click", (e) => { const row = e.target.closest(".camp"); if (row) openDetail(findCamp(row.dataset.id)); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList?.contains("camp")) e.target.click(); if (e.key === "Escape") closeDetail(); });
+  $("#alongList").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(findCamp(card.dataset.id)); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
   function findCamp(id) {
     return (plan?.camps || []).find((c) => c.id === id) || exploreCamps.find((c) => c.id === id) || store.get("cf-camps", []).find((c) => c.id === id);
   }
-  $("#editTrip").addEventListener("click", () => { $("#planForm").hidden = false; $("#results").hidden = true; });
-  $("#saveTrip").addEventListener("click", () => {
+  $("#editTrip").addEventListener("click", () => { $("#planForm").hidden = false; $("#results").hidden = true; tripLayer.clearLayers(); legLayer.clearLayers(); });
+  $("#saveTrip").addEventListener("click", (e) => {
     const trips = store.get("cf-trips", []);
-    const slim = {
-      id: Date.now(), from: plan.from, to: plan.to, nights: plan.nights, opts: plan.opts,
-      picks: plan.picks.map((p) => p.camp && { id: p.camp.id, name: p.camp.name, lat: p.camp.lat, lon: p.camp.lon, cost: p.camp.cost }),
-      km: plan.route.distance,
-    };
-    trips.unshift(slim); store.set("cf-trips", trips.slice(0, 30)); toast("Trip saved");
+    trips.unshift({
+      id: Date.now(), from: plan.from, to: plan.to, nights: plan.nights, opts: plan.opts, km: plan.route.distance,
+      picks: plan.picks.map((p) => p.camp && { id: p.camp.id, name: p.camp.name }),
+    });
+    store.set("cf-trips", trips.slice(0, 30));
+    e.currentTarget.classList.add("is-on"); toast("Trip saved");
   });
 
-  // ---------------------------------------------------------------- directions for a leg
+  // ---------------------------------------------------------------- directions
   function navUrl(c, app) {
     return app === "apple"
       ? `https://maps.apple.com/?daddr=${c.lat},${c.lon}&dirflg=d&q=${encodeURIComponent(c.name)}`
       : `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}&travelmode=driving`;
   }
-  async function showLeg(i) {
-    const startPt = i === 0 ? plan.from : plan.picks[i - 1].camp || plan.from;
-    const camp = plan.picks[i].camp;
-    await directions(startPt, camp, i === 0 ? plan.from.name : startPt.name);
+  function showLeg(i) {
+    const start = i === 0 ? plan.from : plan.picks[i - 1].camp || plan.from;
+    directions(start, plan.picks[i].camp, short(start.name));
+  }
+  function manIcon(s) {
+    const t = s.maneuver.type, m = s.maneuver.modifier || "";
+    if (t === "depart") return "m-depart";
+    if (t === "arrive") return "m-arrive";
+    if (/roundabout|rotary/.test(t)) return "m-round";
+    if (m === "uturn") return "m-uturn";
+    if (/left/.test(m)) return "m-left";
+    if (/right/.test(m)) return "m-right";
+    return "m-straight";
+  }
+  function stepHtml(s) {
+    let text = esc(stepText(s));
+    const road = s.name || "";
+    if (road) text = text.replace(esc(road), `<b>${esc(road)}</b>`);
+    const ref = (s.ref || "").split(";")[0].trim();
+    if (ref && /^[MABC]\d{1,3}$/.test(ref)) text += ` <span class="shield">${esc(ref)}</span>`;
+    return text;
   }
   async function directions(from, camp, fromName) {
-    openDetailShell(`<div class="d-title">Directions</div><div class="d-sub">${esc(fromName || "Start")} to ${esc(camp.name)}</div><p><span class="spinner"></span>Working out the route…</p>`);
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">To ${esc(camp.name)}</h2><p class="d-kind">From ${esc(fromName || "start")}</p><p class="msg"><span class="spinner"></span>Planning the route</p></div>`);
     try {
       const r = await osrm([from, camp], true);
       legLayer.clearLayers();
-      const pl = L.polyline(r.geometry.coordinates.map(([lo, la]) => [la, lo]), { color: "#D9922E", weight: 6, opacity: .95 }).addTo(legLayer);
-      map.fitBounds(pl.getBounds(), { padding: [40, 40] });
-      const steps = r.legs.flatMap((l) => l.steps).filter((s) => s.maneuver.type !== "arrive" || true);
-      $("#detailBody").innerHTML = `
-        <div class="d-title">Directions</div>
-        <div class="d-sub">${esc(fromName || "Start")} to ${esc(camp.name)} · ${km(r.distance)} · ${hrs(r.duration)}</div>
+      const pts = r.geometry.coordinates.map(([lo, la]) => [la, lo]);
+      L.polyline(pts, { color: "#ffffff", weight: 10, opacity: .9 }).addTo(legLayer);
+      const pl = L.polyline(pts, { color: "#D9A400", weight: 6, opacity: 1 }).addTo(legLayer);
+      map.fitBounds(pl.getBounds(), fitPad());
+      const steps = r.legs.flatMap((l) => l.steps);
+      $("#detailBody").innerHTML = `<div class="d-pad" style="padding-top:22px">
+        <h2 class="d-title">To ${esc(camp.name)}</h2>
+        <p class="d-kind">From ${esc(fromName || "start")}</p>
+        <div class="dir-sum"><div><b>${km(r.distance)}</b><span>distance</span></div><div><b>${hrs(r.duration)}</b><span>driving</span></div></div>
         <div class="d-actions">
-          <a class="btn dark small" href="${navUrl(camp, "apple")}" target="_blank" rel="noopener">Navigate in Apple Maps</a>
-          <a class="btn ghost small" href="${navUrl(camp, "google")}" target="_blank" rel="noopener">Google Maps</a>
-          <button class="btn ghost small" type="button" id="backToCamp">Camp details</button>
+          <a class="cta" href="${navUrl(camp, "apple")}" target="_blank" rel="noopener">${icon("nav")}Apple Maps</a>
+          <a class="btn" href="${navUrl(camp, "google")}" target="_blank" rel="noopener">Google Maps</a>
+          <button class="icon-btn" style="width:48px;height:48px" type="button" id="backToCamp" aria-label="Camp details">${icon("photo")}</button>
         </div>
-        <ol class="steps">${steps.map((s) => `<li><span>${esc(stepText(s))}</span><span class="d">${s.distance > 0 ? km(s.distance) : ""}</span></li>`).join("")}</ol>
-        <div class="disclaim">Driving times are estimates for a car and don't allow for towing, roadworks or unsealed roads. Check road conditions before heading off.</div>`;
+        <ol class="steps">${steps.map((s) => `<li><span class="m">${icon(manIcon(s))}</span><span class="t">${stepHtml(s)}</span><span class="d">${s.distance > 0 ? km(s.distance) : ""}</span></li>`).join("")}</ol>
+        <p class="caveat">Drive times are for a car and don't allow for towing, roadworks or dirt roads. Check road conditions before you head off.</p>
+      </div>`;
       $("#backToCamp").addEventListener("click", () => openDetail(camp));
     } catch (err) {
-      $("#detailBody").innerHTML = `<div class="d-title">Directions</div><p class="form-msg is-error">${esc(friendly(err))}</p>
-        <div class="d-actions"><a class="btn dark small" href="${navUrl(camp, "apple")}" target="_blank" rel="noopener">Apple Maps</a><a class="btn ghost small" href="${navUrl(camp, "google")}" target="_blank" rel="noopener">Google Maps</a></div>`;
+      $("#detailBody").innerHTML = `<div class="d-pad" style="padding-top:22px"><h2 class="d-title">To ${esc(camp.name)}</h2>
+        <p class="msg is-error">${esc(friendly(err))}</p>
+        <div class="d-actions"><a class="cta" href="${navUrl(camp, "apple")}" target="_blank" rel="noopener">${icon("nav")}Apple Maps</a><a class="btn" href="${navUrl(camp, "google")}" target="_blank" rel="noopener">Google Maps</a></div></div>`;
     }
   }
 
-  // ---------------------------------------------------------------- detail
-  function openDetailShell(html) { $("#detailBody").innerHTML = html; $("#detail").hidden = false; $("#detail").scrollTop = 0; }
-  function closeDetail() { $("#detail").hidden = true; }
+  // ---------------------------------------------------------------- camp detail
+  function showDetail(html) { $("#detailBody").innerHTML = html; const d = $("#detail"); d.hidden = false; d.scrollTop = 0; $("#app").classList.add("detail-open"); }
+  function closeDetail() { $("#detail").hidden = true; $("#app").classList.remove("detail-open"); }
   $("#detailClose").addEventListener("click", closeDetail);
 
-  function yn(v) { return v === true ? "Yes" : v === false ? "No" : "Not recorded"; }
+  function amenTile(id, state, extra = "") {
+    const word = extra || (state === true ? "Yes" : state === false ? "No" : "Not recorded");
+    const cls = state === true ? "" : state === false ? "no" : "unk";
+    return `<div class="${cls}">${icon(AMEN_ICON[id])}<span><b>${SHORT[id]}</b><small>${word}</small></span></div>`;
+  }
   async function openDetail(c) {
     if (!c) return;
     const saved = store.get("cf-camps", []).some((x) => x.id === c.id);
-    const cost = c.cost === "free" ? (c.donation ? "Free (donation welcome)" : "Free") : c.cost === "paid" ? (c.charge || "Paid") : "Not recorded";
-    const site = c.website && /^https?:\/\//i.test(c.website) ? `<a href="${esc(c.website)}" target="_blank" rel="noopener">${esc(c.website.replace(/^https?:\/\//, "").slice(0, 40))}</a>` : "";
+    const cost = c.cost === "free" ? (c.donation ? "Free, donations welcome" : "Free") : c.cost === "paid" ? (c.charge || "Paid, price not listed") : "Not recorded";
+    const site = c.website && /^https?:\/\//i.test(c.website) ? `<a href="${esc(c.website)}" target="_blank" rel="noopener">${esc(c.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "").slice(0, 38))}</a>` : "";
     const ownPhoto = c.image && /^https:\/\/.+\.(jpe?g|png|webp)$/i.test(c.image) ? c.image : "";
-    openDetailShell(`
-      <div class="brand-kicker">${esc(c.kind)}</div>
-      <div class="d-title">${esc(c.name)}</div>
-      <div class="d-sub">${c.off != null ? `${km(c.off)} off your route · ` : ""}${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}</div>
-      <div class="photos" id="photos">${ownPhoto ? `<a href="${esc(ownPhoto)}" target="_blank" rel="noopener"><img src="${esc(ownPhoto)}" alt="${esc(c.name)}"></a>` : ""}<span class="hint"><span class="spinner"></span>Looking for photos…</span></div>
-      <div class="photo-note" id="photoNote"></div>
-      <div class="d-actions">
-        <a class="btn dark small" href="${navUrl(c, "apple")}" target="_blank" rel="noopener">Navigate (Apple Maps)</a>
-        <a class="btn ghost small" href="${navUrl(c, "google")}" target="_blank" rel="noopener">Google Maps</a>
-        <button class="btn ghost small" id="dirBtn" type="button">Directions in app</button>
-        <button class="btn ghost small" id="saveCamp" type="button">${saved ? "Saved" : "Save camp"}</button>
-      </div>
-      <dl class="facts">
-        <dt>Cost</dt><dd>${esc(cost)}</dd>
-        <dt>Toilets</dt><dd>${yn(c.a.toilets)}</dd>
-        <dt>Drinking water</dt><dd>${yn(c.a.water)}</dd>
-        <dt>Showers</dt><dd>${yn(c.a.showers)}</dd>
-        <dt>Dogs</dt><dd>${yn(c.a.dogs)}</dd>
-        <dt>Power</dt><dd>${yn(c.a.power)}</dd>
-        <dt>Campfires</dt><dd>${yn(c.a.fires)}</dd>
-        <dt>Boat ramp</dt><dd>${isFinite(c.rampM) ? km(c.rampM) + " away" : "None found nearby"}</dd>
-        <dt>Dump point</dt><dd>${c.dumpM === 0 ? "On site" : isFinite(c.dumpM) ? km(c.dumpM) + " away" : "None found nearby"}</dd>
-        <dt>Suits</dt><dd>${suits(c)}</dd>
-        ${c.maxstay ? `<dt>Max stay</dt><dd>${esc(c.maxstay)}</dd>` : ""}
-        ${c.hours ? `<dt>Open</dt><dd>${esc(c.hours)}</dd>` : ""}
-        ${c.operator ? `<dt>Run by</dt><dd>${esc(c.operator)}</dd>` : ""}
-        ${c.phone ? `<dt>Phone</dt><dd>${esc(c.phone)}</dd>` : ""}
-        ${site ? `<dt>Website</dt><dd>${site}</dd>` : ""}
-        ${c.desc ? `<dt>Notes</dt><dd>${esc(c.desc)}</dd>` : ""}
-      </dl>
-      <div class="disclaim">Details come from OpenStreetMap and may be out of date. Check signs, fees, closures and fire bans when you arrive.
-        Spotted something wrong? <a href="https://www.openstreetmap.org/${esc(c.id)}" target="_blank" rel="noopener">Fix it on OpenStreetMap</a>.</div>`);
-    map.setView([c.lat, c.lon], Math.max(map.getZoom(), 12));
+    const ramp = isFinite(c.rampM) && c.rampM <= 20000;
+    const dump = isFinite(c.dumpM) && c.dumpM <= 30000;
+    const fact = (k, v) => (v ? `<div><dt>${k}</dt><dd>${v}</dd></div>` : "");
+    showDetail(`
+      <div class="gallery" id="gallery">${ownPhoto ? `<a href="${esc(ownPhoto)}" target="_blank" rel="noopener"><img src="${esc(ownPhoto)}" alt="${esc(c.name)}"></a>` : ""}<div class="none" id="galleryWait"><span class="spinner"></span></div></div>
+      <div class="d-pad">
+        <p class="d-credit" id="photoNote"></p>
+        <div class="d-head"><div><h2 class="d-title">${esc(c.name)}</h2><p class="d-kind">${esc(metaLine(c))}</p></div>${priceTag(c)}</div>
+        <div class="d-actions">
+          <a class="cta" href="${navUrl(c, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
+          <button class="btn" id="dirBtn" type="button">${icon("route")}Directions</button>
+          <button class="icon-btn ${saved ? "is-on" : ""}" style="width:48px;height:48px" id="saveCamp" type="button" aria-label="${saved ? "Saved" : "Save camp"}" aria-pressed="${saved}">${icon("bookmark")}</button>
+        </div>
+        <div class="amen-grid">
+          ${amenTile("toilets", c.a.toilets)}${amenTile("water", c.a.water)}${amenTile("showers", c.a.showers)}${amenTile("dogs", c.a.dogs)}
+          ${amenTile("power", c.a.power)}${amenTile("fires", c.a.fires)}
+          ${amenTile("boatramp", ramp ? true : null, ramp ? km(c.rampM) + " away" : "None nearby")}
+          ${amenTile("dump", dump ? true : null, c.dumpM === 0 ? "On site" : dump ? km(c.dumpM) + " away" : "None nearby")}
+        </div>
+        <dl class="facts">
+          ${fact("Price", esc(cost))}
+          ${fact("Suits", esc(suits(c)))}
+          ${fact("Max stay", esc(c.maxstay))}
+          ${fact("Open", esc(c.hours))}
+          ${fact("Run by", esc(c.operator))}
+          ${fact("Phone", esc(c.phone))}
+          ${fact("Website", site)}
+          ${fact("Notes", esc(c.desc))}
+          ${fact("Location", `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`)}
+        </dl>
+        <p class="caveat">Details come from OpenStreetMap and can be out of date. Check signs, prices, closures and fire bans when you arrive.
+          Something wrong? <a href="https://www.openstreetmap.org/${esc(c.id)}" target="_blank" rel="noopener">Update it on OpenStreetMap</a>.</p>
+      </div>`);
+    if (window.innerWidth < 900) map.setView([c.lat, c.lon], Math.max(map.getZoom(), 12));
     $("#dirBtn").addEventListener("click", () => {
-      if (plan && view === "plan") {
-        const i = plan.picks.findIndex((p) => p.camp?.id === c.id);
-        if (i >= 0) return showLeg(i);
-      }
-      if (me) return directions(me, c, "Your location");
-      if (!navigator.geolocation) return toast("Turn on location to get directions from where you are.");
-      navigator.geolocation.getCurrentPosition(
-        (pos) => { me = { lat: pos.coords.latitude, lon: pos.coords.longitude }; directions(me, c, "Your location"); },
-        () => toast("Couldn't get your location. Use Apple or Google Maps instead."), { timeout: 12000 });
+      const i = plan && view === "plan" ? plan.picks.findIndex((p) => p.camp?.id === c.id) : -1;
+      if (i >= 0) return showLeg(i);
+      if (me) return directions(me, c, "your location");
+      locate((p) => directions(p, c, "your location"));
     });
     $("#saveCamp").addEventListener("click", (e) => {
-      const list = store.get("cf-camps", []);
-      if (!list.some((x) => x.id === c.id)) { list.unshift(c); store.set("cf-camps", list.slice(0, 200)); }
-      e.target.textContent = "Saved"; toast("Camp saved");
+      const btn = e.currentTarget, list = store.get("cf-camps", []);
+      const on = list.some((x) => x.id === c.id);
+      store.set("cf-camps", on ? list.filter((x) => x.id !== c.id) : [c, ...list].slice(0, 200));
+      btn.classList.toggle("is-on", !on); btn.setAttribute("aria-pressed", !on); btn.setAttribute("aria-label", on ? "Save camp" : "Saved");
+      toast(on ? "Removed from saved" : "Camp saved");
     });
     const ph = await photosNear(c);
-    const box = $("#photos"); if (!box) return;
-    box.querySelector(".hint")?.remove();
-    box.insertAdjacentHTML("beforeend", ph.map((p) => `<a href="${esc(p.page)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(p.thumb)}" alt="Photo near ${esc(c.name)}"></a>`).join(""));
-    $("#photoNote").textContent = ph.length
-      ? "Photos taken within about 1.5 km, from Wikimedia Commons. Tap a photo for the photographer and licence."
-      : (ownPhoto ? "" : "No photos found for this spot yet. Switch to satellite view to see the site from above.");
+    const g = $("#gallery"); if (!g) return;
+    $("#galleryWait")?.remove();
+    g.insertAdjacentHTML("beforeend", ph.map((p) => `<a href="${esc(p.page)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(p.thumb)}" alt="Photo near ${esc(c.name)}"></a>`).join(""));
+    if (!ph.length && !ownPhoto) g.innerHTML = `<div class="none">${icon("photo")}No photos of this spot yet. Use satellite view on the map to see the site from above.</div>`;
+    $("#photoNote").textContent = ph.length ? "Photos taken nearby, from Wikimedia Commons. Tap one for the photographer's credit." : "";
   }
   function suits(c) {
     const s = [];
-    if (c.tents !== false) s.push("Tents");
-    if (c.caravans !== false && !c.backcountry) s.push("Caravans");
-    if (c.motorhome !== false && !c.backcountry) s.push("Motorhomes");
-    return s.join(", ") || "Check on arrival";
+    if (c.tents !== false) s.push("tents");
+    if (c.caravans !== false && !c.backcountry) s.push("caravans");
+    if (c.motorhome !== false && !c.backcountry) s.push("motorhomes");
+    return s.length ? s.join(", ").replace(/^./, (x) => x.toUpperCase()) : "Check on arrival";
   }
 
   // ---------------------------------------------------------------- EXPLORE
   let exploreCamps = [];
-  const exCache = new Map(); // tile key -> parsed
-  attachSuggest($("#exploreSearch"), (r) => map.setView([r.lat, r.lon], 11));
-  ["#exCost", "#exRig"].forEach((s) => $(s).addEventListener("change", renderExplore));
-  $("#exploreChips").addEventListener("change", () => { store.set("cf-prefs", { ...prefs, wants: wantsOf($("#planChips")), exWants: wantsOf($("#exploreChips")) }); renderExplore(); });
+  const exCache = new Map();
+  attachSuggest($("#exploreSearch"), (r) => { map.setView([r.lat, r.lon], 11); setSheet("half"); });
+  $("#explorePills").addEventListener("change", () => { savePrefs(); renderExplore(); });
   let exTimer;
-  map.on("moveend", () => { if (view === "explore") { clearTimeout(exTimer); exTimer = setTimeout(loadExplore, 500); } });
+  map.on("moveend", () => { if (view === "explore") { clearTimeout(exTimer); exTimer = setTimeout(loadExplore, 450); } });
 
-  function tileKeys(b) { // 0.5° tiles cover the view
+  function tileKeys(b) {
     const keys = [];
     for (let la = Math.floor(b.getSouth() * 2) / 2; la < b.getNorth(); la += 0.5)
       for (let lo = Math.floor(b.getWest() * 2) / 2; lo < b.getEast(); lo += 0.5) keys.push(`${la.toFixed(1)},${lo.toFixed(1)}`);
@@ -737,16 +852,15 @@
   }
   async function loadExplore() {
     if (view !== "explore") return;
-    const z = map.getZoom();
-    if (z < CFG.exploreMinZoom) {
-      $("#exploreCount").textContent = "Zoom in on an area to load its camps.";
-      if (!exploreCamps.length) $("#exploreList").innerHTML = "";
+    if (map.getZoom() < CFG.exploreMinZoom) {
+      $("#exploreCount").textContent = "Zoom in on the map, or search a town, to see its camps.";
+      $("#exploreList").innerHTML = ""; cluster.clearLayers();
       return;
     }
     const keys = tileKeys(map.getBounds()).filter((k) => !exCache.has(k));
-    if (keys.length > 16) { $("#exploreCount").textContent = "Zoom in a little more to load camps."; return; }
+    if (keys.length > 16) { $("#exploreCount").textContent = "Zoom in a little further to load camps."; return; }
     if (keys.length) {
-      $("#exploreCount").innerHTML = `<span class="spinner"></span>Loading camps…`;
+      $("#exploreCount").innerHTML = `<span class="spinner"></span>Loading camps in this area`;
       const lats = keys.map((k) => +k.split(",")[0]), lons = keys.map((k) => +k.split(",")[1]);
       const s = Math.min(...lats), w = Math.min(...lons), n = Math.max(...lats) + 0.5, e = Math.max(...lons) + 0.5;
       const bb = `${s},${w},${n},${e}`, bbx = `${s - 0.1},${w - 0.1},${n + 0.1},${e + 0.1}`;
@@ -763,63 +877,66 @@
       } catch (err) { $("#exploreCount").textContent = friendly(err); return; }
     }
     const all = new Map();
-    for (const k of exCache.keys()) for (const c of exCache.get(k)) all.set(c.id, c);
+    for (const v of exCache.values()) for (const c of v) all.set(c.id, c);
     exploreCamps = [...all.values()];
     renderExplore();
   }
   function renderExplore() {
-    if (view !== "explore") return;
-    const cost = $("#exCost").value, rig = $("#exRig").value, wants = wantsOf($("#exploreChips"));
+    if (view !== "explore" || map.getZoom() < CFG.exploreMinZoom) return;
+    const freeOnly = $("#exFree").checked, rig = prefs.rig, wants = wantsOf($("#explorePills"));
     const b = map.getBounds(), ctr = map.getCenter();
     const inView = exploreCamps.filter((c) => b.contains([c.lat, c.lon]));
-    const shown = inView.filter((c) => (cost === "any" || c.cost === "free") && rigOK(c, rig) && missing(c, wants).length === 0);
+    const shown = inView.filter((c) => (!freeOnly || c.cost === "free") && rigOK(c, rig) && missing(c, wants).length === 0);
     shown.forEach((c) => (c._d = hav([ctr.lat, ctr.lng], [c.lat, c.lon])));
-    shown.sort((a, b2) => score(b2, wants, cost) - score(a, wants, cost) || a._d - b2._d);
+    shown.sort((a, b2) => score(b2, wants, freeOnly ? "free" : "any") - score(a, wants, freeOnly ? "free" : "any") || a._d - b2._d);
     cluster.clearLayers();
     cluster.addLayers(shown.map((c) => campMarker(c)));
-    const free = shown.filter((c) => c.cost === "free").length;
-    $("#exploreCount").textContent = map.getZoom() < CFG.exploreMinZoom ? "Zoom in on an area to load its camps."
-      : `${shown.length} camp${shown.length === 1 ? "" : "s"} in view${cost === "any" ? ` (${free} free)` : ""}${inView.length > shown.length ? ` · ${inView.length - shown.length} hidden by your filters` : ""}`;
-    $("#exploreList").innerHTML = shown.slice(0, 80).map((c) => `<li>${campRow(c, { fromCenter: c._d })}</li>`).join("") || `<li class="empty">No matching camps in this area. Try fewer must-haves or zoom out.</li>`;
+    const hidden = inView.length - shown.length;
+    $("#exploreCount").textContent = shown.length
+      ? `${shown.length} ${freeOnly ? "free " : ""}camp${shown.length === 1 ? "" : "s"} on the map${hidden ? `, ${hidden} more hidden by your filters` : ""}`
+      : inView.length ? `${inView.length} camp${inView.length === 1 ? "" : "s"} here, but none match your filters.` : "No camps recorded in this area yet.";
+    $("#exploreList").innerHTML = shown.slice(0, 80).map((c) => `<li>${campCard(c, { fromCenter: c._d })}</li>`).join("");
   }
-  $("#exploreList").addEventListener("click", (e) => { const row = e.target.closest(".camp"); if (row) openDetail(findCamp(row.dataset.id)); });
+  $("#exploreList").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(findCamp(card.dataset.id)); });
 
   // ---------------------------------------------------------------- SAVED
   function renderSaved() {
     const trips = store.get("cf-trips", []), camps = store.get("cf-camps", []);
-    $("#savedTrips").innerHTML = trips.length ? trips.map((t) => `<li><div class="grow"><b>${esc(t.from.name)} to ${esc(t.to.name)}</b><div class="trip-meta">${km(t.km)} · ${t.nights} nights · ${t.picks.filter(Boolean).map((p) => esc(p.name)).join(" → ") || "no camps"}</div></div>
-      <button class="btn ghost small" data-load="${t.id}" type="button">Open</button><button class="btn ghost small" data-del="${t.id}" type="button" aria-label="Delete trip">Delete</button></li>`).join("")
-      : `<li class="empty">Trips you save appear here.</li>`;
-    $("#savedCamps").innerHTML = camps.length ? camps.map((c) => `<li>${campRow(c)}</li>`).join("") : `<li class="empty">Tap "Save camp" on any camp to keep it here.</li>`;
+    $("#savedTrips").innerHTML = trips.length ? trips.map((t) => `<li class="trip-item">
+        <b>${esc(short(t.from.name))} to ${esc(short(t.to.name))}</b>
+        <span class="help">${km(t.km)}, ${t.nights} night${t.nights === 1 ? "" : "s"}</span>
+        <span class="row"><button class="btn" data-load="${t.id}" type="button">Open</button><button class="icon-btn" data-del="${t.id}" type="button" aria-label="Delete trip">${icon("close")}</button></span>
+      </li>`).join("")
+      : `<li class="empty">Plan a trip and tap the bookmark to keep it here.</li>`;
+    $("#savedCamps").innerHTML = camps.length ? camps.map((c) => `<li>${campCard(c)}</li>`).join("") : `<li class="empty">Tap the bookmark on any camp to keep it here.</li>`;
   }
   $("#savedTrips").addEventListener("click", (e) => {
     const del = e.target.closest("[data-del]"), load = e.target.closest("[data-load]");
     const trips = store.get("cf-trips", []);
-    if (del) { store.set("cf-trips", trips.filter((t) => String(t.id) !== del.dataset.del)); renderSaved(); }
-    if (load) {
-      const t = trips.find((x) => String(x.id) === load.dataset.load); if (!t) return;
-      setView("plan");
-      const f = $("#from"), to = $("#to");
-      f.value = t.from.name; f.dataset.lat = t.from.lat; f.dataset.lon = t.from.lon;
-      to.value = t.to.name; to.dataset.lat = t.to.lat; to.dataset.lon = t.to.lon;
-      $("#nights").value = t.nights; $("#rig").value = t.opts.rig; $("#cost").value = t.opts.cost; $("#detour").value = t.opts.detour;
-      $$("#planChips input").forEach((i) => (i.checked = t.opts.wants.includes(i.value)));
-      $("#planForm").hidden = false; $("#results").hidden = true;
-      $("#planForm").requestSubmit();
-    }
+    if (del) { store.set("cf-trips", trips.filter((t) => String(t.id) !== del.dataset.del)); renderSaved(); return; }
+    if (!load) return;
+    const t = trips.find((x) => String(x.id) === load.dataset.load); if (!t) return;
+    setView("plan");
+    const f = $("#from"), to = $("#to");
+    f.value = t.from.name; f.dataset.lat = t.from.lat; f.dataset.lon = t.from.lon; $("#useHere").hidden = true;
+    to.value = t.to.name; to.dataset.lat = t.to.lat; to.dataset.lon = t.to.lon;
+    setNights(t.nights);
+    const pick = (name, v) => { const el = $(`input[name="${name}"][value="${v}"]`); if (el) el.checked = true; };
+    pick("rig", t.opts.rig); pick("cost", t.opts.cost); pick("detour", t.opts.detour);
+    $$("#planWants input").forEach((i) => (i.checked = t.opts.wants.includes(i.value)));
+    $("#planForm").hidden = false; $("#results").hidden = true;
+    $("#planForm").requestSubmit();
   });
-  $("#savedCamps").addEventListener("click", (e) => { const row = e.target.closest(".camp"); if (row) openDetail(findCamp(row.dataset.id)); });
+  $("#savedCamps").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(findCamp(card.dataset.id)); });
 
-  // ---------------------------------------------------------------- example trip on first open
-  const ex = { from: { name: "Bundaberg", lat: -24.8661, lon: 152.3489 }, to: { name: "Cairns", lat: -16.9186, lon: 145.7781 } };
+  // ---------------------------------------------------------------- first open: example trip
   if (!store.get("cf-seen", false)) {
     const f = $("#from"), t = $("#to");
-    f.value = "Bundaberg, Queensland"; f.dataset.lat = ex.from.lat; f.dataset.lon = ex.from.lon;
-    t.value = "Cairns, Queensland"; t.dataset.lat = ex.to.lat; t.dataset.lon = ex.to.lon;
-    $("#planMsg").textContent = "Example filled in: Bundaberg to Cairns over 6 nights. Tap Find my camps, or type your own trip.";
+    f.value = "Bundaberg, Queensland"; f.dataset.lat = -24.8661; f.dataset.lon = 152.3489; $("#useHere").hidden = true;
+    t.value = "Cairns, Queensland"; t.dataset.lat = -16.9186; t.dataset.lon = 145.7781;
+    $("#planMsg").textContent = "We've filled in an example trip. Change it to yours, or tap Find camps to see how it works.";
     store.set("cf-seen", true);
   }
 
-  // test hook (used by automated tests only)
   window.__cf = { normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
 })();
