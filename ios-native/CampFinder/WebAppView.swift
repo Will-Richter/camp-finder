@@ -17,6 +17,7 @@ struct WebAppView: UIViewRepresentable {
 
         let controller = config.userContentController
         controller.add(context.coordinator, name: "location")
+        controller.add(context.coordinator, name: "nativeFetch")
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -67,7 +68,30 @@ struct WebAppView: UIViewRepresentable {
         """
 
         // MARK: location bridge
+        /// Official data hosts the web app may read through the app (no browser CORS limits).
+        private static let fetchHosts: Set<String> = [
+            "spatial.infrastructure.gov.au", "opendata.maps.vic.gov.au",
+            "catalogue.data.infrastructure.gov.au", "spatial-gis.information.qld.gov.au",
+        ]
+
+        private func handleFetch(_ body: Any) {
+            guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
+                  let str = dict["url"] as? String, let url = URL(string: str),
+                  url.scheme == "https", let host = url.host, Self.fetchHosts.contains(host) else { return }
+            var req = URLRequest(url: url, timeoutInterval: 25)
+            req.setValue("CampFinder/1.0 (iOS)", forHTTPHeaderField: "User-Agent")
+            URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+                let ok = error == nil && ((response as? HTTPURLResponse)?.statusCode ?? 0) < 400 && data != nil
+                let text = ok ? String(decoding: data!, as: UTF8.self) : (error?.localizedDescription ?? "HTTP error")
+                let payload = (try? JSONSerialization.data(withJSONObject: [text], options: [.fragmentsAllowed])).map { String(decoding: $0, as: UTF8.self) } ?? "[\"\"]"
+                DispatchQueue.main.async {
+                    self?.webView?.evaluateJavaScript("window.__cfFetchDone(\(id), \(ok), \(payload)[0])")
+                }
+            }.resume()
+        }
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "nativeFetch" { handleFetch(message.body); return }
             guard message.name == "location", let id = message.body as? Int else { return }
             pending.append(id)
             switch manager.authorizationStatus {

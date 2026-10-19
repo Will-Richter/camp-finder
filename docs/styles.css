@@ -302,3 +302,53 @@ a { color: inherit; }
 .gallery a:only-child, .gallery a:only-of-type { flex: 1; }
 .gallery a:only-of-type img { width: 100%; }
 .plate.start { width: 20px; height: 20px; margin: 7px 8px; border-radius: 50%; box-shadow: inset 0 0 0 4px var(--sign); }
+
+/* ---------- sources, notices ---------- */
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.tag { font: 700 11.5px/1 var(--display); padding: 5px 7px 4px; border-radius: 5px; background: var(--sheet); color: var(--sub); box-shadow: inset 0 0 0 1px var(--hair); }
+.tag.bad { background: var(--paid); color: #fff; box-shadow: none; }
+.tag.mine { background: #5B3FA8; color: #fff; box-shadow: none; }
+.camp-card.is-closed .cc-name { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.notice { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; border-radius: 12px; padding: 11px 13px; margin: 0 0 10px; background: var(--well); font-size: 14px; line-height: 1.4; }
+.notice b { font: 800 14.5px var(--display); }
+.notice a:not(.btn) { color: var(--sign); font-weight: 700; font-size: 13px; }
+.notice .btn { margin-top: 6px; }
+.notice.warn { background: color-mix(in srgb, var(--gold) 22%, var(--sheet)); }
+.notice.bad { background: color-mix(in srgb, var(--paid) 16%, var(--sheet)); }
+.notice.bad b { color: var(--paid); }
+@media (prefers-color-scheme: dark) { .notice a:not(.btn) { color: var(--free); } }
+.status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.small-btn { height: 34px; font-size: 13px; padding: 0 11px; flex: none; }
+.res-btns { display: flex; gap: 6px; }
+.offline-note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--sub); background: var(--well); border-radius: 12px; padding: 10px 12px; margin: 0 0 14px; }
+.mk.user { background: #5B3FA8; } .mk.rest { background: #2F6FD6; } .mk.closed { background: #9AA19D; }
+
+/* ---------- pin drop ---------- */
+.pin-mode { position: absolute; inset: 0; z-index: 1150; pointer-events: none; }
+.pin-bar { pointer-events: auto; position: absolute; left: 12px; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); background: var(--sheet); border-radius: 16px; box-shadow: var(--float); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.pin-bar b { font: 800 16px var(--display); }
+.pin-coords { font-size: 13px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.pin-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.cta.small { width: auto; height: 38px; font-size: 14px; padding: 0 14px; border-radius: 11px; }
+.crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%); color: #5B3FA8; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.crosshair .ic { width: 46px; height: 46px; fill: #fff; stroke-width: 2; }
+.crosshair::after { content: ""; position: absolute; left: 50%; bottom: -3px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #5B3FA8; box-shadow: 0 0 0 3px rgba(255,255,255,.9); }
+#app.pinning .map-tools, #app.pinning .tabbar { visibility: hidden; }
+@media (min-width: 900px) { .pin-bar { left: 438px; right: auto; width: 420px; } }
+
+/* ---------- add form ---------- */
+.add-form { margin-top: 14px; }
+.add-form .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.add-form .field > label { font: 700 15px var(--display); }
+.add-form input[type=text], .add-form textarea { width: 100%; border: 0; background: var(--well); border-radius: 12px; padding: 12px; font-size: 16px; color: var(--ink); font-family: var(--text); }
+.add-form input:focus, .add-form textarea:focus { outline: 2px solid var(--sign); }
+.add-form .group { margin-bottom: 14px; }
+.add-form .amen-pick input:checked + span { background: var(--sign); color: var(--sign-ink); }
+.coord-row { display: flex; gap: 8px; }
+.coord-row input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.coord-row .icon-btn { width: 46px; height: 46px; flex: none; color: #5B3FA8; }
+.help.is-error { color: var(--paid); font-weight: 600; }
+.ac-preview { max-width: 100%; max-height: 180px; border-radius: 12px; margin-top: 6px; object-fit: cover; }
+.add-form input[type=file] { font-size: 14px; }
+.gallery > img { width: 100%; height: 100%; object-fit: cover; }
+[hidden] { display: none !important; }
