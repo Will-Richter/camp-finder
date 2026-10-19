@@ -365,6 +365,7 @@
     vicforest: { label: "Official state forest camp", by: "Recreation Sites, Victorian Government (CC BY 3.0)", url: "https://discover.data.vic.gov.au/dataset/recreation-sites" },
     osm: { label: "Community map", by: "OpenStreetMap contributors", url: "https://www.openstreetmap.org/copyright" },
     user: { label: "Added by you", by: "You", url: "" },
+    community: { label: "Traveller added", by: "a Camp Finder traveller", url: "" },
   };
 
   const YN = (v) => (v === "Y" ? true : v === "N" ? false : null);
@@ -464,7 +465,7 @@
     const out = [...osmCamps];
     for (const x of extras) {
       const twin = out.find((c) => c.source === "osm" && hav([c.lat, c.lon], [x.lat, x.lon]) < 150);
-      if (twin && x.source !== "user") {
+      if (twin && x.source !== "user" && x.source !== "community") {
         twin.also = x.source; twin.closed = x.closed || twin.closed;
         for (const k of Object.keys(x.a)) if (twin.a[k] == null && x.a[k] != null) twin.a[k] = x.a[k];
         if (!twin.desc && x.desc) twin.desc = x.desc;
@@ -474,9 +475,12 @@
     return enrich(out, ramps, dumps);
   }
   async function extrasIn(bbox) {
-    const jobs = [restAreasIn(bbox), vicForestIn(bbox)].map((p) => p.catch(() => []));
-    const [rest, vic] = await Promise.all(jobs);
-    return [...vic, ...rest, ...userCampsIn(bbox)];
+    const cloud = window.CFCloud?.enabled ? window.CFCloud.campsIn(bbox) : Promise.resolve([]);
+    const jobs = [restAreasIn(bbox), vicForestIn(bbox), cloud].map((p) => p.catch(() => []));
+    const [rest, vic, shared] = await Promise.all(jobs);
+    const sharedIds = new Set(shared.map((c) => c.cloudId));
+    const mineLocal = userCampsIn(bbox).filter((c) => !c.cloudId || !sharedIds.has(c.cloudId));
+    return [...vic, ...rest, ...shared, ...mineLocal];
   }
   const bboxOf = (pts, padDeg = 0) => {
     const la = pts.map((p) => p[0]), lo = pts.map((p) => p[1]);
@@ -629,6 +633,7 @@
     if (c.source === "rest") t.push(`<span class="tag">Rest area</span>`);
     if (c.source === "vicforest" || c.also === "vicforest") t.push(`<span class="tag">Official listing</span>`);
     if (c.source === "user") t.push(`<span class="tag mine">Added by you</span>`);
+    if (c.source === "community") t.push(`<span class="tag mine">Traveller added</span>`);
     return t.length ? `<div class="tags">${t.join("")}</div>` : "";
   }
   function campCard(c, ctx) {
@@ -834,6 +839,7 @@
     const lastAlong = p.picks.at(-1)?.camp?.along ?? 0;
     stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
     $("#nightList").innerHTML = stops.join("");
+    renderTripExtras();
     const along = [...p.camps].sort((a, b) => a.along - b.along);
     $("#alongCount").textContent = along.length;
     $("#alongList").innerHTML = along.map((c) => `<li>${campCard(c)}</li>`).join("") || `<li class="empty">No camps within your detour distance. Try a longer detour.</li>`;
@@ -985,6 +991,15 @@
         </div>
         ${c.closed ? `<div class="notice bad"><b>Closed</b><span>${esc(c.closed)}</span></div>` : ""}
         ${c.park ? `<div class="notice"><b>National park camping</b><span>You need a camping permit before you arrive${c.park.state === "QLD" ? ", and fees apply" : ""}. Book with ${esc(c.park.who || "the parks service")}.</span>${c.park.url ? `<a class="btn line" href="${esc(c.park.url)}" target="_blank" rel="noopener">Book with ${esc(c.park.who)}</a>` : ""}</div>` : ""}
+        <div class="checkin" id="checkinBox">
+          <div class="ci-head"><b>Been here lately?</b><span id="ciLatest" class="help"></span></div>
+          <div class="ci-btns">
+            <button class="btn" type="button" data-ci="free">Still free</button>
+            <button class="btn" type="button" data-ci="price_changed">Price changed</button>
+            <button class="btn" type="button" data-ci="closed">Closed</button>
+            <button class="btn" type="button" data-ci="full">Full</button>
+          </div>
+        </div>
         ${c.rule ? `<div class="notice"><b>Overnight stays</b><span>${esc(c.rule)}</span></div>` : ""}
         ${rulesNear(c.lat, c.lon).map((r) => `<div class="notice warn"><b>Local rule: ${esc(r.place)}</b><span>${esc(r.text)}</span><a href="${esc(r.src)}" target="_blank" rel="noopener">Source</a></div>`).join("")}
         <dl class="facts">
@@ -1000,7 +1015,8 @@
         </dl>
         <p class="caveat">${sourceLine(c)} Details can be out of date. Check signs, prices, closures and fire bans when you arrive.
           ${c.source === "osm" ? `Something wrong? <a href="https://www.openstreetmap.org/${esc(c.id)}" target="_blank" rel="noopener">Update it on OpenStreetMap</a>.` : ""}
-          ${c.source === "user" ? `<button class="btn line" type="button" id="editMine">Edit</button> <button class="btn line" type="button" id="delMine">Remove</button>` : ""}</p>
+          ${c.source === "user" ? `<button class="btn line" type="button" id="editMine">Edit</button> <button class="btn line" type="button" id="delMine">Remove</button>` : ""}
+          ${c.source === "community" ? `<button class="btn line" type="button" id="reportCamp">Report a problem</button>` : ""}</p>
       </div>`);
     if (window.innerWidth < 900) map.setView([c.lat, c.lon], Math.max(map.getZoom(), 12));
     $("#dirBtn").addEventListener("click", () => {
@@ -1016,10 +1032,17 @@
       btn.classList.toggle("is-on", !on); btn.setAttribute("aria-pressed", !on); btn.setAttribute("aria-label", on ? "Save camp" : "Saved");
       toast(on ? "Removed from saved" : "Camp saved");
     });
+    wireCheckins(c);
+    $("#reportCamp")?.addEventListener("click", async (e) => {
+      if (!window.CFCloud?.signedIn()) return toast("Sign in on the Saved tab to report a camp");
+      try { await window.CFCloud.reportCamp(c.cloudId); e.currentTarget.disabled = true; e.currentTarget.textContent = "Reported"; toast("Thanks. Camps with several reports are hidden."); }
+      catch { toast("Couldn't send the report. Try again later."); }
+    });
     $("#editMine")?.addEventListener("click", () => openAddCamp(c));
     $("#delMine")?.addEventListener("click", (e) => {
       if (e.currentTarget.dataset.sure !== "1") { e.currentTarget.dataset.sure = "1"; e.currentTarget.textContent = "Tap again to remove"; return; }
       store.set("cf-user-camps", userCamps().filter((x) => x.id !== c.id));
+      if (c.cloudId && window.CFCloud?.signedIn()) window.CFCloud.deleteCamp(c.cloudId).catch(() => toast("Removed here. Couldn't remove the shared copy right now."));
       closeDetail(); refreshAfterUserChange(); toast("Camp removed");
     });
     const ph = c.photo ? [] : await photosNear(c);
@@ -1033,7 +1056,8 @@
   function sourceLine(c) {
     const src = SOURCES[c.source] || SOURCES.osm;
     const extra = c.also && SOURCES[c.also] ? ` and ${SOURCES[c.also].by}` : "";
-    if (c.source === "user") return "You added this camp. Only you can see it for now.";
+    if (c.source === "user") return c.cloudId ? "You added this camp. Other travellers can see it." : "You added this camp. Only you can see it until you sign in.";
+    if (c.source === "community") return `Added by a traveller${c.added ? ` on ${new Date(c.added).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}` : ""}.`;
     return `From ${src.url ? `<a href="${src.url}" target="_blank" rel="noopener">${esc(src.by)}</a>` : esc(src.by)}${esc(extra)}.`;
   }
   function suits(c) {
@@ -1110,8 +1134,9 @@
     $("#exploreCount").textContent = shown.length
       ? `${shown.length} ${freeOnly ? "free " : ""}camp${shown.length === 1 ? "" : "s"} on the map${hidden ? `, ${hidden} more hidden by your filters` : ""}`
       : inView.length ? `${inView.length} camp${inView.length === 1 ? "" : "s"} here, but none match your filters.` : "No camps recorded in this area yet.";
+    const gNear = guidesNear([[ctr.lat, ctr.lng]]);
     const rc = rulesNear(ctr.lat, ctr.lng);
-    $("#exploreRule").innerHTML = rc.map((r) => `<div class="notice warn"><b>Local rule: ${esc(r.place)}</b><span>${esc(r.text)}</span><a href="${esc(r.src)}" target="_blank" rel="noopener">Source</a></div>`).join("");
+    $("#exploreRule").innerHTML = gNear.map((g) => guideCard(g, tripKey(plan))).join("") + rc.map((r) => `<div class="notice warn"><b>Local rule: ${esc(r.place)}</b><span>${esc(r.text)}</span><a href="${esc(r.src)}" target="_blank" rel="noopener">Source</a></div>`).join("");
     $("#offlineArea").hidden = exploreOffline || !inView.length;
     if (exploreOffline) $("#exploreCount").textContent = `Offline: showing ${shown.length} downloaded camp${shown.length === 1 ? "" : "s"}`;
     $("#exploreList").innerHTML = shown.slice(0, 80).map((c) => `<li>${campCard(c, { fromCenter: c._d })}</li>`).join("");
@@ -1131,6 +1156,7 @@
     const mine = userCamps();
     $("#mineCamps").innerHTML = mine.length ? mine.map((c) => `<li>${campCard(c)}</li>`).join("") : `<li class="empty">Know a good spot? Add it by dropping a pin on the map or entering its coordinates.</li>`;
     renderOffline();
+    renderAccount();
   }
   $("#savedTrips").addEventListener("click", (e) => {
     const del = e.target.closest("[data-del]"), load = e.target.closest("[data-load]");
@@ -1285,7 +1311,19 @@
       list.unshift(camp);
       try { store.set("cf-user-camps", list); localStorage.getItem("cf-user-camps"); }
       catch { msg.className = "msg is-error"; msg.textContent = "Your phone's storage is full. Remove the photo and try again."; return; }
-      if (CFG.shareUrl) fetch(CFG.shareUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(camp) }).catch(() => {});
+      if (existing?.cloudId) camp.cloudId = existing.cloudId;
+      const finish = (c, msgText) => {
+        const l = userCamps().filter((x) => x.id !== c.id && x.id !== camp.id); l.unshift(c);
+        try { store.set("cf-user-camps", l); } catch { /* keep going */ }
+        refreshAfterUserChange(); toast(msgText); openDetail(c);
+      };
+      if (window.CFCloud?.signedIn()) {
+        msg.innerHTML = `<span class="spinner"></span>Sharing with other travellers`;
+        window.CFCloud.saveCamp(camp)
+          .then((shared) => finish({ ...shared, id: camp.id, source: "user", photo: shared.photo || camp.photo }, existing ? "Camp updated for everyone" : "Camp shared with other travellers"))
+          .catch(() => finish(camp, "Saved on this phone. Couldn't share it right now."));
+        return;
+      }
       refreshAfterUserChange();
       toast(existing ? "Camp updated" : "Camp added");
       openDetail(camp);
@@ -1391,6 +1429,194 @@
       setView("plan"); showPlan();
     }
   });
+
+  // ---------------------------------------------------------------- CHECK-INS ("is it still free?")
+  const CI_TEXT = { free: "Still free", price_changed: "Price changed", closed: "Closed", full: "Full", great: "Great spot" };
+  function ago(iso) {
+    const d = (Date.now() - Date.parse(iso)) / 86400000;
+    if (d < 1) return "today"; if (d < 2) return "yesterday"; if (d < 30) return `${Math.floor(d)} days ago`;
+    if (d < 365) return `${Math.floor(d / 30)} month${d >= 60 ? "s" : ""} ago`; return "over a year ago";
+  }
+  async function wireCheckins(c) {
+    const box = $("#checkinBox"); if (!box) return;
+    const latest = $("#ciLatest");
+    if (!window.CFCloud?.enabled) { latest.textContent = "Check-ins will appear here once sharing is switched on."; }
+    else window.CFCloud.latestCheckins(c.id).then((list) => {
+      if (!$("#ciLatest")) return;
+      latest.textContent = list.length ? `${CI_TEXT[list[0].status]}, reported ${ago(list[0].created_at)}${list.length > 1 ? ` (${list.length} recent reports)` : ""}` : "No reports yet. Be the first.";
+    }).catch(() => (latest.textContent = ""));
+    box.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-ci]"); if (!b) return;
+      if (!window.CFCloud?.enabled) return toast("Check-ins aren't switched on in this version yet");
+      if (!window.CFCloud.signedIn()) return toast("Sign in on the Saved tab to report");
+      try {
+        await window.CFCloud.checkin(c.id, b.dataset.ci);
+        latest.textContent = `${CI_TEXT[b.dataset.ci]}, reported today by you`;
+        toast("Thanks, that helps other travellers");
+      } catch { toast("Couldn't send that. Try again when you have signal."); }
+    });
+  }
+
+  // ---------------------------------------------------------------- ACCOUNT
+  function renderAccount() {
+    const box = $("#accountBox"); if (!box) return;
+    const C = window.CFCloud;
+    if (!C?.enabled) {
+      box.innerHTML = `<div class="acct"><b>Account</b><p class="help">Sharing camps between travellers isn't switched on in this version yet. Everything you add is kept on this phone.</p></div>`;
+      return;
+    }
+    if (C.signedIn()) {
+      box.innerHTML = `<div class="acct"><b>Signed in</b><p class="help">${esc(C.email())}. Camps you add are shared with other travellers, and your trip bookings sync across devices.</p>
+        <div class="acct-btns"><button class="btn line" type="button" id="acctOut">Sign out</button><button class="btn line danger" type="button" id="acctDel">Delete account</button></div></div>`;
+      $("#acctOut").addEventListener("click", async () => { await C.signOut().catch(() => {}); renderAccount(); toast("Signed out"); });
+      $("#acctDel").addEventListener("click", async (e) => {
+        if (e.currentTarget.dataset.sure !== "1") { e.currentTarget.dataset.sure = "1"; e.currentTarget.textContent = "Tap again to delete your account"; return; }
+        try { await C.deleteAccount(); renderAccount(); toast("Account deleted"); } catch (err) { toast(err.message); }
+      });
+      return;
+    }
+    box.innerHTML = `<form class="acct" id="acctForm" novalidate><b>Sign in or create an account</b>
+      <p class="help">Share the camps you add, report if spots are still free, and keep your trips on every device. We'll email you a 6-digit code, no password needed.</p>
+      <div class="coord-row"><label class="sr" for="acctEmail">Email</label><input id="acctEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"><button class="btn gold" type="submit" id="acctSend">Send code</button></div>
+      <div class="coord-row" id="acctCodeRow" hidden><label class="sr" for="acctCode">Code</label><input id="acctCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6-digit code"><button class="btn gold" type="button" id="acctVerify">Sign in</button></div>
+      <p class="msg" id="acctMsg" role="status" aria-live="polite"></p></form>`;
+    const msg = $("#acctMsg");
+    $("#acctForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = $("#acctEmail").value.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.className = "msg is-error"; msg.textContent = "Enter your email address."; return; }
+      msg.className = "msg"; msg.innerHTML = `<span class="spinner"></span>Sending code`;
+      try { await C.sendCode(email); msg.textContent = `We've emailed a code to ${email}.`; $("#acctCodeRow").hidden = false; $("#acctCode").focus(); }
+      catch (err) { msg.className = "msg is-error"; msg.textContent = err.message; }
+    });
+    $("#acctVerify").addEventListener("click", async () => {
+      const email = $("#acctEmail").value.trim(), code = $("#acctCode").value.trim();
+      msg.className = "msg"; msg.innerHTML = `<span class="spinner"></span>Signing in`;
+      try { await C.verifyCode(email, code); await afterSignIn(); renderAccount(); toast("Signed in"); }
+      catch (err) { msg.className = "msg is-error"; msg.textContent = /expired|invalid/i.test(err.message) ? "That code didn't work. Check it, or send a new one." : err.message; }
+    });
+  }
+  async function afterSignIn() {
+    const C = window.CFCloud; if (!C?.signedIn()) return;
+    // share camps that were only on this phone
+    const local = userCamps();
+    for (const c of local.filter((x) => !x.cloudId)) {
+      try { const sh = await C.saveCamp(c); c.cloudId = sh.cloudId; if (sh.photo) c.photo = sh.photo; } catch { /* try again next time */ }
+    }
+    store.set("cf-user-camps", local);
+    // merge trip notes, newest wins
+    try {
+      const remote = await C.loadTripNotes(), mine = notesAll();
+      for (const [k, v] of Object.entries(remote)) if (!mine[k] || (v.updated || "") > (mine[k].updated || "")) mine[k] = v;
+      store.set("cf-trip-notes", mine);
+      for (const [k, v] of Object.entries(mine)) if (!remote[k] || (v.updated || "") > (remote[k].updated || "")) C.saveTripNotes(k, v).catch(() => {});
+    } catch { /* offline */ }
+    refreshAfterUserChange();
+  }
+  window.CFCloud?.onChange?.(() => { if (view === "saved") renderAccount(); });
+
+  // ---------------------------------------------------------------- DESTINATION GUIDES and TRIP BOOKINGS
+  const GUIDES = window.CF_GUIDES || [];
+  const BOOK_TYPES = { ferry: "Ferry or barge", permit: "Vehicle permit", camping: "Camping booking", accommodation: "Accommodation", other: "Other" };
+  const guideById = (id) => GUIDES.find((g) => g.id === id);
+  function guidesNear(points) {
+    return GUIDES.filter((g) => points.some(([la, lo]) => hav([la, lo], [g.area.lat, g.area.lon]) <= g.area.km * 1000));
+  }
+  function guidesForPlan(p) {
+    if (!p) return [];
+    const pts = [[p.to.lat, p.to.lon], [p.from.lat, p.from.lon], ...sample(p.line, 25000)];
+    const byName = GUIDES.filter((g) => g.aliases.some((a) => `${p.to.name} ${p.from.name}`.toLowerCase().includes(a)));
+    return [...new Set([...byName, ...guidesNear(pts)])];
+  }
+  const tripKey = (p) => p ? `${short(p.from.name)}|${short(p.to.name)}`.toLowerCase() : "no-trip";
+  const notesAll = () => store.get("cf-trip-notes", {});
+  const notesFor = (key) => notesAll()[key] || { bookings: [], ticks: {} };
+  function saveNotes(key, n) { const all = notesAll(); all[key] = { ...n, updated: new Date().toISOString() }; store.set("cf-trip-notes", all); if (window.CFCloud?.signedIn()) window.CFCloud.saveTripNotes(key, all[key]).catch(() => {}); }
+
+  function readyCount(g, key) { const t = notesFor(key).ticks[g.id] || []; return `${t.length} of ${g.checklist.length} ready`; }
+  function guideCard(g, key) {
+    return `<div class="guide-card">
+      <div class="gc-top"><div><div class="gc-kicker">Trip essentials</div><div class="gc-name">${esc(g.name)}</div></div><span class="gc-ready">${readyCount(g, key)}</span></div>
+      <p class="gc-sum">${esc(g.summary)}</p>
+      <button class="btn gold" type="button" data-guide="${esc(g.id)}">Open guide</button>
+    </div>`;
+  }
+  function bookingRow(b) {
+    const when = [b.date && new Date(b.date + "T00:00").toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" }), b.time].filter(Boolean).join(", ");
+    return `<li class="booking"><div class="bk-main"><b>${esc(b.title || BOOK_TYPES[b.type])}</b><span>${esc(BOOK_TYPES[b.type] || "")}${when ? `, ${esc(when)}` : ""}</span>${b.ref ? `<span>Ref: <span class="ref">${esc(b.ref)}</span></span>` : ""}${b.notes ? `<span class="bk-notes">${esc(b.notes)}</span>` : ""}</div>
+      <button class="icon-btn" type="button" data-edit-booking="${esc(b.id)}" aria-label="Edit booking">${icon("edit")}</button></li>`;
+  }
+  function renderTripExtras() {
+    const box = $("#tripExtras"); if (!box || !plan) return;
+    const key = tripKey(plan), gs = guidesForPlan(plan), n = notesFor(key);
+    box.innerHTML = `${gs.map((g) => guideCard(g, key)).join("")}
+      <div class="bookings-box">
+        <div class="bb-head"><b>Bookings for this trip</b><button class="btn line small-btn" type="button" data-add-booking="">${icon("plus", "ic sm")}Add</button></div>
+        ${n.bookings.length ? `<ul class="bookings">${n.bookings.map(bookingRow).join("")}</ul>` : `<p class="help">Record ferries, permits, camp and resort bookings with their reference numbers. They're kept with this trip and work offline.</p>`}
+      </div>`;
+  }
+  document.addEventListener("click", (e) => {
+    const g = e.target.closest("[data-guide]"); if (g) { openGuide(guideById(g.dataset.guide)); return; }
+    const add = e.target.closest("[data-add-booking]"); if (add) { openBookingForm(null, add.dataset.addBooking || "other", add.dataset.title || ""); return; }
+    const ed = e.target.closest("[data-edit-booking]"); if (ed) { const b = notesFor(tripKey(plan)).bookings.find((x) => x.id === ed.dataset.editBooking); if (b) openBookingForm(b); }
+  });
+
+  function openGuide(g) {
+    if (!g) return;
+    const key = tripKey(plan), n = notesFor(key), ticks = new Set(n.ticks[g.id] || []);
+    const itemHtml = (it) => `<div class="g-item">
+        <b>${esc(it.name)}</b><p>${esc(it.text)}</p>
+        <div class="g-actions">
+          ${it.link ? `<a class="btn" href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.linkText || "Open")}</a>` : ""}
+          ${it.phone ? `<a class="btn line" href="tel:${esc(it.phone.replace(/\s/g, ""))}">Call ${esc(it.phone)}</a>` : ""}
+          ${it.book && plan ? `<button class="btn line" type="button" data-add-booking="${esc(it.book)}" data-title="${esc(it.name.split(":")[0].replace(/\s*\(.*\)\s*/, ""))}">${icon("plus", "ic sm")}Record booking</button>` : ""}
+        </div></div>`;
+    showDetail(`<div class="d-pad" style="padding-top:22px">
+      <div class="gc-kicker">Trip essentials</div>
+      <h2 class="d-title">${esc(g.name)}</h2>
+      <p class="d-kind">${esc(g.summary)}</p>
+      ${g.sections.map((s) => `<h3 class="g-h">${esc(s.title)}</h3>${s.items.map(itemHtml).join("")}`).join("")}
+      <h3 class="g-h">Checklist</h3>
+      <ul class="g-check" id="gCheck">${g.checklist.map((c, i) => `<li><label><input type="checkbox" data-i="${i}" ${ticks.has(i) ? "checked" : ""}><span>${esc(c)}</span></label></li>`).join("")}</ul>
+      ${plan ? `<p class="help">Ticks are saved with your ${esc(short(plan.from.name))} to ${esc(short(plan.to.name))} trip.</p>` : ""}
+      <p class="caveat">Details checked ${new Date(g.checked).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}. Prices, times and closures change, so confirm with each operator. Sources: ${g.sources.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a>`).join(", ")}.</p>
+    </div>`);
+    $("#gCheck").addEventListener("change", (e) => {
+      const i = +e.target.dataset.i, nn = notesFor(key), set = new Set(nn.ticks[g.id] || []);
+      e.target.checked ? set.add(i) : set.delete(i);
+      nn.ticks = { ...nn.ticks, [g.id]: [...set].sort((a, b) => a - b) };
+      saveNotes(key, nn); renderTripExtras();
+    });
+  }
+
+  function openBookingForm(existing = null, type = "other", title = "") {
+    if (!plan) { toast("Plan a trip first, then add its bookings"); return; }
+    const b = existing || { type, title };
+    showDetail(`<div class="d-pad" style="padding-top:22px">
+      <h2 class="d-title">${existing ? "Edit booking" : "Record a booking"}</h2>
+      <p class="d-kind">${esc(short(plan.from.name))} to ${esc(short(plan.to.name))}</p>
+      <form id="bkForm" class="add-form" novalidate>
+        <div class="field"><label for="bkType">Type</label><select id="bkType" class="select">${Object.entries(BOOK_TYPES).map(([k, v]) => `<option value="${k}" ${b.type === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+        <div class="field"><label for="bkTitle">What is it</label><input id="bkTitle" type="text" maxlength="80" placeholder="e.g. Manta Ray barge, Central Station camping" value="${esc(b.title || "")}"></div>
+        <div class="row-2"><div class="field"><label for="bkDate">Date</label><input id="bkDate" type="date" value="${esc(b.date || "")}"></div><div class="field"><label for="bkTime">Time</label><input id="bkTime" type="time" value="${esc(b.time || "")}"></div></div>
+        <div class="field"><label for="bkRef">Booking or permit number</label><input id="bkRef" type="text" maxlength="60" autocapitalize="characters" value="${esc(b.ref || "")}"></div>
+        <div class="field"><label for="bkNotes">Notes</label><textarea id="bkNotes" rows="3" placeholder="Check-in time, site number, what's included">${esc(b.notes || "")}</textarea></div>
+        <button class="cta" type="submit">${existing ? "Save booking" : "Add booking"}</button>
+        ${existing ? `<button class="btn line" type="button" id="bkDel" style="margin-top:10px">Remove booking</button>` : ""}
+      </form></div>`);
+    $("#bkForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const key = tripKey(plan), n = notesFor(key);
+      const rec = { id: existing?.id || `bk-${Date.now().toString(36)}`, type: $("#bkType").value, title: $("#bkTitle").value.trim(), date: $("#bkDate").value, time: $("#bkTime").value, ref: $("#bkRef").value.trim(), notes: $("#bkNotes").value.trim() };
+      n.bookings = [rec, ...n.bookings.filter((x) => x.id !== rec.id)].sort((a, b) => (a.date || "9") .localeCompare(b.date || "9"));
+      saveNotes(key, n); renderTripExtras(); closeDetail(); toast(existing ? "Booking saved" : "Booking added");
+    });
+    $("#bkDel")?.addEventListener("click", (e) => {
+      if (e.currentTarget.dataset.sure !== "1") { e.currentTarget.dataset.sure = "1"; e.currentTarget.textContent = "Tap again to remove"; return; }
+      const key = tripKey(plan), n = notesFor(key); n.bookings = n.bookings.filter((x) => x.id !== existing.id);
+      saveNotes(key, n); renderTripExtras(); closeDetail(); toast("Booking removed");
+    });
+  }
 
   // ---------------------------------------------------------------- first open: example trip
   if (!store.get("cf-seen", false)) {

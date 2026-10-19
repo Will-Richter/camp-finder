@@ -352,3 +352,49 @@ a { color: inherit; }
 .add-form input[type=file] { font-size: 14px; }
 .gallery > img { width: 100%; height: 100%; object-fit: cover; }
 [hidden] { display: none !important; }
+
+/* ---------- guides and bookings ---------- */
+.guide-card { border-radius: 16px; padding: 14px; margin: 0 0 12px; background: var(--sign); color: var(--sign-ink); }
+.gc-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.gc-kicker { font: 700 12.5px var(--display); color: var(--gold); }
+.gc-name { font: 800 19px/1.2 var(--display); }
+.gc-ready { font: 700 12.5px var(--display); background: rgba(255,255,255,.14); padding: 5px 8px 4px; border-radius: 6px; white-space: nowrap; }
+.gc-sum { font-size: 14px; line-height: 1.45; margin: 8px 0 12px; opacity: .92; }
+.detail .gc-kicker { color: var(--sign); }
+@media (prefers-color-scheme: dark) { .detail .gc-kicker { color: var(--gold); } }
+.bookings-box { background: var(--well); border-radius: 16px; padding: 12px 13px; margin: 0 0 18px; }
+.bb-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+.bb-head b { font: 800 15.5px var(--display); }
+.bookings { list-style: none; margin: 0; padding: 0; }
+.booking { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--hair); }
+.booking:first-child { border-top: 0; }
+.bk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; color: var(--sub); }
+.bk-main b { font: 800 15px var(--display); color: var(--ink); }
+.bk-main .ref { font-weight: 700; color: var(--ink); user-select: all; font-variant-numeric: tabular-nums; }
+.bk-notes { color: var(--ink); }
+.g-h { font: 800 17px var(--display); margin: 22px 0 8px; }
+.g-item { background: var(--well); border-radius: 14px; padding: 12px 13px; margin-bottom: 8px; }
+.g-item b { font: 800 15.5px/1.3 var(--display); }
+.g-item p { margin: 5px 0 10px; font-size: 14px; line-height: 1.45; }
+.g-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.g-actions .btn { background: var(--sheet); }
+.g-actions .btn.line { background: none; }
+.g-check { list-style: none; margin: 0; padding: 0; }
+.g-check li { border-bottom: 1px solid var(--hair); }
+.g-check label { display: flex; gap: 12px; align-items: center; padding: 12px 0; font-size: 15px; cursor: pointer; }
+.g-check input { width: 22px; height: 22px; accent-color: var(--sign); flex: none; }
+.select, .add-form input[type=date], .add-form input[type=time] { width: 100%; border: 0; background: var(--well); border-radius: 12px; padding: 12px; font-size: 16px; color: var(--ink); font-family: var(--text); -webkit-appearance: none; appearance: none; min-height: 46px; }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ---------- check-ins and account ---------- */
+.checkin { border-radius: 14px; padding: 12px 13px; margin: 0 0 12px; box-shadow: inset 0 0 0 1.5px var(--hair); }
+.ci-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.ci-head b { font: 800 15px var(--display); }
+.ci-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ci-btns .btn { justify-content: center; }
+.acct { background: var(--well); border-radius: 16px; padding: 14px; margin: 0 0 18px; display: flex; flex-direction: column; gap: 8px; }
+.acct > b { font: 800 16px var(--display); }
+.acct .help { margin: 0; }
+.acct input { flex: 1; min-width: 0; border: 0; background: var(--sheet); border-radius: 11px; padding: 11px 12px; font-size: 16px; color: var(--ink); }
+.acct-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn.danger { color: var(--paid); }
