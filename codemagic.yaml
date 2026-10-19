@@ -1,0 +1,39 @@
+# Cloud build for the iPhone app (no Mac needed). Set up once in codemagic.io:
+# 1. Connect this GitHub repo.  2. Add an App Store Connect API key integration named "GoneLappinASC".
+# 3. Create the app in App Store Connect with bundle ID au.com.gonelappin.campfinder.
+workflows:
+  ios-testflight:
+    name: iOS to TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: GoneLappinASC
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: au.com.gonelappin.campfinder
+      node: 20
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install packages
+        script: npm install
+      - name: Create the iOS project
+        script: npx cap add ios && npx cap sync ios
+      - name: App permissions and settings
+        script: |
+          PLIST=ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Camp Finder uses your location to show camps near you and give directions from where you are.'" $PLIST
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" $PLIST
+      - name: Code signing
+        script: xcode-project use-profiles
+      - name: Build number
+        script: cd ios/App && agvtool new-version -all $(($BUILD_NUMBER + 1))
+      - name: Build the app
+        script: xcode-project build-ipa --workspace ios/App/App.xcworkspace --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

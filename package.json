@@ -1,0 +1,19 @@
+{
+  "name": "camp-finder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gone Lappin' Camp Finder: free and cheap campsites along your route, Australia-wide.",
+  "scripts": {
+    "ios": "npx cap add ios && npx cap sync ios",
+    "android": "npx cap add android && npx cap sync android",
+    "sync": "npx cap sync"
+  },
+  "dependencies": {
+    "@capacitor/core": "6.1.2",
+    "@capacitor/ios": "6.1.2",
+    "@capacitor/android": "6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.1.2"
+  }
+}
