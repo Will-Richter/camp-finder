@@ -22,7 +22,7 @@
     auBox: [112.5, -44.5, 154.5, -9.5], // w,s,e,n
     // Camp database built into the app, refreshed weekly from the published copy (tools/build_camp_data.py)
     campData: "data/camps-au.json",
-    campDataLive: "https://will-richter.github.io/camp-finder/data/camps-au.json",
+    campDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/camps-au.json",
     exploreMinZoom: 9,
     boatRampKm: 5,
     dumpKm: 10,
