@@ -675,10 +675,15 @@
   });
 
   // The web view can report its size late on first launch: re-measure so Australia is centred.
-  const fixMapSize = () => { map.invalidateSize(); if (!plan && map.getZoom() <= 4) map.fitBounds([[-43.5, 113], [-10.5, 153.6]], fitPad()); };
-  if (map.whenReady) map.whenReady(() => setTimeout(fixMapSize, 60));
+  let userMovedMap = false;
+  map.on("dragstart", () => (userMovedMap = true));
+  const fixMapSize = () => {
+    map.invalidateSize();
+    if (!plan && !userMovedMap && view === "plan" && window.innerHeight > 200) map.fitBounds([[-43.5, 113], [-10.5, 153.6]], fitPad());
+  };
+  [60, 400, 1200, 2500].forEach((ms) => setTimeout(fixMapSize, ms));
   window.addEventListener("load", () => setTimeout(fixMapSize, 120));
-  window.addEventListener("resize", () => map.invalidateSize());
+  window.addEventListener("resize", () => setTimeout(fixMapSize, 50));
   const tripLayer = L.layerGroup().addTo(map);
   const legLayer = L.layerGroup().addTo(map);
   const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true });
