@@ -29,14 +29,18 @@ LATS = [-44.0, -38.0, -34.0, -30.0, -26.0, -20.0, -9.0]
 LONS = [112.0, 120.0, 129.0, 138.0, 143.0, 147.0, 151.0, 160.0]
 
 
-def query(bbox):
+def query(bbox, kind="core", tries=6):
     s, w, n, e = bbox
     b = f"{s},{w},{n},{e}"
-    q = (f'[out:json][timeout:180];(nwr["tourism"~"^(camp_site|caravan_site)$"]({b});'
-         f'nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b});nwr["amenity"="fuel"]({b});nwr["amenity"~"^(water_point|drinking_water)$"]({b});nwr["maxheight"]({b}););out center tags;')
+    if kind == "core":
+        body = f'nwr["tourism"~"^(camp_site|caravan_site)$"]({b});nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b});'
+    else:  # extras: fuel, water and low clearances (kept separate so a slow server can't block the camps)
+        body = (f'nwr["amenity"="fuel"]({b});node["amenity"~"^(water_point|drinking_water)$"]({b});'
+                f'way["maxheight"]["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|track)(_link)?$"]({b});node["barrier"="height_restrictor"]({b});')
+    q = f'[out:json][timeout:180];({body});out center tags;'
     data = urllib.parse.urlencode({"data": q}).encode()
     last = None
-    for attempt in range(6):
+    for attempt in range(tries):
         url = SERVERS[attempt % len(SERVERS)]
         try:
             req = urllib.request.Request(url, data=data, headers={"User-Agent": UA})
@@ -79,6 +83,8 @@ def ohsome(filt):
         except Exception as ex:
             last = ex
             print(f"  ohsome failed ({ex}); retrying", file=sys.stderr)
+            if "403" in str(ex):
+                break
             time.sleep(20 + attempt * 20)
     raise RuntimeError(f"ohsome failed: {last}")
 
@@ -109,6 +115,17 @@ def all_elements():
         time.sleep(2)
     if len(failed) > 4:
         raise RuntimeError(f"{len(failed)} tiles failed")
+    started = time.time()
+    for k, t in enumerate(tiles, 1):
+        if time.time() - started > 100 * 60:
+            print("  extras: out of time, keeping what we have", file=sys.stderr)
+            break
+        print(f"extras {k}/{len(tiles)} {t}", file=sys.stderr)
+        try:
+            els += query(t, "extra", tries=3)
+        except Exception as ex:
+            print(f"  extras tile skipped: {ex}", file=sys.stderr)
+        time.sleep(2)
     return els
 
 
