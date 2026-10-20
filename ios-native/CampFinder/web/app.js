@@ -1052,6 +1052,7 @@
     try {
       savePrefs();
       const nights = +nightsIn.value;
+      if (settings.simple) { const r = $("#simpleRefresh").checked ? Math.max(1, Math.round(+nightsIn.value / 3)) : 0; refreshIn.value = Math.min(r, +nightsIn.value); }
       const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "" };
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
@@ -2153,6 +2154,8 @@
   const animOn = () => settings.anim && !reducedMotion;
   const applyMotion = () => document.documentElement.classList.toggle("motion", animOn());
   applyMotion();
+  const applyMode = () => { document.documentElement.classList.toggle("simple", !!settings.simple); if (typeof moveInk === "function") setTimeout(moveInk, 50); };
+  applyMode();
   const money = (v) => !v ? "$0" : "$" + (v >= 100 ? Math.round(v).toLocaleString("en-AU") : v.toFixed(v >= 10 ? 0 : 2));
   const towing = (rig) => rig === "caravan" || rig === "camper";
   function fuelFor(meters, rig = plan?.opts?.rig || prefs.rig) {
@@ -2753,6 +2756,21 @@
     });
   }
 
+  function openHelp() {
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">How to use Camp Finder</h2><p class="d-kind">Four easy steps</p>
+      <ol class="help-list">
+        <li><div><b>Type where you're starting and where you're going</b>Start typing a town and tap it in the list. Or tap "Use my location".</div></li>
+        <li><div><b>Choose how many nights, and what you're travelling with</b>Tent, caravan, motorhome and so on. We only pick camps that suit it.</div></li>
+        <li><div><b>Tap the big yellow "Find camps" button</b>You'll get one camp for each night, with photos, toilets, water and the price.</div></li>
+        <li><div><b>Tap "Start journey" when you leave</b>Then use the big buttons at the top for water, a dump point or to share where you are with family.</div></li>
+      </ol>
+      <p class="help" style="margin-top:14px">Tap any camp to see photos and get directions. The ⚙️ Settings tab lets you make the text bigger with Simple mode.</p>
+      <button class="cta" type="button" id="helpMode" style="width:100%;margin-top:12px">${settings.simple ? "Switch to Full mode" : "Switch to Simple mode (bigger and easier)"}</button>
+    </div>`);
+    $("#helpMode").addEventListener("click", () => { settings.simple = !settings.simple; saveSettings(); applyMode(); closeDetail(); toast(settings.simple ? "Simple mode on" : "Full mode on"); });
+  }
+  $("#helpBtn").addEventListener("click", openHelp);
+
   function openLegal(kind) {
     const L = window.CF_LEGAL; if (!L) return;
     const html = (L[kind] || "").replaceAll("{contact}", esc(L.contact));
@@ -2781,7 +2799,8 @@
     $("#stCamp").value = settings.campUnknown; $("#stDaily").value = settings.daily || ""; $("#stMaxKm").value = settings.maxKm;
     $("#stHeight").value = settings.height || RIG_HEIGHT[prefs.rig] || ""; $("#stLength").value = settings.length || "";
     $("#stDog").checked = !!settings.dog; $("#stCampAlerts").checked = !!settings.campAlerts;
-    $("#stWelcomeEvery").checked = settings.welcomeEveryTime; $("#stAnim").checked = settings.anim; $("#stFollow").checked = settings.follow; $("#stSat").checked = settings.sat;
+    $("#stWelcomeEvery").checked = settings.welcomeEveryTime;
+    const mp = $(`#modePick input[value="${settings.simple ? "simple" : "full"}"]`); if (mp) mp.checked = true; $("#stAnim").checked = settings.anim; $("#stFollow").checked = settings.follow; $("#stSat").checked = settings.sat;
     const C = window.CFCloud;
     $("#stAccount").textContent = !C?.enabled ? "Accounts aren't switched on in this version." : C.signedIn() ? `Signed in as ${C.email()}.` : "Not signed in. Sign in to rate camps, post photos and keep your trips on every device.";
     const info = campDB.info();
@@ -2807,6 +2826,7 @@
     $("#stFollow").addEventListener("change", (e) => { settings.follow = e.target.checked; saveSettings(); if (settings.follow) locate(() => setFollow(true)); else setFollow(false); });
     $("#stSat").addEventListener("change", (e) => { settings.sat = e.target.checked; saveSettings(); if (settings.sat !== onSat) $("#layerBtn").click(); });
     $("#stWelcome").addEventListener("click", () => showWelcome());
+    $("#modePick").addEventListener("change", (e) => { settings.simple = e.target.value === "simple"; saveSettings(); applyMode(); toast(settings.simple ? "Simple mode: bigger and easier" : "Full mode: every feature"); });
     num("#stHeight", "height", 1.5, 4.6); num("#stLength", "length", 3, 30);
     $("#stDog").addEventListener("change", (e) => { settings.dog = e.target.checked; saveSettings(); toast(settings.dog ? "Dog mode on: plan a trip to see dog-friendly camps" : "Dog mode off"); });
     $("#stCampAlerts").addEventListener("change", (e) => { settings.campAlerts = e.target.checked; saveSettings(); });
@@ -2864,6 +2884,8 @@
     fillMakes($("#wlMake"), settings.make); fillModels($("#wlModel"), settings.make, settings.model);
     $("#wlMake").onchange = (e) => { pickVehicle(e.target.value, ""); fillModels($("#wlModel"), settings.make, settings.model); };
     $("#wlModel").onchange = (e) => pickVehicle(settings.make, e.target.value);
+    const wm = $(`#wlMode input[value="${settings.simple ? "simple" : "full"}"]`); if (wm) wm.checked = true;
+    $("#wlMode").onchange = (e) => { settings.simple = e.target.value === "simple"; saveSettings(); applyMode(); };
     const at = () => Math.round(track.scrollLeft / track.clientWidth);
     const mark = () => {
       const i = at();

@@ -142,9 +142,18 @@
         <select id="wlModel" aria-label="Model"></select>
       </div>
     </section>
+    <section class="wl-slide">
+      <div class="wl-art art-mode" aria-hidden="true"><div class="am-big">Aa</div><div class="am-small">Aa</div></div>
+      <h2>How would you like it?</h2>
+      <p>You can change this any time in Settings.</p>
+      <div class="wl-mode" id="wlMode">
+        <label><input type="radio" name="wlmode" value="simple"><span><b>Simple</b><small>Bigger text and buttons, just the essentials</small></span></label>
+        <label><input type="radio" name="wlmode" value="full" checked><span><b>Full</b><small>Every feature: budgets, rig checks, alerts and more</small></span></label>
+      </div>
+    </section>
   </div>
   <div class="wl-foot">
-    <div class="wl-dots" id="wlDots"><i class="on"></i><i></i><i></i></div>
+    <div class="wl-dots" id="wlDots"><i class="on"></i><i></i><i></i><i></i></div>
     <div class="wl-btns"><button type="button" class="wl-skip" id="wlSkip">Skip</button><button type="button" class="cta" id="wlNext">Next</button></div>
   </div>
 </div>
@@ -240,7 +249,7 @@
           </ol>
         </div>
         <form id="planForm" autocomplete="off" novalidate>
-          <h1 class="title">Where are you headed?</h1>
+          <div class="title-row"><h1 class="title">Where are you headed?</h1><button type="button" class="help-btn" id="helpBtn" aria-label="How to use Camp Finder">?</button></div>
 
           <div class="journey">
             <div class="journey-rail" aria-hidden="true"><span class="dot a"></span><span class="rail"></span><span class="dot b"></span></div>
@@ -259,7 +268,7 @@
             </div>
           </div>
 
-          <button type="button" class="try-example" id="tryExample">Try an example: Bundaberg to Agnes Water</button>
+          <button type="button" class="try-example" id="tryExample" data-adv>Try an example: Bundaberg to Agnes Water</button>
           <div class="group">
             <div class="group-row">
               <div>
@@ -275,7 +284,7 @@
             </div>
           </div>
 
-          <div class="group">
+          <div class="group" data-adv>
             <div class="group-row">
               <div><label class="label" for="leaveDate">Leaving</label><div class="help">Used for the weather on each night</div></div>
               <input type="date" id="leaveDate" class="date-in">
@@ -287,7 +296,7 @@
             <div class="rigs" id="rigs"></div>
           </fieldset>
 
-          <fieldset class="group">
+          <fieldset class="group" data-adv>
             <legend class="label">Price</legend>
             <div class="seg" id="costSeg">
               <label><input type="radio" name="cost" value="free"><span>Free only</span></label>
@@ -296,12 +305,12 @@
             </div>
           </fieldset>
 
-          <fieldset class="group">
+          <fieldset class="group" data-adv>
             <legend class="label">Must have</legend>
             <div class="amen-pick" id="planWants"></div>
           </fieldset>
 
-          <fieldset class="group refresh-group">
+          <fieldset class="group refresh-group" data-adv>
             <legend class="label">Need a refresh?</legend>
             <div class="group-row">
               <div><div class="help" id="refreshHelp">Swap a few camp nights for a real bed and a hot shower</div></div>
@@ -320,7 +329,8 @@
             <label class="switch bougie-sw"><span><b>✨ Feeling bougie</b><small>Finish the trip with a really nice place on the last night</small></span><input type="checkbox" id="bougie"><i></i></label>
           </fieldset>
 
-          <details class="more" id="moreOpts">
+          <label class="switch simple-only simple-q"><span><b>🛏️ A motel some nights?</b><small>Swap a couple of camp nights for a real bed</small></span><input type="checkbox" id="simpleRefresh"><i></i></label>
+          <details class="more" id="moreOpts" data-adv>
             <summary>How far off the highway <span id="detourShown">15 km</span><svg class="ic sm"><use href="#i-chev"/></svg></summary>
             <div class="seg" id="detourSeg">
               <label><input type="radio" name="detour" value="5000"><span>5 km</span></label>
@@ -360,7 +370,7 @@
           <div id="tripBudget"></div>
           <div id="tripExtras"></div>
           <ol class="itinerary" id="nightList"></ol>
-          <details class="along" id="alongWrap">
+          <details class="along" id="alongWrap" data-adv>
             <summary><span>Every camp on this route</span><span class="count" id="alongCount">0</span><svg class="ic sm"><use href="#i-chev"/></svg></summary>
             <ul class="list" id="alongList"></ul>
           </details>
@@ -403,10 +413,18 @@
       <div id="view-settings" class="view" hidden>
         <h1 class="title">Settings</h1>
 
+        <section class="set-card mode-card">
+          <h2 class="set-h">How would you like the app?</h2>
+          <div class="mode-pick" id="modePick">
+            <label><input type="radio" name="mode" value="simple"><span><b>Simple</b><small>Bigger text and buttons, just the essentials</small></span></label>
+            <label><input type="radio" name="mode" value="full"><span><b>Full</b><small>Every feature and setting</small></span></label>
+          </div>
+        </section>
+
         <section class="set-card">
           <h2 class="set-h">Your vehicle</h2>
           <div class="set-row two"><label>Make<select id="stMake"></select></label><label>Model<select id="stModel"></select></label></div>
-          <div class="set-row two">
+          <div class="set-row two" data-adv>
             <label>Fuel<select id="stFuel"><option value="diesel">Diesel</option><option value="petrol">Petrol</option><option value="lpg">LPG</option></select></label>
             <label>Uses (L/100 km)<input id="stUse" type="number" inputmode="decimal" min="3" max="40" step="0.1"></label>
           </div>
@@ -415,13 +433,13 @@
             <label>Tank size (L)<input id="stTank" type="number" inputmode="numeric" min="20" max="400" step="1"></label>
           </div>
           <p class="help" id="stVehicleNote">Typical figures for this model. Change them to match yours, and set the fuel price you're paying.</p>
-          <div class="set-row">
+          <div class="set-row" data-adv>
             <label class="slide-l">Extra fuel when towing <b id="stTowOut">+30%</b><input id="stTow" type="range" min="0" max="80" step="5"></label>
           </div>
           <div class="set-sum" id="stSummary"></div>
         </section>
 
-        <section class="set-card">
+        <section class="set-card" data-adv>
           <h2 class="set-h">Your rig</h2>
           <div class="set-row two">
             <label>Total height (m)<input id="stHeight" type="number" inputmode="decimal" min="1.5" max="4.6" step="0.05"></label>
@@ -432,7 +450,7 @@
           <label class="switch"><span><b>🔔 Free camp alerts</b><small>A nudge in the afternoon when a good free camp is close, during a journey</small></span><input type="checkbox" id="stCampAlerts"><i></i></label>
         </section>
 
-        <section class="set-card">
+        <section class="set-card" data-adv>
           <h2 class="set-h">Trip budget</h2>
           <div class="set-row two">
             <label>Paid camp, price unknown ($/night)<input id="stCamp" type="number" inputmode="decimal" min="0" max="300" step="1"></label>
