@@ -24,7 +24,9 @@
     campData: "data/camps-au.json",
     campDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/camps-au.json",
     // Google Places photos: paste an iOS-restricted Places API key here to switch them on (see GOOGLE_PHOTOS.md)
-    googleKey: "",
+    googleKey: "AIzaSyAmDLzNnWpVNQTEFOCiarRRCJCfkdl1EJs", // restricted to the Camp Finder iPhone app and the Places API
+    priceData: "data/prices.json",
+    priceDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/prices.json",
     googleReviews: true, // also show the Google star rating and up to 5 Google reviews (needs googleKey)
     googlePhotos: 4, // photos per camp (each one shown is billed by Google after the free monthly allowance)
     exploreMinZoom: 9,
@@ -579,12 +581,13 @@
       raw = d; norm.clear(); grid = new Map();
       const put = (kind, la, lo, item) => {
         const k = cellOf(la, lo); let g = grid.get(k);
-        if (!g) grid.set(k, (g = { camps: [], ramps: [], dumps: [] }));
+        if (!g) grid.set(k, (g = { camps: [], ramps: [], dumps: [], fuel: [] }));
         g[kind].push(item);
       };
       d.camps.forEach((c) => put("camps", c[1], c[2], c));
       (d.ramps || []).forEach((p, i) => put("ramps", p[0], p[1], { id: `ramp/${i}`, lat: p[0], lon: p[1] }));
       (d.dumps || []).forEach((p, i) => put("dumps", p[0], p[1], { id: `dump/${i}`, lat: p[0], lon: p[1] }));
+      (d.fuel || []).forEach((p, i) => put("fuel", p[0], p[1], { id: `fuel/${i}`, lat: p[0], lon: p[1], name: p[2] || "Fuel station", addr: "", fuel: null }));
     }
     async function load() {
       let cached = null;
@@ -634,6 +637,7 @@
       has: () => !!raw,
       inArea,
       info: () => (raw ? { count: raw.camps.length, built: raw.built } : null),
+      fuelIn: (pt, radius) => { if (!grid) return []; const d = radius / 100000; const out = []; for (const g of cells([pt.lat - d, pt.lon - d, pt.lat + d, pt.lon + d])) for (const f of g.fuel) if (hav([pt.lat, pt.lon], [f.lat, f.lon]) <= radius) out.push({ ...f }); return out; },
       _use: use,
     };
   })();
@@ -766,6 +770,12 @@
       prevAlong = camp ? camp.along : target;
       picks.push({ target, camp, alts: list.slice(1, 4), warn: camp ? warn : "No camps found for this night. Try a bigger detour or fewer must-haves." });
     }
+    // "Need a refresh" nights: a real bed instead of camping
+    const want = new Set();
+    if (opts.bougie && nights) want.add(nights - 1);
+    const spread = Math.min(opts.refresh || 0, nights - want.size);
+    for (let j = 1; j <= spread; j++) { let k = Math.round(j * nights / (spread + 1)) - 1; while (want.has(k) && k > 0) k--; want.add(Math.max(0, k)); }
+    picks.forEach((pk, k) => { if (want.has(k)) pk.refresh = { style: opts.bougie && k === nights - 1 ? "bougie" : (opts.refreshStyle || "motel"), options: null }; });
     return { from, to, route, line, nights, opts, picks, camps: usable, at: Date.now() };
   }
 
@@ -986,6 +996,21 @@
   $("#nightsDown").addEventListener("click", () => setNights(+nightsIn.value - 1));
   $("#nightsUp").addEventListener("click", () => setNights(+nightsIn.value + 1));
   setNights(6);
+  const refreshIn = $("#refreshIn");
+  function setRefresh(n) {
+    const max = +nightsIn.value;
+    n = Math.max(0, Math.min(max, n));
+    refreshIn.value = n; $("#refreshOut").textContent = n;
+    $("#refreshDown").disabled = n === 0; $("#refreshUp").disabled = n >= max;
+    $("#refreshHelp").textContent = n === 0 ? "Swap a few camp nights for a real bed and a hot shower" : `${n} night${n > 1 ? "s" : ""} in a ${radio("rstyle") || "motel"}, spread through the trip`;
+    $("#rstyleSeg").hidden = n === 0;
+  }
+  $("#refreshDown").addEventListener("click", () => setRefresh(+refreshIn.value - 1));
+  $("#refreshUp").addEventListener("click", () => setRefresh(+refreshIn.value + 1));
+  $("#rstyleSeg").addEventListener("change", () => setRefresh(+refreshIn.value));
+  $("#nightsUp").addEventListener("click", () => setRefresh(+refreshIn.value));
+  $("#nightsDown").addEventListener("click", () => setRefresh(+refreshIn.value));
+  setRefresh(0);
   $("#detourSeg").addEventListener("change", () => ($("#detourShown").textContent = (+radio("detour") / 1000) + " km"));
 
   $("#useHere").addEventListener("click", () => {
@@ -1021,7 +1046,7 @@
     try {
       savePrefs();
       const nights = +nightsIn.value;
-      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")) };
+      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked };
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
       say("Planning the route");
@@ -1037,6 +1062,7 @@
       showPlan();
     } catch (err) {
       pl.hidden = true; $("#planForm").hidden = false;
+      console.warn("Trip planning failed:", err && (err.stack || err.message || err));
       msg.className = "msg is-error";
       msg.textContent = friendly(err);
     } finally { btn.disabled = false; btn.textContent = "Find camps"; }
@@ -1055,10 +1081,32 @@
     $("#tripTitle").textContent = `${short(p.from.name)} to ${short(p.to.name)}`;
     const days = p.nights + 1;
     $("#tripMeta").textContent = `${km(p.route.distance)} and ${hrs(p.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`;
+    renderItinerary();
+    renderBudget();
+    renderTripExtras();
+    const along = [...p.camps].sort((a, b) => a.along - b.along);
+    $("#alongCount").textContent = along.length;
+    $("#alongList").innerHTML = along.map((c) => `<li>${campCard(c)}</li>`).join("") || `<li class="empty">No camps within your detour distance. Try a longer detour.</li>`;
+    $("#saveTrip").classList.remove("is-on");
+    $("#offlineTrip").classList.toggle("is-on", !!p.legs);
+    const on = $("#tripOffline");
+    on.hidden = !p.offline;
+    on.innerHTML = p.offline ? `${icon("offline", "ic sm")}Showing your offline download. Camp details and saved directions work without signal; the map background needs signal.` : "";
+    $("#sheetScroll").scrollTop = 0;
+    drawPlan();
+    planExtras(p);
+  }
+
+  function renderItinerary() {
+    const p = plan; if (!p) return;
     const stops = [];
+    const fuel = [...(p.fuel || [])];
+    const fuelUpTo = (along) => { while (fuel.length && fuel[0].along <= along) stops.push(fuelStopHtml(fuel.shift())); };
     stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
     p.picks.forEach((pk, i) => {
+      fuelUpTo(pk.camp?.along ?? pk.target);
       const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}</p>`;
+      if (pk.refresh) { stops.push(refreshStopHtml(pk, i, leg)); return; }
       if (!pk.camp) {
         stops.push(`<li class="stop"><div class="plate" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">${leg}<p class="note">${esc(pk.warn)}</p></div></li>`);
         return;
@@ -1076,21 +1124,11 @@
         </details>` : ""}
       </div></li>`);
     });
-    const lastAlong = p.picks.at(-1)?.camp?.along ?? 0;
+    const lastAlong = p.picks.at(-1)?.camp?.along ?? p.picks.at(-1)?.target ?? 0;
+    fuelUpTo(p.line.total);
     stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
+    if (p.fuelState === "loading") stops.splice(1, 0, `<li class="stop fuel-wait"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="help"><span class="spinner"></span>Working out where you'll need fuel</p></div></li>`);
     $("#nightList").innerHTML = stops.join("");
-    renderBudget();
-    renderTripExtras();
-    const along = [...p.camps].sort((a, b) => a.along - b.along);
-    $("#alongCount").textContent = along.length;
-    $("#alongList").innerHTML = along.map((c) => `<li>${campCard(c)}</li>`).join("") || `<li class="empty">No camps within your detour distance. Try a longer detour.</li>`;
-    $("#saveTrip").classList.remove("is-on");
-    $("#offlineTrip").classList.toggle("is-on", !!p.legs);
-    const on = $("#tripOffline");
-    on.hidden = !p.offline;
-    on.innerHTML = p.offline ? `${icon("offline", "ic sm")}Showing your offline download. Camp details and saved directions work without signal; the map background needs signal.` : "";
-    $("#sheetScroll").scrollTop = 0;
-    drawPlan();
   }
 
   function drawPlan() {
@@ -1117,6 +1155,9 @@
       return;
     }
     if (b?.dataset.act === "leg") { showLeg(+b.dataset.i); return; }
+    if (b?.dataset.act === "fuelpick") { const fs = plan.fuel[+b.dataset.f]; const o = fs.options.find((x) => x.id === b.dataset.id); fs.options = [o, ...fs.options.filter((x) => x !== o)]; renderItinerary(); renderBudget(); return; }
+    if (b?.dataset.act === "staypick") { const pk = plan.picks[+b.dataset.i]; const o = pk.refresh.options.find((x) => x.id === b.dataset.id); pk.refresh.options = [o, ...pk.refresh.options.filter((x) => x !== o)]; renderItinerary(); renderBudget(); return; }
+    if (b?.dataset.act === "camphere") { const pk = plan.picks[+b.dataset.i]; pk.refresh = null; renderItinerary(); renderBudget(); toast(`Night ${+b.dataset.i + 1}: camping instead`); return; }
     const card = e.target.closest(".camp-card");
     if (card) openDetail(findCamp(card.dataset.id));
   });
@@ -2089,7 +2130,7 @@
   // ================================================================ settings, budget, opening animation, welcome
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const VEH = window.CF_VEHICLES || { Other: [["Custom", "diesel", 10, 80]] };
-  const DEFAULT_PRICE = { diesel: 2.05, petrol: 1.95, lpg: 1.05 };
+  const DEFAULT_PRICE = { diesel: 2.75, petrol: 2.30, lpg: 1.20 };
   const settings = Object.assign({
     make: "", model: "", fuel: "diesel", use: 10.5, tank: 80, prices: { ...DEFAULT_PRICE }, tow: 30,
     campUnknown: 35, daily: 0, maxKm: 500, anim: true, follow: false, sat: false, welcomeEveryTime: true,
@@ -2116,14 +2157,28 @@
     else if (settings.maxKm && k > settings.maxKm) out += ` <span class="leg-warn">· long day</span>`;
     return out;
   }
+  // Price for one night. known = the camp lists its price; otherwise it's an estimate from the price guide.
   function campFee(c) {
-    if (!c || c.cost === "free") return { v: 0, known: true };
-    if (c.cost === "unknown") return { v: 0, known: false };
+    if (!c || c.cost === "free") return { v: 0, known: true, why: "Free camp" };
     const m = /(\d+(?:\.\d+)?)/.exec(c.charge || "");
-    if (!m) return { v: settings.campUnknown, known: false };
-    let v = +m[1];
-    if (/person|pp\b|adult/i.test(c.charge)) v *= 2;
-    return { v, known: true };
+    if (m) {
+      let v = +m[1];
+      const pp = /person|pp\b|adult/i.test(c.charge);
+      if (pp) v *= 2;
+      return { v, known: true, why: pp ? `Listed price for 2 people (${c.charge})` : `Listed price (${c.charge})` };
+    }
+    if (c.park) return { v: (PRICES.stay.national_park_person || 7.75) * 2, known: false, why: `National park permit, about ${money(PRICES.stay.national_park_person || 7.75)} per person (2 people)` };
+    if (c.kind === "Caravan / RV site") return { v: PRICES.stay.caravan_powered, known: false, why: "Price not listed: average powered site" };
+    if (c.cost === "unknown") return { v: 0, known: false, why: "Price not recorded, likely free" };
+    return { v: settings.campUnknown || PRICES.stay.camp_paid, known: false, why: "Paid camp, price not listed (your estimate)" };
+  }
+  function nightCost(pk) {
+    if (pk.refresh) { const st = STAY[pk.refresh.style] || STAY.motel; return { v: st.price(), known: false, why: `${st.label}, average for the area (estimate)`, name: pk.refresh.options?.[0]?.name || st.label }; }
+    return { ...campFee(pk.camp), name: pk.camp?.name || "No camp found" };
+  }
+  function liveFuelPrice(p) {
+    const ps = (p.fuel || []).map((f) => f.options?.[0]?.fuel?.price).filter(Boolean);
+    return ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : null;
   }
   function countUp(el, to, fmt) {
     if (!el) return;
@@ -2132,28 +2187,203 @@
     const tick = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(to * e); if (k < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   }
+  function tripCosts(p) {
+    const f = fuelFor(p.route.distance); if (!f) return null;
+    const live = liveFuelPrice(p);
+    const price = live || settings.prices[settings.fuel];
+    const fuel = f.litres * price;
+    const nightsList = p.picks.map((pk, i) => ({ i, ...nightCost(pk) }));
+    const camps = nightsList.filter((n) => !p.picks[n.i].refresh).reduce((a, n) => a + n.v, 0);
+    const stays = nightsList.filter((n) => p.picks[n.i].refresh).reduce((a, n) => a + n.v, 0);
+    const days = p.nights + 1, daily = (settings.daily || 0) * days;
+    return { f, live, price, fuel, nightsList, camps, stays, daily, days, total: fuel + camps + stays + daily };
+  }
   function renderBudget() {
     const box = $("#tripBudget"); if (!box || !plan) return;
-    const f = fuelFor(plan.route.distance);
-    if (!f) { box.innerHTML = ""; return; }
-    let fees = 0, unknown = 0, paidN = 0;
-    plan.picks.forEach((pk) => { const fee = campFee(pk.camp); fees += fee.v; if (!fee.known) unknown++; if (fee.v > 0) paidN++; });
-    const days = plan.nights + 1, daily = (settings.daily || 0) * days;
-    const total = f.cost + fees + daily;
-    const fills = settings.tank ? f.litres / settings.tank : 0;
+    const t = tripCosts(plan);
+    if (!t) { box.innerHTML = ""; return; }
+    const fills = settings.tank ? t.f.litres / settings.tank : 0;
+    const refreshN = plan.picks.filter((pk) => pk.refresh).length;
     const vname = settings.model ? `${settings.make === "Other" ? "" : settings.make + " "}${settings.model}` : "your vehicle";
-    box.innerHTML = `<div class="budget">
+    box.innerHTML = `<div class="budget" id="budgetCard" role="button" tabindex="0" aria-label="See the cost breakdown">
       <div class="bg-top"><span>Trip cost estimate</span><b class="bg-total" id="bgTotal">$0</b></div>
       <div class="bg-rows">
-        <div><b id="bgFuel">$0</b><small>Fuel · ${Math.round(f.litres)} L</small></div>
-        <div><b>${money(fees)}</b><small>Camps · ${paidN} paid</small></div>
-        <div><b>${daily ? money(daily) : "—"}</b><small>${daily ? `Spending · ${days} days` : "Spending"}</small></div>
+        <div><b id="bgFuel">$0</b><small>Fuel · ${Math.round(t.f.litres)} L</small></div>
+        <div><b>${money(t.camps)}</b><small>Camps</small></div>
+        <div><b>${refreshN ? money(t.stays) : t.daily ? money(t.daily) : "—"}</b><small>${refreshN ? `${refreshN} refresh night${refreshN > 1 ? "s" : ""}` : t.daily ? `Spending · ${t.days} days` : "Beds"}</small></div>
       </div>
-      <p class="bg-note">${esc(vname)}, ${settings.use} L/100 km${towing(plan.opts.rig) && settings.tow ? ` +${settings.tow}% towing` : ""}, ${money(settings.prices[settings.fuel])}/L ${settings.fuel}${fills >= 0.5 ? ` · about ${fills < 1.5 ? "1 tank" : Math.round(fills) + " tanks"}` : ""}${unknown ? ` · ${unknown} camp price${unknown > 1 ? "s" : ""} not listed` : ""}. <button type="button" id="bgEdit">Change</button></p>
+      <p class="bg-note">${esc(vname)}, ${settings.use} L/100 km${towing(plan.opts.rig) && settings.tow ? ` +${settings.tow}% towing` : ""} at ${money(t.price)}/L ${t.live ? "(live prices on your route)" : "(your set price)"}${fills >= 0.5 ? ` · about ${fills < 1.5 ? "1 tank" : Math.round(fills) + " tanks"}` : ""}. <button type="button" id="bgMore">See breakdown</button></p>
     </div>`;
-    countUp($("#bgTotal"), total, money);
-    countUp($("#bgFuel"), f.cost, money);
-    $("#bgEdit").addEventListener("click", () => setView("settings"));
+    countUp($("#bgTotal"), t.total, money);
+    countUp($("#bgFuel"), t.fuel, money);
+    const open = (e) => { if (e.target.id === "bgMore" || e.currentTarget === e.target || e.target.closest(".budget")) openBudget(); };
+    $("#budgetCard").addEventListener("click", open);
+  }
+  function openBudget() {
+    const t = tripCosts(plan); if (!t) return;
+    const row = (a, b, c = "") => `<div class="br-row"><span>${a}${c ? `<small>${c}</small>` : ""}</span><b>${b}</b></div>`;
+    showDetail(`<div class="d-pad" style="padding-top:22px">
+      <h2 class="d-title">Trip costs</h2><p class="d-kind">${esc(short(plan.from.name))} to ${esc(short(plan.to.name))} · ${t.days} days</p>
+      <div class="br-total"><span>Estimated total</span><b>${money(t.total)}</b></div>
+      <h3 class="h2">Fuel</h3>
+      ${row(`${Math.round(t.f.litres)} litres of ${esc(settings.fuel)}`, money(t.fuel), `${km(plan.route.distance)} at ${settings.use} L/100 km${towing(plan.opts.rig) && settings.tow ? `, +${settings.tow}% for towing` : ""}, ${money(t.price)}/L ${t.live ? "average of live prices at your fuel stops" : "from your Settings"}`)}
+      ${(plan.fuel || []).filter((f) => f.options?.[0]).map((f, k) => row(`Fuel stop ${k + 1}: ${esc(f.options[0].name)}`, f.options[0].fuel ? `${money(f.options[0].fuel.price)}/L` : "—", `${km(f.along)} from the start`)).join("")}
+      <h3 class="h2">Nights</h3>
+      ${t.nightsList.map((n) => row(`Night ${n.i + 1}: ${esc(n.name)}`, n.v ? (n.known ? money(n.v) : "~" + money(n.v)) : "$0", esc(n.why))).join("")}
+      ${t.daily ? `<h3 class="h2">Spending money</h3>${row(`${t.days} days at ${money(settings.daily)}`, money(t.daily))}` : ""}
+      <p class="caveat">Prices marked ~ are estimates from Camp Finder's price guide (updated ${esc(PRICES.updated || "regularly")}), used when a place doesn't list its price. Fuel uses live Google Maps prices where available. Always check the price when you book.</p>
+      <button class="btn" type="button" id="brSettings">${icon("gear")}Change vehicle, fuel price or budget</button>
+    </div>`);
+    $("#brSettings").addEventListener("click", () => setView("settings"));
+  }
+
+  // ================================================================ price guide (reviewed monthly), fuel stops, refresh nights
+  let PRICES = { updated: "", fuel: { ...DEFAULT_PRICE }, stay: { camp_paid: 30, national_park_person: 7.75, caravan_powered: 45, caravan_unpowered: 35, cabin: 135, motel: 155, hotel: 210, bougie: 280 } };
+  (async () => {
+    const ok = (d) => d && d.stay && d.fuel;
+    let best = null;
+    try { const b = await fetchJSON(CFG.priceData, {}, 8000); if (ok(b)) best = b; } catch { /* bundled copy missing */ }
+    try { const c = store.get("cf-prices", null); if (ok(c) && (!best || String(c.updated) > String(best.updated))) best = c; } catch {}
+    if (best) PRICES = best;
+    try {
+      if (isOffline() || Date.now() - (store.get("cf-prices-checked", 0)) < 7 * 864e5) return;
+      const live = nativeFetch ? JSON.parse(await nativeFetch(CFG.priceDataLive, { timeout: 20000 })) : await fetchJSON(CFG.priceDataLive, {}, 20000);
+      store.set("cf-prices-checked", Date.now());
+      if (ok(live) && String(live.updated) >= String(PRICES.updated)) { PRICES = live; store.set("cf-prices", live); }
+    } catch { /* next time */ }
+  })();
+
+  const FUEL_TYPES = { diesel: ["DIESEL", "PREMIUM_DIESEL", "TRUCK_DIESEL", "BIO_DIESEL"], petrol: ["SP91", "REGULAR_UNLEADED", "SP91_E10", "SP95", "MIDGRADE", "SP98", "PREMIUM"], lpg: ["LPG"] };
+  function priceFor(fo) {
+    for (const t of FUEL_TYPES[settings.fuel] || []) {
+      const f = (fo?.fuelPrices || []).find((x) => x.type === t);
+      if (f?.price) return { price: (+f.price.units || 0) + (f.price.nanos || 0) / 1e9, type: t, updated: f.updateTime };
+    }
+    return null;
+  }
+  const agoTime = (iso) => { if (!iso) return ""; const h = (Date.now() - Date.parse(iso)) / 36e5; return h < 1 ? "just now" : h < 24 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} day${h < 48 ? "" : "s"} ago`; };
+  function pointAt(line, along) {
+    let i = line.cum.findIndex((c) => c >= along); if (i < 0) i = line.pts.length - 1;
+    return { lat: line.pts[i][0], lon: line.pts[i][1] };
+  }
+
+  // Petrol stations near a point, from Google Maps (with live prices) or the built-in map data
+  async function stationsNear(pt, radius) {
+    if (CFG.googleKey) {
+      try {
+        const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
+          method: "POST", fieldMask: "places.id,places.displayName,places.location,places.fuelOptions,places.formattedAddress,places.googleMapsUri,places.currentOpeningHours.openNow",
+          body: { includedTypes: ["gas_station"], maxResultCount: 12, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: pt.lat, longitude: pt.lon }, radius } } },
+        });
+        const list = (j.places || []).map((g) => ({ id: g.id, name: g.displayName?.text || "Fuel station", lat: g.location.latitude, lon: g.location.longitude, addr: g.formattedAddress || "", uri: g.googleMapsUri || "", open: g.currentOpeningHours?.openNow, fuel: priceFor(g.fuelOptions) }));
+        if (list.length) return list;
+      } catch { /* fall through to the built-in list */ }
+    }
+    return campDB.fuelIn ? campDB.fuelIn(pt, radius) : [];
+  }
+  async function computeFuelStops(p) {
+    const range = rangeKm(p.opts.rig) * 1000;
+    if (!isFinite(range) || range < 50000) return [];
+    const out = []; let pos = 0, guard = 0;
+    while (p.line.total - pos > range * 0.92 && guard++ < 30) {
+      const lo = pos + range * 0.5, hi = Math.min(p.line.total, pos + range * 0.85);
+      const pts = [0.35, 0.8].map((f) => pointAt(p.line, lo + (hi - lo) * f));
+      const found = new Map();
+      for (const pt of pts) for (const st of await stationsNear(pt, 25000)) found.set(st.id, st);
+      const cands = [...found.values()].map((st) => ({ ...st, ...project(p.line, st) })).filter((st) => st.off < 6000 && st.along > pos + range * 0.3 && st.along < pos + range * 0.95);
+      if (!cands.length) {
+        out.push({ along: lo, warn: true, options: [], text: `No fuel found between ${km(lo)} and ${km(hi)} from the start. Fill up before this stretch and carry spare fuel.` });
+        pos = hi; continue;
+      }
+      // cheapest without a big detour; with no prices, the furthest safe one
+      const priced = cands.some((c) => c.fuel);
+      cands.sort((a, b) => (priced ? ((a.fuel?.price ?? 9) + a.off / 20000) - ((b.fuel?.price ?? 9) + b.off / 20000) : b.along - a.along));
+      out.push({ along: cands[0].along, options: cands.slice(0, 4) });
+      pos = cands[0].along;
+    }
+    return out;
+  }
+  function fuelStopHtml(fs) {
+    const f = plan.fuel.indexOf(fs);
+    if (fs.warn) return `<li class="stop fuel"><div class="plate fuel warn" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="note">${esc(fs.text)}</p></div></li>`;
+    const o = fs.options[0];
+    const litres = settings.tank ? Math.round(settings.tank * 0.8) : 0;
+    return `<li class="stop fuel"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body">
+      <p class="stop-leg">Fuel stop · ${km(fs.along)} from the start</p>
+      <div class="fuel-card">
+        <div class="fc-top"><div><b>${esc(o.name)}</b><small>${o.off < 400 ? "On your route" : `${km(o.off)} off your route`}${o.open === false ? " · closed now" : ""}</small></div>
+          ${o.fuel ? `<div class="fc-price"><b>${money(o.fuel.price)}</b><small>${esc(settings.fuel)} /L</small></div>` : `<div class="fc-price none"><small>No price listed</small></div>`}</div>
+        <p class="fc-sub">${o.fuel ? `Updated ${agoTime(o.fuel.updated)}${litres ? ` · about ${money(o.fuel.price * litres)} to fill up` : ""}` : "Price not listed for this station"}</p>
+        <div class="stop-actions"><a class="btn" href="${navUrl({ lat: o.lat, lon: o.lon, name: o.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a></div>
+      </div>
+      ${fs.options.length > 1 ? `<details class="alt-wrap"><summary>${fs.options.length - 1} other station${fs.options.length > 2 ? "s" : ""} here ${icon("chev", "ic sm")}</summary>${fs.options.slice(1).map((x) => `<div class="alt fuel-alt"><span><b>${esc(x.name)}</b><small>${x.fuel ? `${money(x.fuel.price)}/L · ` : ""}${x.off < 400 ? "on route" : km(x.off) + " off route"}</small></span><button class="btn" type="button" data-act="fuelpick" data-f="${f}" data-id="${esc(x.id)}">Use this</button></div>`).join("")}</details>` : ""}
+    </div></li>`;
+  }
+
+  // ---- Need a refresh: motels, cabins and hotels for chosen nights
+  const STAY = {
+    cabin: { label: "Caravan park cabin", types: ["campground", "rv_park", "lodging"], price: () => PRICES.stay.cabin },
+    motel: { label: "Motel", types: ["motel"], price: () => PRICES.stay.motel },
+    hotel: { label: "Hotel", types: ["hotel"], price: () => PRICES.stay.hotel },
+    bougie: { label: "Feeling bougie", types: ["hotel", "resort_hotel", "motel"], price: () => PRICES.stay.bougie },
+  };
+  async function findStays(p, pk) {
+    const st = STAY[pk.refresh.style] || STAY.motel;
+    const pt = pointAt(p.line, pk.target);
+    if (CFG.googleKey) {
+      try {
+        const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
+          method: "POST", fieldMask: "places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.formattedAddress,places.googleMapsUri,places.websiteUri,places.nationalPhoneNumber,places.primaryTypeDisplayName",
+          body: { includedTypes: st.types, maxResultCount: 15, locationRestriction: { circle: { center: { latitude: pt.lat, longitude: pt.lon }, radius: 40000 } } },
+        });
+        let list = (j.places || []).map((g) => ({ id: g.id, name: g.displayName?.text || "Place to stay", lat: g.location.latitude, lon: g.location.longitude, rating: g.rating || 0, count: g.userRatingCount || 0, addr: g.formattedAddress || "", uri: g.googleMapsUri || "", web: g.websiteUri || "", phone: g.nationalPhoneNumber || "", kind: g.primaryTypeDisplayName?.text || st.label }))
+          .map((x) => ({ ...x, ...project(p.line, x) })).filter((x) => x.off < 15000);
+        const score = (x) => (pk.refresh.style === "bougie" ? x.rating * 3 : x.rating * 1.5) + Math.min(2, Math.log10(1 + x.count)) - Math.abs(x.along - pk.target) / 40000 - x.off / 8000;
+        list.sort((a, b) => score(b) - score(a));
+        if (pk.refresh.style === "bougie") list = [...list.filter((x) => x.rating >= 4.2), ...list.filter((x) => x.rating < 4.2)];
+        if (list.length) return list.slice(0, 4);
+      } catch { /* fall back */ }
+    }
+    // offline: caravan parks from the built-in camp list (most have cabins)
+    return p.camps.filter((c) => c.kind === "Caravan / RV site" && Math.abs(c.along - pk.target) < 60000)
+      .sort((a, b) => Math.abs(a.along - pk.target) - Math.abs(b.along - pk.target)).slice(0, 4)
+      .map((c) => ({ id: c.id, name: c.name, lat: c.lat, lon: c.lon, rating: 0, count: 0, addr: "", uri: "", web: c.website, phone: c.phone, kind: "Caravan park (cabins usually available)", along: c.along, off: c.off }));
+  }
+  function refreshStopHtml(pk, i, leg) {
+    const st = STAY[pk.refresh.style] || STAY.motel;
+    const o = pk.refresh.options?.[0];
+    const head = `<div class="refresh-tag">${pk.refresh.style === "bougie" ? "✨ Feeling bougie" : "🛏️ Need a refresh"} · ${esc(st.label)}</div>`;
+    let body;
+    if (!pk.refresh.options) body = `<p class="help"><span class="spinner"></span>Finding a ${esc(st.label.toLowerCase())} near here</p>`;
+    else if (!o) body = `<p class="note">No ${esc(st.label.toLowerCase())} found near this stop.</p>${pk.camp ? campCard(pk.camp) : ""}`;
+    else body = `<div class="stay-card">
+        <div class="fc-top"><div><b>${esc(o.name)}</b><small>${esc(o.kind)}${o.rating ? ` · ★ ${o.rating.toFixed(1)} (${o.count.toLocaleString("en-AU")})` : ""}</small></div><div class="fc-price"><b>~${money(st.price())}</b><small>per night, est.</small></div></div>
+        ${o.addr ? `<p class="fc-sub">${esc(o.addr)}</p>` : ""}
+        <div class="stop-actions">
+          ${o.web ? `<a class="btn" href="${esc(o.web)}" target="_blank" rel="noopener">Book or check prices</a>` : o.uri ? `<a class="btn" href="${esc(o.uri)}" target="_blank" rel="noopener">See on Google Maps</a>` : ""}
+          ${o.phone ? `<a class="btn line" href="tel:${esc(o.phone.replace(/\s/g, ""))}">Call</a>` : ""}
+          <a class="btn line" href="${navUrl({ lat: o.lat, lon: o.lon, name: o.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
+        </div>
+      </div>
+      ${pk.refresh.options.length > 1 ? `<details class="alt-wrap"><summary>${pk.refresh.options.length - 1} other option${pk.refresh.options.length > 2 ? "s" : ""} ${icon("chev", "ic sm")}</summary>${pk.refresh.options.slice(1).map((x) => `<div class="alt fuel-alt"><span><b>${esc(x.name)}</b><small>${x.rating ? `★ ${x.rating.toFixed(1)} · ` : ""}${esc(x.kind)}</small></span><button class="btn" type="button" data-act="staypick" data-i="${i}" data-id="${esc(x.id)}">Stay here</button></div>`).join("")}</details>` : ""}
+      ${pk.camp ? `<button class="btn line small-btn" type="button" data-act="camphere" data-i="${i}">Camp at ${esc(pk.camp.name)} instead</button>` : ""}`;
+    return `<li class="stop refresh"><div class="plate refresh" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">${leg}${head}${body}</div></li>`;
+  }
+  async function planExtras(p) {
+    if (p !== plan) return;
+    const jobs = [];
+    p.picks.forEach((pk) => { if (pk.refresh && !pk.refresh.options) jobs.push(findStays(p, pk).then((o) => { pk.refresh.options = o; })); });
+    if (!p.fuel) { p.fuelState = "loading"; renderItinerary(); jobs.push(computeFuelStops(p).then((f) => { p.fuel = f; }).catch(() => { p.fuel = []; }).finally(() => { p.fuelState = "done"; })); }
+    if (!jobs.length) return;
+    renderItinerary();
+    await Promise.all(jobs.map((j) => j.catch(() => {})));
+    if (p === plan) { renderItinerary(); renderBudget(); }
+  }
+
+  function openLegal(kind) {
+    const L = window.CF_LEGAL; if (!L) return;
+    const html = (L[kind] || "").replaceAll("{contact}", esc(L.contact));
+    showDetail(`<div class="d-pad legal" style="padding-top:22px"><h2 class="d-title">${kind === "terms" ? "Terms and conditions" : "Privacy policy"}</h2><p class="d-kind">Last updated ${esc(L.updated)}</p>${html}</div>`);
   }
 
   // ---- settings screen
@@ -2181,6 +2411,7 @@
     $("#stAccount").textContent = !C?.enabled ? "Accounts aren't switched on in this version." : C.signedIn() ? `Signed in as ${C.email()}.` : "Not signed in. Sign in to rate camps, post photos and keep your trips on every device.";
     const info = campDB.info();
     $("#stData").textContent = info ? `Camp database: ${info.count.toLocaleString("en-AU")} camps, updated ${new Date(info.built).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}. Updates download automatically each week.` : "";
+    $("#stPrices").textContent = `Price guide for camps and stays updated ${PRICES.updated || "regularly"}. Fuel prices come live from Google Maps where available.`;
     renderVehicleSummary();
   }
   function renderVehicleSummary() {
@@ -2203,6 +2434,8 @@
     $("#stWelcome").addEventListener("click", () => showWelcome());
     $("#stWelcomeEvery").addEventListener("change", (e) => { settings.welcomeEveryTime = e.target.checked; saveSettings(); });
     $("#stGoAccount").addEventListener("click", () => setView("saved"));
+    $("#stTerms").addEventListener("click", () => openLegal("terms"));
+    $("#stPrivacy").addEventListener("click", () => openLegal("privacy"));
   })();
   if (settings.sat && !onSat) $("#layerBtn").click();
   if (store.get("cf-loc-ok", false)) { startTracking(); if (settings.follow) setFollow(true); }

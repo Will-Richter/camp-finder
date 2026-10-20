@@ -1,0 +1,20 @@
+{
+  "updated": "2026-10-20",
+  "note": "Rough Australian averages used when a place doesn't list its price. Reviewed monthly.",
+  "fuel": { "diesel": 2.75, "petrol": 2.30, "lpg": 1.20 },
+  "stay": {
+    "camp_paid": 30,
+    "national_park_person": 7.75,
+    "caravan_powered": 45,
+    "caravan_unpowered": 35,
+    "cabin": 135,
+    "motel": 155,
+    "hotel": 210,
+    "bougie": 280
+  },
+  "sources": [
+    "Queensland national park camping fees from 1 July 2026: $7.75 per person per night (parks.qld.gov.au)",
+    "Caravan park powered sites average about $40 to $50 a night (YourLifeChoices)",
+    "Fuel: live Google Maps prices along your route when available"
+  ]
+}

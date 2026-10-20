@@ -33,7 +33,7 @@ def query(bbox):
     s, w, n, e = bbox
     b = f"{s},{w},{n},{e}"
     q = (f'[out:json][timeout:180];(nwr["tourism"~"^(camp_site|caravan_site)$"]({b});'
-         f'nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b}););out center tags;')
+         f'nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b});nwr["amenity"="fuel"]({b}););out center tags;')
     data = urllib.parse.urlencode({"data": q}).encode()
     last = None
     for attempt in range(6):
@@ -91,6 +91,7 @@ def all_elements():
             raise RuntimeError("too few camps from ohsome")
         els += ohsome("leisure=slipway")
         els += ohsome("amenity=sanitary_dump_station")
+        els += ohsome("amenity=fuel")
         return els
     except Exception as ex:
         print(f"ohsome unavailable ({ex}); using Overpass tiles", file=sys.stderr)
@@ -110,7 +111,7 @@ def all_elements():
 
 
 def main(out_path):
-    camps, ramps, dumps, seen = [], [], [], set()
+    camps, ramps, dumps, fuel, seen = [], [], [], [], set()
     if True:
         for el in all_elements():
             key = f"{el['type']}/{el['id']}"
@@ -130,19 +131,24 @@ def main(out_path):
                 ramps.append(pt)
             elif tags.get("amenity") == "sanitary_dump_station":
                 dumps.append(pt)
+            elif tags.get("amenity") == "fuel":
+                nm = (tags.get("brand") or tags.get("name") or "Fuel station")[:40]
+                if tags.get("name") and tags.get("brand") and tags["brand"] not in tags["name"]:
+                    nm = f'{tags["brand"]} {tags["name"]}'[:50]
+                fuel.append([*pt, nm])
     if len(camps) < 3000:
         raise SystemExit(f"Only {len(camps)} camps found; keeping the old file.")
     out = {
         "built": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": "OpenStreetMap contributors (ODbL)",
-        "camps": camps, "ramps": ramps, "dumps": dumps,
+        "camps": camps, "ramps": ramps, "dumps": dumps, "fuel": fuel,
     }
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     tmp = out_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp, out_path)
-    print(f"{len(camps)} camps, {len(ramps)} boat ramps, {len(dumps)} dump points -> {out_path}", file=sys.stderr)
+    print(f"{len(camps)} camps, {len(ramps)} boat ramps, {len(dumps)} dump points, {len(fuel)} fuel stations -> {out_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":

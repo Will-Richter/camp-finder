@@ -135,9 +135,9 @@ a { color: inherit; }
 .cta:disabled { opacity: .75; cursor: progress; }
 .msg { font-size: 13.5px; color: var(--sub); margin: 10px 0 0; min-height: 1.2em; }
 .msg.is-error { color: var(--paid); font-weight: 600; }
-.spinner { display: inline-block; position: relative; width: 30px; height: 16px; vertical-align: -3px; margin-right: 9px; overflow: hidden; }
-.spinner::before { content: ""; position: absolute; left: 6px; bottom: 3px; width: 18px; height: 12px; animation: carBob .42s ease-in-out infinite alternate;
-  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-15 -18 30 27'%3E%3Crect x='-13' y='-9' width='26' height='14' rx='4' fill='%23F5C518' stroke='%231A1608' stroke-width='2.4'/%3E%3Crect x='-9' y='-15' width='18' height='8' rx='2' fill='%232B2F2D'/%3E%3Ccircle cx='-8' cy='6' r='3.4' fill='%231A1608'/%3E%3Ccircle cx='8' cy='6' r='3.4' fill='%231A1608'/%3E%3C/svg%3E"); }
+.spinner { display: inline-block; position: relative; width: 34px; height: 16px; vertical-align: -3px; margin-right: 9px; overflow: hidden; }
+.spinner::before { content: ""; position: absolute; left: 5px; bottom: 2px; width: 24px; height: 12px; animation: carBob .42s ease-in-out infinite alternate;
+  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 132 64'%3E%3Cpath d='M10 44 L10 34 Q10 30 14 29.5 L30 27.5 L38 11 Q39.5 9 42 9 L88 9 Q91 9 92.5 11.5 L100 26 L116 28.5 Q122 29.5 122.5 35 L123 44 Q123 47 120 47 L13 47 Q10 47 10 44 Z' fill='%23F5C518' stroke='%231A1608' stroke-width='3'/%3E%3Cpath d='M41.5 13 L36 26 L62 26 L62 13 Z M65 13 L65 26 L89 26 L89 13 Z' fill='%2322343C'/%3E%3Crect x='34' y='4' width='56' height='4' rx='2' fill='%232B2F2D'/%3E%3Ccircle cx='32' cy='48' r='11' fill='%231B1E1D'/%3E%3Ccircle cx='32' cy='48' r='5' fill='%23C9D1D5'/%3E%3Ccircle cx='101' cy='48' r='11' fill='%231B1E1D'/%3E%3Ccircle cx='101' cy='48' r='5' fill='%23C9D1D5'/%3E%3C/svg%3E"); }
 .spinner::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px; opacity: .7;
   background: repeating-linear-gradient(90deg, currentColor 0 6px, transparent 6px 11px); animation: roadRun .45s linear infinite; }
 @keyframes carBob { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-1.5px) rotate(1deg); } }
@@ -588,12 +588,12 @@ a { color: inherit; }
 /* =================================================================== planning overlay */
 .planning { padding: 26px 6px 10px; }
 .planning:not([hidden]) { animation: rise .45s var(--ease-out) both; }
-.pl-scene { position: relative; height: 92px; margin: 4px 18px 20px; }
+.pl-scene { position: relative; height: 96px; margin: 4px 18px 20px; }
 .pl-road { position: absolute; left: 14px; right: 14px; top: 56px; height: 10px; border-radius: 10px; background: var(--well); overflow: hidden; }
 .pl-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--sign), #1F8A4C); border-radius: 10px; transition: width .8s var(--ease-out); }
 .pl-pin { position: absolute; top: 44px; width: 22px; height: 22px; border-radius: 50%; border: 4px solid var(--sign); background: #fff; z-index: 1; }
 .pl-pin.a { left: 4px; } .pl-pin.b { right: 4px; background: var(--gold); border-color: var(--gold-ink); border-radius: 5px; }
-.pl-car { position: absolute; top: 20px; width: 46px; height: 42px; left: calc(var(--p, 0) * (100% - 46px)); transition: left .8s var(--ease-out); animation: carBob .4s ease-in-out infinite alternate; filter: drop-shadow(0 6px 6px rgba(0,0,0,.2)); }
+.pl-car { position: absolute; top: 6px; width: 92px; height: 45px; left: calc(var(--p, 0) * (100% - 92px)); transition: left .8s var(--ease-out); animation: carBob .4s ease-in-out infinite alternate; filter: drop-shadow(0 6px 6px rgba(0,0,0,.2)); }
 .pl-steps { list-style: none; margin: 0; padding: 0 10px; display: grid; gap: 12px; }
 .pl-steps li { display: flex; align-items: center; gap: 12px; font: 700 16px var(--display); color: var(--sub); opacity: .55; transition: opacity .3s, color .3s; }
 .pl-steps li::before { content: ""; flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid var(--hair); box-sizing: border-box; transition: all .35s var(--spring); }
@@ -659,3 +659,52 @@ a { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .splash *, .welcome * { animation-duration: .01ms !important; animation-delay: 0s !important; }
 }
+
+.pl-car .wheel { transform-box: fill-box; transform-origin: center; animation: wheelSpin .5s linear infinite; }
+@keyframes wheelSpin { to { transform: rotate(360deg); } }
+.pl-scene::before { content: ""; position: absolute; left: 14px; right: 14px; top: 52px; height: 2px; background: repeating-linear-gradient(90deg, var(--hair) 0 10px, transparent 10px 20px); animation: roadRun3 .4s linear infinite; }
+@keyframes roadRun3 { to { background-position: -20px 0; } }
+
+/* =================================================================== fuel stops & refresh nights */
+.plate.fuel { background: #2F6FD6; color: #fff; display: grid; place-items: center; }
+.plate.fuel .ic { width: 18px; height: 18px; }
+.plate.fuel.warn { background: var(--paid); }
+.plate.refresh { background: #7A4FD0; color: #fff; }
+.fuel-card, .stay-card { background: var(--sheet); border: 1.5px solid var(--hair); border-radius: 16px; padding: 12px 14px; margin-top: 6px; }
+.fuel-card { border-color: rgba(47,111,214,.35); background: linear-gradient(180deg, rgba(47,111,214,.06), transparent 60%), var(--sheet); }
+.stay-card { border-color: rgba(122,79,208,.35); background: linear-gradient(180deg, rgba(122,79,208,.07), transparent 60%), var(--sheet); }
+.fc-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.fc-top b { font: 800 16px/1.2 var(--display); display: block; }
+.fc-top small { color: var(--sub); font-size: 13px; }
+.fc-price { text-align: right; flex: none; }
+.fc-price b { font: 900 22px/1 var(--display); color: #2F6FD6; }
+.stay-card .fc-price b { color: #7A4FD0; font-size: 19px; }
+.fc-price small { display: block; font-size: 11.5px; color: var(--sub); font-weight: 700; }
+.fc-price.none small { margin-top: 4px; }
+.fc-sub { margin: 6px 0 0; font-size: 13px; color: var(--sub); }
+.fuel-card .stop-actions, .stay-card .stop-actions { margin-top: 10px; }
+.fuel-alt { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.fuel-alt b { display: block; font: 700 14.5px var(--display); }
+.fuel-alt small { color: var(--sub); font-size: 12.5px; }
+.refresh-tag { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px; padding: 5px 10px; border-radius: 999px; background: rgba(122,79,208,.12); color: #5B36B0; font: 800 12.5px var(--display); }
+@media (prefers-color-scheme: dark) { .refresh-tag { color: #C9B5FF; } .fc-price b { color: #7FA8F0; } .stay-card .fc-price b { color: #C9B5FF; } }
+.small-btn { margin-top: 8px; font-size: 13.5px; }
+.refresh-group .seg { margin-top: 10px; }
+.refresh-group .switch { border-bottom: 0; padding-bottom: 0; }
+.motion .fuel-card, .motion .stay-card { animation: rise .5s var(--ease-out) both; }
+
+/* cost breakdown */
+.br-total { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 6px; padding: 14px 16px; border-radius: 16px; background: linear-gradient(135deg, #0E5A3E, #1F8A4C); color: #fff; }
+.br-total span { font: 800 13px var(--display); letter-spacing: .05em; text-transform: uppercase; opacity: .9; }
+.br-total b { font: 900 30px/1 var(--display); color: var(--gold); }
+.br-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.br-row span { font-weight: 700; }
+.br-row small { display: block; font-weight: 500; color: var(--sub); font-size: 12.5px; margin-top: 2px; }
+.br-row b { font: 800 15.5px var(--display); white-space: nowrap; }
+.budget { cursor: pointer; }
+
+/* legal pages */
+.legal h3 { font: 800 16px var(--display); margin: 18px 0 4px; }
+.legal p, .legal li { font-size: 14.5px; line-height: 1.5; color: var(--ink); }
+.legal ul { padding-left: 20px; }
+.set-card .btn.line { display: flex; width: 100%; justify-content: center; }
