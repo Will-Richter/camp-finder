@@ -23,6 +23,9 @@
     // Camp database built into the app, refreshed weekly from the published copy (tools/build_camp_data.py)
     campData: "data/camps-au.json",
     campDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/camps-au.json",
+    // Google Places photos: paste an iOS-restricted Places API key here to switch them on (see GOOGLE_PHOTOS.md)
+    googleKey: "",
+    googlePhotos: 4, // photos per camp (each one shown is billed by Google after the free monthly allowance)
     exploreMinZoom: 9,
     boatRampKm: 5,
     dumpKm: 10,
@@ -81,7 +84,7 @@
     window.__cfFetchDone = (id, ok, body) => { const c = cbs[id]; delete cbs[id]; if (c) ok ? c.res(body) : c.rej(new Error(body || "Network error")); };
     return (url, opts = {}) => new Promise((res, rej) => {
       const id = ++n, ms = opts.timeout || 30000; cbs[id] = { res, rej };
-      h.postMessage({ id, url, method: opts.method, body: opts.body, contentType: opts.contentType, timeout: ms / 1000 });
+      h.postMessage({ id, url, method: opts.method, body: opts.body, contentType: opts.contentType, headers: opts.headers, timeout: ms / 1000 });
       setTimeout(() => { if (cbs[id]) { delete cbs[id]; rej(new Error("timeout")); } }, ms + 2000);
     });
   })();
@@ -810,7 +813,7 @@
   }
   function campCard(c, ctx) {
     return `<button type="button" class="camp-card${c.closed ? " is-closed" : ""}" data-id="${esc(c.id)}">
-      <div class="cc-top"><div><div class="cc-name">${esc(c.name)}</div><div class="cc-meta">${esc(metaLine(c, ctx))}</div></div>${priceTag(c)}</div>
+      <div class="cc-top"><div><div class="cc-name">${esc(c.name)}</div><div class="cc-meta">${starChip(c.id)}${esc(metaLine(c, ctx))}</div></div>${priceTag(c)}</div>
       ${tagsFor(c)}${amenIcons(c)}
     </button>`;
   }
@@ -1174,6 +1177,9 @@
           <button class="btn" id="dirBtn" type="button">${icon("route")}Directions</button>
           <button class="icon-btn ${saved ? "is-on" : ""}" style="width:48px;height:48px" id="saveCamp" type="button" aria-label="${saved ? "Saved" : "Save camp"}" aria-pressed="${saved}">${icon("bookmark")}</button>
         </div>
+        <section class="rate" id="rateBox" aria-label="Ratings and reviews">
+          <div class="rate-sum"><span class="stars-lg" id="rateStars">${starsHtml(0)}</span><b id="rateAvg"></b><span class="help" id="rateCount">Loading ratings</span></div>
+        </section>
         <div class="amen-grid">
           ${amenTile("toilets", c.a.toilets)}${amenTile("water", c.a.water)}${amenTile("showers", c.a.showers)}${amenTile("dogs", c.a.dogs)}
           ${amenTile("power", c.a.power)}${amenTile("fires", c.a.fires)}
@@ -1236,14 +1242,178 @@
       if (c.cloudId && window.CFCloud?.signedIn()) window.CFCloud.deleteCamp(c.cloudId).catch(() => toast("Removed here. Couldn't remove the shared copy right now."));
       closeDetail(); refreshAfterUserChange(); toast("Camp removed");
     });
-    const ph = c.photo ? [] : await photosNear(c);
-    if (c.photo) { const g = $("#gallery"); g.innerHTML = `<img src="${esc(c.photo)}" alt="${esc(c.name)}">`; return; }
-    const g = $("#gallery"); if (!g) return;
-    $("#galleryWait")?.remove();
-    g.insertAdjacentHTML("beforeend", ph.map((p) => `<a href="${esc(p.page)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(p.thumb)}" alt="Photo near ${esc(c.name)}"></a>`).join(""));
-    if (!ph.length && !ownPhoto) g.innerHTML = `<div class="none">${icon("photo")}No photos of this spot yet. Use satellite view on the map to see the site from above.</div>`;
-    $("#photoNote").textContent = ph.length ? "Photos taken nearby, from Wikimedia Commons. Tap one for the photographer's credit." : "";
+    wireRating(c);
+    loadGallery(c, ownPhoto);
   }
+  // ---------------------------------------------------------------- photos: travellers, Google, Wikimedia
+  async function loadGallery(c, ownPhoto) {
+    const g = $("#gallery"); if (!g) return;
+    const key = c.id;
+    const shots = []; // { src, href, credit }
+    const add = (list) => { for (const p of list) if (p && p.src && !shots.some((x) => x.src === p.src)) shots.push(p); };
+    const render = (done) => {
+      if (!$("#gallery") || $("#gallery").dataset.key !== key) return;
+      const tiles = shots.map((p, i) => `<figure class="ph">${p.href ? `<a href="${esc(p.href)}" target="_blank" rel="noopener">` : ""}<img ${i ? 'loading="lazy"' : ""} src="${esc(p.src)}" alt="Photo of ${esc(c.name)}">${p.href ? "</a>" : ""}${p.credit ? `<figcaption>${esc(p.credit)}</figcaption>` : ""}${p.mine ? `<button class="ph-del" type="button" data-del="${p.id}" aria-label="Remove my photo">×</button>` : ""}</figure>`).join("");
+      const addTile = `<button type="button" class="ph-add" id="phAdd">${icon("photo")}<span>${shots.length ? "Add your photo" : "Be the first to add a photo"}</span></button>`;
+      g.innerHTML = tiles + (done ? addTile : `<div class="none"><span class="spinner"></span></div>`);
+      if (done) wirePhotoAdd(c);
+      g.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async (e) => {
+        e.preventDefault(); const p = shots.find((x) => String(x.id) === b.dataset.del);
+        try { await window.CFCloud.deletePhoto(p); shots.splice(shots.indexOf(p), 1); render(true); toast("Photo removed"); } catch { toast("Couldn't remove it right now"); }
+      }));
+      $("#photoNote").textContent = shots.some((p) => p.google) ? "Some photos from Google. Photographer shown on each." : "";
+    };
+    g.dataset.key = key; g.scrollLeft = 0;
+    if (c.photo) add([{ src: c.photo, credit: "Added by a traveller" }]);
+    if (ownPhoto) add([{ src: ownPhoto, href: ownPhoto, credit: "From the camp listing" }]);
+    render(false);
+    const jobs = [
+      soon(window.CFCloud?.enabled ? window.CFCloud.photosFor(key) : Promise.resolve([]), 8000, []).then((l) => l.map((p) => ({ src: p.url, credit: "Traveller photo", mine: p.mine, id: p.id }))),
+      soon(googlePhotos(c), 12000, []),
+      soon(photosNear(c), 10000, []).then((l) => l.map((p) => ({ src: p.thumb, href: p.page, credit: p.by ? `Nearby · ${p.by} · Wikimedia` : "Nearby · Wikimedia Commons" }))),
+    ];
+    // travellers first, then Google, then nearby free photos
+    const [mine, goog, wiki] = await Promise.all(jobs.map((j, i) => j.then((v) => { if (i === 0) { add(v); render(false); } return v; })));
+    add(mine); add(goog); add(wiki);
+    render(true);
+  }
+  function wirePhotoAdd(c) {
+    const btn = $("#phAdd"); if (!btn) return;
+    btn.addEventListener("click", () => {
+      if (!window.CFCloud?.enabled) return toast("Photo sharing is being switched on soon");
+      if (!window.CFCloud.signedIn()) { toast("Sign in (free) to add photos"); return goSignIn(); }
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+      inp.addEventListener("change", async () => {
+        const f = inp.files?.[0]; if (!f) return;
+        btn.disabled = true; btn.querySelector("span").textContent = "Uploading…";
+        try {
+          const data = await shrinkImage(f, 1600);
+          if (!data) throw new Error("bad image");
+          await window.CFCloud.addPhoto(c.id, data);
+          toast("Thanks! Your photo is up.");
+          await loadGallery(c, ""); const gg = $("#gallery"); if (gg) gg.scrollTo({ left: 0, behavior: "smooth" });
+        } catch { toast("Couldn't upload that photo. Try again with signal."); btn.disabled = false; btn.querySelector("span").textContent = "Add your photo"; }
+      });
+      inp.click();
+    });
+  }
+  function goSignIn() { closeDetail(); $("#tab-saved")?.click(); setTimeout(() => $("#acctEmail")?.focus(), 300); }
+
+  // Google Places photos (licensed; switched on by CFG.googleKey). Place IDs are kept; photo links are not.
+  const gIds = store.get("cf-gpid", {});
+  async function gfetch(url, { method = "GET", body, fieldMask } = {}) {
+    const headers = { "X-Goog-Api-Key": CFG.googleKey };
+    if (fieldMask) headers["X-Goog-FieldMask"] = fieldMask;
+    if (body) headers["Content-Type"] = "application/json";
+    if (nativeFetch) return JSON.parse(await nativeFetch(url, { method, body: body && JSON.stringify(body), contentType: body && "application/json", headers, timeout: 10000 }));
+    return fetchJSON(url, { method, headers, body: body && JSON.stringify(body) }, 10000);
+  }
+  const gCache = new Map();
+  async function googlePhotos(c) {
+    if (!CFG.googleKey) return [];
+    if (gCache.has(c.id)) return gCache.get(c.id);
+    let id = gIds[c.id];
+    if (id === undefined || (id === "" && Date.now() - (gIds[c.id + "@t"] || 0) > 30 * 864e5)) {
+      const d = 0.006;
+      const j = await gfetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST", fieldMask: "places.id",
+        body: { textQuery: c.named ? c.name : "campground", pageSize: 1, regionCode: "AU",
+          locationRestriction: { rectangle: { low: { latitude: c.lat - d, longitude: c.lon - d }, high: { latitude: c.lat + d, longitude: c.lon + d } } } },
+      });
+      id = j.places?.[0]?.id || "";
+      gIds[c.id] = id; if (!id) gIds[c.id + "@t"] = Date.now();
+      store.set("cf-gpid", gIds);
+    }
+    if (!id) { gCache.set(c.id, []); return []; }
+    const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: "photos" });
+    const photos = (det.photos || []).slice(0, CFG.googlePhotos);
+    const out = (await Promise.all(photos.map(async (p) => {
+      try {
+        const m = await gfetch(`https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=900&skipHttpRedirect=true`);
+        const who = (p.authorAttributions || [])[0];
+        return m.photoUri ? { src: m.photoUri, href: who?.uri || "", credit: `${who?.displayName || "Google user"} · Google`, google: true } : null;
+      } catch { return null; }
+    }))).filter(Boolean);
+    gCache.set(c.id, out);
+    return out;
+  }
+
+  // ---------------------------------------------------------------- ratings and reviews
+  const ratingCache = new Map();
+  function starsHtml(v) {
+    let h = "";
+    for (let i = 1; i <= 5; i++) h += `<i class="${v >= i - 0.25 ? "on" : v >= i - 0.75 ? "half" : ""}">★</i>`;
+    return h;
+  }
+  function starChip(id) {
+    const r = ratingCache.get(id);
+    return `<span class="cc-stars" data-rk="${esc(id)}">${r && r.n ? `<i>★</i>${r.avg.toFixed(1)} <small>(${r.n})</small> · ` : ""}</span>`;
+  }
+  // Fill star chips on any camp cards on screen, a batch at a time
+  let starTimer;
+  const pendingStars = new Set();
+  function hydrateStars() {
+    if (!window.CFCloud?.enabled) return;
+    document.querySelectorAll(".cc-stars[data-rk]:empty").forEach((el) => { if (!ratingCache.has(el.dataset.rk)) pendingStars.add(el.dataset.rk); });
+    clearTimeout(starTimer);
+    starTimer = setTimeout(async () => {
+      const keys = [...pendingStars]; pendingStars.clear();
+      if (keys.length) {
+        try {
+          const res = await window.CFCloud.ratingSummaries(keys);
+          keys.forEach((k) => ratingCache.set(k, res[k] || { avg: 0, n: 0 }));
+        } catch { return; }
+      }
+      document.querySelectorAll(".cc-stars[data-rk]").forEach((el) => { const r = ratingCache.get(el.dataset.rk); if (r && r.n && !el.innerHTML) el.innerHTML = `<i>★</i>${r.avg.toFixed(1)} <small>(${r.n})</small> · `; });
+    }, 250);
+  }
+  new MutationObserver(() => { if (document.querySelector(".cc-stars[data-rk]:empty")) hydrateStars(); }).observe(document.body, { childList: true, subtree: true });
+
+  const RIG_WORD = { tent: "Tent", rooftop: "Rooftop tent", camper: "Camper trailer", caravan: "Caravan", motorhome: "Motorhome" };
+  async function wireRating(c) {
+    const box = $("#rateBox"); if (!box) return;
+    if (!window.CFCloud?.enabled) {
+      $("#rateCount").textContent = "Ratings and reviews are coming soon.";
+      return;
+    }
+    let data;
+    try { data = await window.CFCloud.ratingsFor(c.id); } catch { $("#rateCount").textContent = "Ratings couldn't load just now."; return; }
+    if (!$("#rateBox") || $("#rateBox") !== box) return;
+    ratingCache.set(c.id, { avg: data.avg, n: data.n });
+    const mine = data.mine;
+    box.innerHTML = `
+      <div class="rate-sum"><span class="stars-lg">${starsHtml(data.avg)}</span>${data.n ? `<b>${data.avg.toFixed(1)}</b>` : ""}<span class="help">${data.n ? `${data.n} rating${data.n === 1 ? "" : "s"}` : "No ratings yet"}</span></div>
+      <div class="rate-mine">
+        <span>${mine ? "Your rating" : "Rate this camp"}</span>
+        <div class="star-in" role="radiogroup" aria-label="Your rating">${[1, 2, 3, 4, 5].map((i) => `<button type="button" role="radio" aria-checked="${mine?.stars === i}" aria-label="${i} star${i > 1 ? "s" : ""}" data-star="${i}" class="${mine && mine.stars >= i ? "on" : ""}">★</button>`).join("")}</div>
+      </div>
+      <div class="rate-form" id="rateForm" ${mine ? "" : "hidden"}>
+        <textarea id="rateText" maxlength="600" rows="3" placeholder="What's it like? Shade, flat sites, phone signal, the road in, how busy…">${esc(mine?.review || "")}</textarea>
+        <div class="rate-btns"><button class="cta" type="button" id="rateSave">${mine ? "Update review" : "Post rating"}</button>${mine ? `<button class="btn line" type="button" id="rateDel">Remove</button>` : ""}</div>
+      </div>
+      ${data.list.filter((r) => r.review).length ? `<ul class="reviews">${data.list.filter((r) => r.review).slice(0, 12).map((r) => `<li><div class="rv-head"><span class="stars-sm">${starsHtml(r.stars)}</span><span class="help">${esc(RIG_WORD[r.rig] ? RIG_WORD[r.rig] + " traveller" : "Traveller")}${r.mine ? " (you)" : ""} · ${new Date(r.updated_at).toLocaleDateString("en-AU", { month: "short", year: "numeric" })}</span></div><p>${esc(r.review)}</p></li>`).join("")}</ul>` : ""}`;
+    let picked = mine?.stars || 0;
+    box.querySelectorAll("[data-star]").forEach((b) => b.addEventListener("click", () => {
+      if (!window.CFCloud.signedIn()) { toast("Sign in (free) to rate camps"); return goSignIn(); }
+      picked = +b.dataset.star;
+      box.querySelectorAll("[data-star]").forEach((x) => { x.classList.toggle("on", +x.dataset.star <= picked); x.setAttribute("aria-checked", +x.dataset.star === picked); });
+      $("#rateForm").hidden = false;
+    }));
+    $("#rateSave")?.addEventListener("click", async (e) => {
+      if (!picked) return toast("Tap the stars first");
+      e.currentTarget.disabled = true;
+      try {
+        await window.CFCloud.rate(c.id, picked, $("#rateText").value.trim(), prefs.rig || "");
+        toast("Thanks for rating this camp");
+        ratingCache.delete(c.id);
+        wireRating(c);
+      } catch { e.currentTarget.disabled = false; toast("Couldn't save your rating. Try again with signal."); }
+    });
+    $("#rateDel")?.addEventListener("click", async () => {
+      try { await window.CFCloud.deleteRating(c.id); ratingCache.delete(c.id); wireRating(c); toast("Rating removed"); } catch { toast("Couldn't remove it right now"); }
+    });
+  }
+
   function sourceLine(c) {
     const src = SOURCES[c.source] || SOURCES.osm;
     const extra = c.also && SOURCES[c.also] ? ` and ${SOURCES[c.also].by}` : "";

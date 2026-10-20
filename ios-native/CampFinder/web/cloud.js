@@ -99,6 +99,58 @@
       return data || [];
     },
 
+    // ---- ratings
+    userId: () => session?.user?.id || "",
+    async rate(key, stars, review = "", rig = "", name = "") {
+      mustUser();
+      const { error } = await sb.from("ratings").upsert({ camp_key: key, stars, review: review || null, rig: rig || null, name: name || null, updated_at: new Date().toISOString() });
+      fail(error);
+    },
+    async deleteRating(key) { mustUser(); const { error } = await sb.from("ratings").delete().eq("camp_key", key).eq("user_id", session.user.id); fail(error); },
+    async ratingsFor(key) {
+      if (!sb) return { avg: 0, n: 0, list: [], mine: null };
+      const { data, error } = await sb.from("ratings").select("stars,review,rig,name,updated_at,user_id").eq("camp_key", key).order("updated_at", { ascending: false }).limit(50);
+      fail(error);
+      const list = data || [];
+      const n = list.length, avg = n ? list.reduce((a, r) => a + r.stars, 0) / n : 0;
+      const me = session?.user?.id;
+      return { avg, n, list: list.map((r) => ({ ...r, mine: r.user_id === me })), mine: list.find((r) => r.user_id === me) || null };
+    },
+    async ratingSummaries(keys) {
+      if (!sb || !keys.length) return {};
+      const out = {};
+      for (let i = 0; i < keys.length; i += 150) {
+        const { data, error } = await sb.from("rating_summary").select("camp_key,avg,n").in("camp_key", keys.slice(i, i + 150));
+        if (error) break;
+        for (const r of data || []) out[r.camp_key] = { avg: +r.avg, n: r.n };
+      }
+      return out;
+    },
+
+    // ---- traveller photos of any camp
+    async addPhoto(key, dataUrl) {
+      mustUser();
+      const path = `${session.user.id}/${key.replace(/[^\w-]/g, "_")}-${Date.now()}.jpg`;
+      const up = await sb.storage.from("camp-photos").upload(path, await dataUrlToBlob(dataUrl), { contentType: "image/jpeg" });
+      fail(up.error);
+      const url = sb.storage.from("camp-photos").getPublicUrl(path).data.publicUrl;
+      const { error } = await sb.from("camp_photos").insert({ camp_key: key, url, path }); fail(error);
+      return url;
+    },
+    async photosFor(key) {
+      if (!sb) return [];
+      const { data, error } = await sb.from("camp_photos").select("id,url,path,user_id,created_at").eq("camp_key", key).order("created_at", { ascending: false }).limit(30);
+      if (error) return [];
+      const me = session?.user?.id;
+      return (data || []).map((p) => ({ ...p, mine: p.user_id === me }));
+    },
+    async deletePhoto(p) {
+      mustUser();
+      await sb.storage.from("camp-photos").remove([p.path]).catch(() => {});
+      const { error } = await sb.from("camp_photos").delete().eq("id", p.id); fail(error);
+    },
+    async reportPhoto(id) { mustUser(); const { error } = await sb.rpc("report_photo", { target: id }); fail(error); },
+
     async saveTripNotes(key, data) {
       if (!sb || !session) return;
       const { error } = await sb.from("trip_notes").upsert({ key, data, updated_at: new Date().toISOString() }); fail(error);

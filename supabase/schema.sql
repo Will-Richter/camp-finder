@@ -106,3 +106,61 @@ create policy "camp photos upload own" on storage.objects for insert to authenti
 drop policy if exists "camp photos delete own" on storage.objects;
 create policy "camp photos delete own" on storage.objects for delete to authenticated
   using (bucket_id = 'camp-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Star ratings and short reviews, one per person per camp -------------------------
+create table if not exists public.ratings (
+  camp_key text not null check (char_length(camp_key) <= 80),
+  user_id uuid not null references auth.users on delete cascade default auth.uid(),
+  stars smallint not null check (stars between 1 and 5),
+  review text check (char_length(review) <= 600),
+  rig text check (char_length(rig) <= 20),
+  name text check (char_length(name) <= 40),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (camp_key, user_id)
+);
+create index if not exists ratings_camp on public.ratings (camp_key, updated_at desc);
+alter table public.ratings enable row level security;
+drop policy if exists "ratings readable" on public.ratings;
+create policy "ratings readable" on public.ratings for select using (true);
+drop policy if exists "ratings write own" on public.ratings;
+create policy "ratings write own" on public.ratings for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Average stars per camp (used on map cards and lists)
+create or replace view public.rating_summary with (security_invoker = true) as
+  select camp_key, round(avg(stars)::numeric, 1) as avg, count(*)::int as n from public.ratings group by camp_key;
+grant select on public.rating_summary to anon, authenticated;
+
+-- Traveller photos of any camp ---------------------------------------------------
+create table if not exists public.camp_photos (
+  id bigint generated always as identity primary key,
+  camp_key text not null check (char_length(camp_key) <= 80),
+  user_id uuid not null references auth.users on delete cascade default auth.uid(),
+  url text not null check (char_length(url) <= 400),
+  path text not null check (char_length(path) <= 200),
+  reports int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists camp_photos_camp on public.camp_photos (camp_key, created_at desc);
+alter table public.camp_photos enable row level security;
+drop policy if exists "photos readable" on public.camp_photos;
+create policy "photos readable" on public.camp_photos for select using (reports < 3 or user_id = auth.uid());
+drop policy if exists "photos insert own" on public.camp_photos;
+create policy "photos insert own" on public.camp_photos for insert to authenticated with check (user_id = auth.uid() and reports = 0);
+drop policy if exists "photos delete own" on public.camp_photos;
+create policy "photos delete own" on public.camp_photos for delete to authenticated using (user_id = auth.uid());
+
+create table if not exists public.photo_reports (
+  photo_id bigint references public.camp_photos on delete cascade,
+  user_id uuid references auth.users on delete cascade default auth.uid(),
+  primary key (photo_id, user_id)
+);
+alter table public.photo_reports enable row level security;
+create or replace function public.report_photo(target bigint) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'sign in first'; end if;
+  insert into photo_reports (photo_id, user_id) values (target, auth.uid()) on conflict do nothing;
+  update camp_photos set reports = (select count(*) from photo_reports where photo_id = target) where id = target;
+end $$;
+grant execute on function public.report_photo(bigint) to authenticated;

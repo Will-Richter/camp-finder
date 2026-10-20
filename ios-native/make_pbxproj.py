@@ -41,6 +41,8 @@ tgt = f"""				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				INFOPLIST_KEY_CFBundleDisplayName = "Camp Finder";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Camp Finder uses the camera so you can share photos of camps with other travellers.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Camp Finder lets you choose photos of camps to share with other travellers.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Camp Finder uses your location to show camps near you and to give directions from where you are.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

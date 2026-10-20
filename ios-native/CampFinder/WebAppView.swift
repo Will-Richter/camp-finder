@@ -96,7 +96,7 @@ struct WebAppView: UIViewRepresentable {
             "spatial.infrastructure.gov.au", "opendata.maps.vic.gov.au",
             "catalogue.data.infrastructure.gov.au", "spatial-gis.information.qld.gov.au",
             "overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee",
-            "will-richter.github.io", "raw.githubusercontent.com",
+            "will-richter.github.io", "raw.githubusercontent.com", "places.googleapis.com",
         ]
         private func handleFetch(_ body: Any) {
             guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
@@ -107,6 +107,10 @@ struct WebAppView: UIViewRepresentable {
             if let method = dict["method"] as? String { req.httpMethod = method }
             if let b = dict["body"] as? String { req.httpBody = b.data(using: .utf8) }
             if let ct = dict["contentType"] as? String { req.setValue(ct, forHTTPHeaderField: "Content-Type") }
+            if let hs = dict["headers"] as? [String: String] {
+                for (k, v) in hs where k.hasPrefix("X-Goog-") { req.setValue(v, forHTTPHeaderField: k) }
+            }
+            if host == "places.googleapis.com" { req.setValue(Bundle.main.bundleIdentifier, forHTTPHeaderField: "X-Ios-Bundle-Identifier") }
             URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
                 let ok = error == nil && ((response as? HTTPURLResponse)?.statusCode ?? 0) < 400 && data != nil
                 let text = ok ? String(decoding: data!, as: UTF8.self) : (error?.localizedDescription ?? "HTTP error")
