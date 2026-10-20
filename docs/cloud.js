@@ -4,8 +4,8 @@
  */
 (() => {
   "use strict";
-  const SUPABASE_URL = "";      // e.g. "https://abcd1234.supabase.co"
-  const SUPABASE_ANON_KEY = ""; // the public "anon" key (safe to ship in the app; security comes from row level security)
+  const SUPABASE_URL = "https://cesprkqwzmcioeydxsms.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_VIMVz7yyvc5-GR_v1aQmwg_oBtMIju0"; // the public "anon" key (safe to ship in the app; security comes from row level security)
 
   const enabled = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase?.createClient);
   const sb = enabled ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
