@@ -50,11 +50,20 @@ struct WebAppView: UIViewRepresentable {
         weak var webView: WKWebView?
         private let manager = CLLocationManager()
         private var pending: [Int] = []
+        private var watchers = Set<Int>()
+        private func startWatching() {
+            switch manager.authorizationStatus {
+            case .notDetermined: manager.requestWhenInUseAuthorization()
+            case .authorizedWhenInUse, .authorizedAlways: manager.startUpdatingLocation()
+            default: break
+            }
+        }
 
         override init() {
             super.init()
             manager.delegate = self
-            manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            manager.desiredAccuracy = kCLLocationAccuracyBest
+            manager.distanceFilter = 8
         }
 
         /// Sends page errors and console messages to the Xcode console.
@@ -71,16 +80,17 @@ struct WebAppView: UIViewRepresentable {
         static let geolocationShim = """
         (function(){
           var cbs = {}, next = 1;
-          window.__cfLocation = function(id, ok, lat, lon, acc, msg){
-            var c = cbs[id]; if (!c) return; delete cbs[id];
-            if (ok) c.s({coords:{latitude:lat, longitude:lon, accuracy:acc}, timestamp:Date.now()});
+          window.__cfLocation = function(id, ok, lat, lon, acc, msg, heading, speed){
+            var c = cbs[id]; if (!c) return; if (!c.w) delete cbs[id];
+            if (ok) c.s({coords:{latitude:lat, longitude:lon, accuracy:acc, heading:(heading >= 0 ? heading : null), speed:(speed >= 0 ? speed : null)}, timestamp:Date.now()});
             else if (c.e) c.e({code:1, message:msg});
           };
           var geo = {
             getCurrentPosition: function(s, e){ var id = next++; cbs[id] = {s:s, e:e};
               window.webkit.messageHandlers.location.postMessage(id); },
-            watchPosition: function(s, e){ geo.getCurrentPosition(s, e); return 0; },
-            clearWatch: function(){}
+            watchPosition: function(s, e){ var id = next++; cbs[id] = {s:s, e:e, w:true};
+              window.webkit.messageHandlers.location.postMessage({watch:id}); return id; },
+            clearWatch: function(id){ delete cbs[id]; window.webkit.messageHandlers.location.postMessage({stop:id}); }
           };
           try { Object.defineProperty(navigator, 'geolocation', {value: geo, configurable: true}); } catch (err) {}
         })();
@@ -182,6 +192,11 @@ struct WebAppView: UIViewRepresentable {
             case "route": handleRoute(message.body)
             case "log": cfLog("web \(message.body)")
             case "location":
+                if let d = message.body as? [String: Int] {
+                    if let w = d["watch"] { watchers.insert(w); startWatching() }
+                    if let st = d["stop"] { watchers.remove(st); if watchers.isEmpty { manager.stopUpdatingLocation() } }
+                    return
+                }
                 guard let id = message.body as? Int else { return }
                 pending.append(id)
                 switch manager.authorizationStatus {
@@ -195,6 +210,7 @@ struct WebAppView: UIViewRepresentable {
 
         // MARK: location
         func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+            if !watchers.isEmpty, [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) { manager.startUpdatingLocation() }
             guard !pending.isEmpty else { return }
             switch manager.authorizationStatus {
             case .authorizedWhenInUse, .authorizedAlways: manager.requestLocation()
@@ -205,8 +221,9 @@ struct WebAppView: UIViewRepresentable {
         func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
             guard let loc = locations.last else { return }
             let ids = pending; pending.removeAll()
-            for id in ids {
-                webView?.evaluateJavaScript("window.__cfLocation(\(id), true, \(loc.coordinate.latitude), \(loc.coordinate.longitude), \(loc.horizontalAccuracy))")
+            let args = "\(loc.coordinate.latitude), \(loc.coordinate.longitude), \(loc.horizontalAccuracy), '', \(loc.course), \(loc.speed)"
+            for id in Set(ids).union(watchers) {
+                webView?.evaluateJavaScript("window.__cfLocation(\(id), true, \(args))")
             }
         }
         func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { finishAll(error: "Couldn't get your location") }

@@ -25,6 +25,7 @@
     campDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/camps-au.json",
     // Google Places photos: paste an iOS-restricted Places API key here to switch them on (see GOOGLE_PHOTOS.md)
     googleKey: "",
+    googleReviews: true, // also show the Google star rating and up to 5 Google reviews (needs googleKey)
     googlePhotos: 4, // photos per camp (each one shown is billed by Google after the free monthly allowance)
     exploreMinZoom: 9,
     boatRampKm: 5,
@@ -867,21 +868,55 @@
   }
 
   let me = null;
-  let meDot = null;
+  let following = false;
   function locate(then) {
     if (!navigator.geolocation) { toast("Location isn't available on this device"); return; }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        me = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        if (meDot) map.removeLayer(meDot);
-        meDot = L.circleMarker([me.lat, me.lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#2F6FD6", fillOpacity: 1 }).addTo(map);
-        then(me);
-      },
+      (pos) => { onPosition(pos); store.set("cf-loc-ok", true); startTracking(); then(me); },
       () => toast("Turn on location for Camp Finder in your phone's settings"),
       { enableHighAccuracy: true, timeout: 12000 }
     );
   }
-  $("#locateBtn").addEventListener("click", () => locate((p) => map.setView([p.lat, p.lon], 11)));
+  $("#locateBtn").addEventListener("click", () => {
+    if (me && following) { setFollow(false); return; }
+    locate((p) => { map.setView([p.lat, p.lon], Math.max(map.getZoom(), 13)); setFollow(true); });
+  });
+  function setFollow(on) {
+    following = on;
+    $("#locateBtn").classList.toggle("is-follow", on);
+    $("#locateBtn").setAttribute("aria-label", on ? "Stop following my location" : "Show my location");
+    if (on && me) map.panTo([me.lat, me.lon]);
+  }
+  map.on("dragstart", () => { if (following) setFollow(false); });
+
+  // Your position is shown as a little car that turns with the road
+  const CAR_SVG = `<svg viewBox="-20 -20 40 40" aria-hidden="true"><rect x="-9" y="-15" width="18" height="30" rx="6" fill="#F5C518" stroke="#1A1608" stroke-width="2.4"/><rect x="-6.5" y="-9" width="13" height="7" rx="2" fill="#2B2F2D"/><rect x="-6.5" y="5" width="13" height="5" rx="1.5" fill="#2B2F2D"/><rect x="-10.5" y="-11" width="3" height="6" rx="1.2" fill="#1A1608"/><rect x="7.5" y="-11" width="3" height="6" rx="1.2" fill="#1A1608"/><rect x="-10.5" y="5" width="3" height="6" rx="1.2" fill="#1A1608"/><rect x="7.5" y="5" width="3" height="6" rx="1.2" fill="#1A1608"/><circle cx="-5" cy="-14" r="1.6" fill="#FFF7D1"/><circle cx="5" cy="-14" r="1.6" fill="#FFF7D1"/></svg>`;
+  let meMarker = null, lastPos = null, heading = 0, tracking = null;
+  function bearing(a, b) {
+    const y = Math.sin(toRad(b.lon - a.lon)) * Math.cos(toRad(b.lat));
+    const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lon - a.lon));
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+  function onPosition(pos) {
+    const c = pos.coords;
+    me = { lat: c.latitude, lon: c.longitude };
+    if (c.heading != null && c.heading >= 0 && (c.speed == null || c.speed > 1)) heading = c.heading;
+    else if (lastPos && hav([lastPos.lat, lastPos.lon], [me.lat, me.lon]) > 15) heading = bearing(lastPos, me);
+    if (!lastPos || hav([lastPos.lat, lastPos.lon], [me.lat, me.lon]) > 15) lastPos = me;
+    const html = `<div class="me-car" style="--rot:${Math.round(heading)}deg"><span class="halo"></span>${CAR_SVG}</div>`;
+    if (!meMarker) {
+      meMarker = L.marker([me.lat, me.lon], { icon: L.divIcon({ className: "me-icon", html, iconSize: [44, 44], iconAnchor: [22, 22] }), keyboard: false, zIndexOffset: 2000, interactive: false }).addTo(map);
+    } else {
+      meMarker.setLatLng?.([me.lat, me.lon]);
+      const el = meMarker.getElement?.()?.querySelector(".me-car");
+      if (el) el.style.setProperty("--rot", `${Math.round(heading)}deg`);
+    }
+    if (following) map.panTo([me.lat, me.lon], { animate: true, duration: .8 });
+  }
+  function startTracking() {
+    if (tracking != null || !navigator.geolocation?.watchPosition) return;
+    tracking = navigator.geolocation.watchPosition(onPosition, () => {}, { enableHighAccuracy: true, maximumAge: 5000 });
+  }
 
   // ---------------------------------------------------------------- sheet & tabs
   const sheet = $("#sheet");
@@ -923,6 +958,8 @@
     else cluster.clearLayers();
     if (v === "plan" && plan) drawPlan();
     if (v === "saved") renderSaved();
+    if (v === "settings") renderSettings();
+    moveInk();
   }
 
   // ---------------------------------------------------------------- form controls
@@ -966,7 +1003,21 @@
     e.preventDefault();
     const msg = $("#planMsg"), btn = $("#findBtn");
     msg.className = "msg"; btn.disabled = true;
-    const say = (t) => (btn.innerHTML = `<span class="spinner"></span>${esc(t)}`);
+    const pl = $("#planning"), steps = $$("#plSteps li");
+    let stepNow = -1;
+    const step = (n, frac) => {
+      steps.forEach((li, k) => { li.classList.toggle("done", k < n); li.classList.toggle("now", k === n); });
+      const p = Math.min(1, (n + (frac || 0)) / steps.length);
+      $("#plFill").style.width = `${p * 100}%`; pl.querySelector(".pl-car").style.setProperty("--p", p);
+      stepNow = n;
+    };
+    const say = (t) => {
+      btn.innerHTML = `<span class="spinner"></span>${esc(t)}`;
+      const m = /(\d+)%/.exec(t);
+      if (/Finding/.test(t)) step(0); else if (/route|drive/i.test(t) && !/camp/i.test(t)) step(1);
+      else if (/camp/i.test(t) && stepNow <= 2) step(2, m ? +m[1] / 100 : 0);
+    };
+    $("#planForm").hidden = true; pl.hidden = false; step(0); $("#sheetScroll").scrollTop = 0;
     try {
       savePrefs();
       const nights = +nightsIn.value;
@@ -977,11 +1028,15 @@
       const route = await osrm([from, to]);
       say("Looking for camps");
       const data = await campsAlong(route, opts.detour, (t) => say(t.replace("Searching for camps along the route… ", "Looking for camps ")));
+      step(3);
       plan = makePlan({ from, to, route, nights, opts, data });
       plan.offline = data.offline;
       msg.textContent = "";
+      step(4); await sleep(animOn() ? 450 : 0);
+      pl.hidden = true;
       showPlan();
     } catch (err) {
+      pl.hidden = true; $("#planForm").hidden = false;
       msg.className = "msg is-error";
       msg.textContent = friendly(err);
     } finally { btn.disabled = false; btn.textContent = "Find camps"; }
@@ -1003,7 +1058,7 @@
     const stops = [];
     stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
     p.picks.forEach((pk, i) => {
-      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}</p>`;
+      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}</p>`;
       if (!pk.camp) {
         stops.push(`<li class="stop"><div class="plate" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">${leg}<p class="note">${esc(pk.warn)}</p></div></li>`);
         return;
@@ -1022,8 +1077,9 @@
       </div></li>`);
     });
     const lastAlong = p.picks.at(-1)?.camp?.along ?? 0;
-    stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
+    stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
     $("#nightList").innerHTML = stops.join("");
+    renderBudget();
     renderTripExtras();
     const along = [...p.camps].sort((a, b) => a.along - b.along);
     $("#alongCount").textContent = along.length;
@@ -1131,7 +1187,7 @@
       $("#detailBody").innerHTML = `<div class="d-pad" style="padding-top:22px">
         <h2 class="d-title">To ${esc(camp.name)}</h2>
         <p class="d-kind">From ${esc(fromName || "start")}</p>
-        <div class="dir-sum"><div><b>${km(r.distance)}</b><span>distance</span></div><div><b>${hrs(r.duration)}</b><span>driving</span></div></div>
+        <div class="dir-sum"><div><b>${km(r.distance)}</b><span>distance</span></div><div><b>${hrs(r.duration)}</b><span>driving</span></div>${fuelFor(r.distance) ? `<div><b>${money(fuelFor(r.distance).cost)}</b><span>fuel</span></div>` : ""}</div>
         <div class="d-actions">
           <a class="cta" href="${navUrl(camp, "apple")}" target="_blank" rel="noopener">${icon("nav")}Apple Maps</a>
           <a class="btn" href="${navUrl(camp, "google")}" target="_blank" rel="noopener">Google Maps</a>
@@ -1308,7 +1364,7 @@
     if (nativeFetch) return JSON.parse(await nativeFetch(url, { method, body: body && JSON.stringify(body), contentType: body && "application/json", headers, timeout: 10000 }));
     return fetchJSON(url, { method, headers, body: body && JSON.stringify(body) }, 10000);
   }
-  const gCache = new Map();
+  const gCache = new Map(), gPlace = new Map();
   async function googlePhotos(c) {
     if (!CFG.googleKey) return [];
     if (gCache.has(c.id)) return gCache.get(c.id);
@@ -1325,7 +1381,8 @@
       store.set("cf-gpid", gIds);
     }
     if (!id) { gCache.set(c.id, []); return []; }
-    const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: "photos" });
+    const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos" });
+    if (det.rating) { gPlace.set(c.id, { rating: det.rating, count: det.userRatingCount || 0, reviews: det.reviews || [], uri: det.googleMapsUri || "" }); renderGoogleRating(c, gPlace.get(c.id)); }
     const photos = (det.photos || []).slice(0, CFG.googlePhotos);
     const out = (await Promise.all(photos.map(async (p) => {
       try {
@@ -1374,6 +1431,7 @@
     const box = $("#rateBox"); if (!box) return;
     if (!window.CFCloud?.enabled) {
       $("#rateCount").textContent = "Ratings and reviews are coming soon.";
+      renderGoogleRating(c, gPlace.get(c.id));
       return;
     }
     let data;
@@ -1409,6 +1467,7 @@
         wireRating(c);
       } catch { e.currentTarget.disabled = false; toast("Couldn't save your rating. Try again with signal."); }
     });
+    renderGoogleRating(c, gPlace.get(c.id));
     $("#rateDel")?.addEventListener("click", async () => {
       try { await window.CFCloud.deleteRating(c.id); ratingCache.delete(c.id); wireRating(c); toast("Rating removed"); } catch { toast("Couldn't remove it right now"); }
     });
@@ -2027,5 +2086,196 @@
   }
   showTryExample();
 
-  window.__cf = { campDB, parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
+  // ================================================================ settings, budget, opening animation, welcome
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const VEH = window.CF_VEHICLES || { Other: [["Custom", "diesel", 10, 80]] };
+  const DEFAULT_PRICE = { diesel: 2.05, petrol: 1.95, lpg: 1.05 };
+  const settings = Object.assign({
+    make: "", model: "", fuel: "diesel", use: 10.5, tank: 80, prices: { ...DEFAULT_PRICE }, tow: 30,
+    campUnknown: 35, daily: 0, maxKm: 500, anim: true, follow: false, sat: false,
+  }, store.get("cf-settings", {}));
+  const saveSettings = () => store.set("cf-settings", settings);
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const animOn = () => settings.anim && !reducedMotion;
+  const applyMotion = () => document.documentElement.classList.toggle("motion", animOn());
+  applyMotion();
+  const money = (v) => !v ? "$0" : "$" + (v >= 100 ? Math.round(v).toLocaleString("en-AU") : v.toFixed(v >= 10 ? 0 : 2));
+  const towing = (rig) => rig === "caravan" || rig === "camper";
+  function fuelFor(meters, rig = plan?.opts?.rig || prefs.rig) {
+    if (!settings.use) return null;
+    const k = meters / 1000;
+    const litres = k * settings.use / 100 * (towing(rig) ? 1 + settings.tow / 100 : 1);
+    return { litres, cost: litres * (settings.prices[settings.fuel] || 0) };
+  }
+  const rangeKm = (rig = plan?.opts?.rig || prefs.rig) => settings.tank && settings.use ? settings.tank / (settings.use * (towing(rig) ? 1 + settings.tow / 100 : 1)) * 100 * 0.9 : Infinity;
+  function legExtra(meters) {
+    const f = fuelFor(meters);
+    let out = f ? ` <span class="leg-cost">· ~${money(f.cost)} fuel</span>` : "";
+    const k = meters / 1000;
+    if (k > rangeKm()) out += ` <span class="leg-warn">· plan a fuel stop</span>`;
+    else if (settings.maxKm && k > settings.maxKm) out += ` <span class="leg-warn">· long day</span>`;
+    return out;
+  }
+  function campFee(c) {
+    if (!c || c.cost === "free") return { v: 0, known: true };
+    if (c.cost === "unknown") return { v: 0, known: false };
+    const m = /(\d+(?:\.\d+)?)/.exec(c.charge || "");
+    if (!m) return { v: settings.campUnknown, known: false };
+    let v = +m[1];
+    if (/person|pp\b|adult/i.test(c.charge)) v *= 2;
+    return { v, known: true };
+  }
+  function countUp(el, to, fmt) {
+    if (!el) return;
+    if (!animOn()) { el.textContent = fmt(to); return; }
+    const t0 = performance.now(), dur = 900;
+    const tick = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(to * e); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+  function renderBudget() {
+    const box = $("#tripBudget"); if (!box || !plan) return;
+    const f = fuelFor(plan.route.distance);
+    if (!f) { box.innerHTML = ""; return; }
+    let fees = 0, unknown = 0, paidN = 0;
+    plan.picks.forEach((pk) => { const fee = campFee(pk.camp); fees += fee.v; if (!fee.known) unknown++; if (fee.v > 0) paidN++; });
+    const days = plan.nights + 1, daily = (settings.daily || 0) * days;
+    const total = f.cost + fees + daily;
+    const fills = settings.tank ? f.litres / settings.tank : 0;
+    const vname = settings.model ? `${settings.make === "Other" ? "" : settings.make + " "}${settings.model}` : "your vehicle";
+    box.innerHTML = `<div class="budget">
+      <div class="bg-top"><span>Trip cost estimate</span><b class="bg-total" id="bgTotal">$0</b></div>
+      <div class="bg-rows">
+        <div><b id="bgFuel">$0</b><small>Fuel · ${Math.round(f.litres)} L</small></div>
+        <div><b>${money(fees)}</b><small>Camps · ${paidN} paid</small></div>
+        <div><b>${daily ? money(daily) : "—"}</b><small>${daily ? `Spending · ${days} days` : "Spending"}</small></div>
+      </div>
+      <p class="bg-note">${esc(vname)}, ${settings.use} L/100 km${towing(plan.opts.rig) && settings.tow ? ` +${settings.tow}% towing` : ""}, ${money(settings.prices[settings.fuel])}/L ${settings.fuel}${fills >= 0.5 ? ` · about ${fills < 1.5 ? "1 tank" : Math.round(fills) + " tanks"}` : ""}${unknown ? ` · ${unknown} camp price${unknown > 1 ? "s" : ""} not listed` : ""}. <button type="button" id="bgEdit">Change</button></p>
+    </div>`;
+    countUp($("#bgTotal"), total, money);
+    countUp($("#bgFuel"), f.cost, money);
+    $("#bgEdit").addEventListener("click", () => setView("settings"));
+  }
+
+  // ---- settings screen
+  function fillMakes(sel, make) {
+    sel.innerHTML = `<option value="">Choose make</option>` + Object.keys(VEH).map((m) => `<option ${m === make ? "selected" : ""}>${esc(m)}</option>`).join("");
+  }
+  function fillModels(sel, make, model) {
+    const list = VEH[make] || [];
+    sel.innerHTML = list.length ? list.map(([n]) => `<option ${n === model ? "selected" : ""}>${esc(n)}</option>`).join("") : `<option value="">Model</option>`;
+    sel.disabled = !list.length;
+  }
+  function pickVehicle(make, model) {
+    const v = (VEH[make] || []).find((x) => x[0] === model) || (VEH[make] || [])[0];
+    settings.make = make; settings.model = v ? v[0] : "";
+    if (v) { settings.fuel = v[1]; settings.use = v[2]; settings.tank = v[3]; }
+    saveSettings();
+  }
+  function renderSettings() {
+    fillMakes($("#stMake"), settings.make); fillModels($("#stModel"), settings.make, settings.model);
+    $("#stFuel").value = settings.fuel; $("#stUse").value = settings.use; $("#stTank").value = settings.tank;
+    $("#stPrice").value = settings.prices[settings.fuel]; $("#stTow").value = settings.tow; $("#stTowOut").textContent = `+${settings.tow}%`;
+    $("#stCamp").value = settings.campUnknown; $("#stDaily").value = settings.daily || ""; $("#stMaxKm").value = settings.maxKm;
+    $("#stAnim").checked = settings.anim; $("#stFollow").checked = settings.follow; $("#stSat").checked = settings.sat;
+    const C = window.CFCloud;
+    $("#stAccount").textContent = !C?.enabled ? "Accounts aren't switched on in this version." : C.signedIn() ? `Signed in as ${C.email()}.` : "Not signed in. Sign in to rate camps, post photos and keep your trips on every device.";
+    const info = campDB.info();
+    $("#stData").textContent = info ? `Camp database: ${info.count.toLocaleString("en-AU")} camps, updated ${new Date(info.built).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}. Updates download automatically each week.` : "";
+    renderVehicleSummary();
+  }
+  function renderVehicleSummary() {
+    const per100 = settings.use * (settings.prices[settings.fuel] || 0);
+    const rng = rangeKm("tent"), rngTow = rangeKm("caravan");
+    $("#stSummary").innerHTML = `<div><b>${money(per100)}</b><span>per 100 km</span></div><div><b>${isFinite(rng) ? Math.round(rng).toLocaleString("en-AU") + " km" : "—"}</b><span>range</span></div><div><b>${isFinite(rngTow) ? Math.round(rngTow).toLocaleString("en-AU") + " km" : "—"}</b><span>range towing</span></div>`;
+  }
+  (() => {
+    const num = (id, key, min, max) => $(id).addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (isFinite(v)) settings[key] = Math.max(min, Math.min(max, v)); saveSettings(); renderVehicleSummary(); });
+    $("#stMake").addEventListener("change", (e) => { pickVehicle(e.target.value, ""); renderSettings(); toast(settings.model ? `${settings.model}: ${settings.use} L/100 km` : "Vehicle cleared"); });
+    $("#stModel").addEventListener("change", (e) => { pickVehicle(settings.make, e.target.value); renderSettings(); });
+    $("#stFuel").addEventListener("change", (e) => { settings.fuel = e.target.value; saveSettings(); renderSettings(); });
+    num("#stUse", "use", 3, 40); num("#stTank", "tank", 20, 400);
+    num("#stCamp", "campUnknown", 0, 300); num("#stDaily", "daily", 0, 2000); num("#stMaxKm", "maxKm", 100, 1500);
+    $("#stPrice").addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (isFinite(v) && v > 0) settings.prices[settings.fuel] = Math.min(5, v); saveSettings(); renderVehicleSummary(); });
+    $("#stTow").addEventListener("input", (e) => { settings.tow = +e.target.value; $("#stTowOut").textContent = `+${settings.tow}%`; saveSettings(); renderVehicleSummary(); });
+    $("#stAnim").addEventListener("change", (e) => { settings.anim = e.target.checked; saveSettings(); applyMotion(); });
+    $("#stFollow").addEventListener("change", (e) => { settings.follow = e.target.checked; saveSettings(); if (settings.follow) locate(() => setFollow(true)); else setFollow(false); });
+    $("#stSat").addEventListener("change", (e) => { settings.sat = e.target.checked; saveSettings(); if (settings.sat !== onSat) $("#layerBtn").click(); });
+    $("#stWelcome").addEventListener("click", () => showWelcome());
+    $("#stGoAccount").addEventListener("click", () => setView("saved"));
+  })();
+  if (settings.sat && !onSat) $("#layerBtn").click();
+  if (store.get("cf-loc-ok", false)) { startTracking(); if (settings.follow) setFollow(true); }
+
+  // ---- sliding tab indicator
+  function moveInk() {
+    const on = $(".tabbtn.is-on"), ink = $("#tabInk"); if (!on || !ink) return;
+    const r = on.getBoundingClientRect(), pr = on.parentElement.getBoundingClientRect();
+    ink.style.setProperty("--x", `${r.left - pr.left + r.width / 2 - 17}px`);
+  }
+  window.addEventListener("resize", moveInk); setTimeout(moveInk, 50);
+
+  // ---- opening animation, then the welcome on first launch
+  (async () => {
+    const sp = $("#splash"); if (!sp) return;
+    const started = performance.now();
+    let skipped = false;
+    sp.addEventListener("click", () => (skipped = true), { once: true });
+    const minShow = animOn() ? 2500 : 400;
+    while (!skipped && performance.now() - started < minShow) await sleep(60);
+    await Promise.race([campDB.ready(), sleep(1500)]);
+    sp.classList.add("out");
+    await sleep(animOn() ? 760 : 0);
+    sp.classList.add("gone");
+    moveInk();
+    if (!store.get("cf-welcomed", false)) showWelcome();
+  })();
+
+  function showWelcome() {
+    const w = $("#welcome"), track = $("#wlTrack"), slides = $$(".wl-slide", w), dots = $$("#wlDots i");
+    w.classList.remove("out"); w.hidden = false; track.scrollLeft = 0;
+    $("#wlRigs").innerHTML = RIGS.map((r) => `<label><input type="radio" name="wlRig" value="${r.id}" ${r.id === prefs.rig ? "checked" : ""}><span>${icon(r.id)}${r.label.replace("&shy;", "")}</span></label>`).join("");
+    $("#wlRigs").onchange = (e) => {
+      prefs.rig = e.target.value; store.set("cf-prefs", prefs);
+      const f = $(`input[name=rig][value="${prefs.rig}"]`); if (f) f.checked = true;
+      $(".ar-rig use").setAttribute("href", `#i-${prefs.rig}`);
+    };
+    $(".ar-rig use").setAttribute("href", `#i-${prefs.rig}`);
+    fillMakes($("#wlMake"), settings.make); fillModels($("#wlModel"), settings.make, settings.model);
+    $("#wlMake").onchange = (e) => { pickVehicle(e.target.value, ""); fillModels($("#wlModel"), settings.make, settings.model); };
+    $("#wlModel").onchange = (e) => pickVehicle(settings.make, e.target.value);
+    const at = () => Math.round(track.scrollLeft / track.clientWidth);
+    const mark = () => {
+      const i = at();
+      dots.forEach((d, k) => d.classList.toggle("on", k === i));
+      $("#wlNext").textContent = i === slides.length - 1 ? "Let's go" : "Next";
+      const s = slides[i];
+      if (s && !s.classList.contains("seen")) {
+        s.classList.add("seen");
+        $$("[data-count]", s).forEach((el) => countUp(el, +el.dataset.count, (v) => Math.round(v).toLocaleString("en-AU")));
+      }
+    };
+    slides.forEach((s) => s.classList.remove("seen"));
+    track.onscroll = () => { clearTimeout(track._t); track._t = setTimeout(mark, 60); };
+    setTimeout(mark, 30);
+    const done = async () => {
+      store.set("cf-welcomed", true);
+      w.classList.add("out"); await sleep(animOn() ? 560 : 0); w.hidden = true;
+      if (plan) showPlan();
+    };
+    $("#wlNext").onclick = () => { const i = at(); if (i >= slides.length - 1) return done(); track.scrollTo({ left: (i + 1) * track.clientWidth, behavior: animOn() ? "smooth" : "auto" }); };
+    $("#wlSkip").onclick = done;
+  }
+
+  // ---- Google rating and reviews (shown with photos when the Google key is switched on)
+  function renderGoogleRating(c, place) {
+    const box = $("#rateBox"); if (!box || !place || !place.rating || $("#gRate")) return;
+    const revs = (place.reviews || []).filter((r) => r.text?.text).slice(0, 5);
+    box.insertAdjacentHTML("beforeend", `<div class="g-rate" id="gRate">
+      <div class="rate-sum"><span class="stars-sm">${starsHtml(place.rating)}</span><b>${place.rating.toFixed(1)}</b><span class="help">on Google · ${place.count.toLocaleString("en-AU")} review${place.count === 1 ? "" : "s"}</span></div>
+      ${revs.length ? `<ul class="reviews">${revs.map((r) => `<li><div class="rv-head"><span class="stars-sm">${starsHtml(r.rating || 0)}</span><b>${esc(r.authorAttribution?.displayName || "Google user")}</b><span class="help">${esc(r.relativePublishTimeDescription || "")}</span></div><p>${esc(r.text.text.length > 420 ? r.text.text.slice(0, 420) + "…" : r.text.text)}</p></li>`).join("")}</ul>` : ""}
+      <p class="g-attr">Reviews from Google${place.uri ? ` · <a href="${esc(place.uri)}" target="_blank" rel="noopener">See all on Google Maps</a>` : ""}</p>
+    </div>`);
+  }
+
+  window.__cf = { campDB, settings, fuelFor, campFee, parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
 })();
