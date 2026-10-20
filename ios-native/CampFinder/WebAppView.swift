@@ -24,7 +24,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "journey"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -108,6 +108,7 @@ struct WebAppView: UIViewRepresentable {
             "catalogue.data.infrastructure.gov.au", "spatial-gis.information.qld.gov.au",
             "overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee",
             "will-richter.github.io", "raw.githubusercontent.com", "places.googleapis.com",
+            "api.open-meteo.com", "www.rfs.nsw.gov.au", "emergency.vic.gov.au", "publiccontent-gis-psba-qld-gov-au.s3.amazonaws.com",
         ]
         private func handleFetch(_ body: Any) {
             guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
@@ -190,6 +191,10 @@ struct WebAppView: UIViewRepresentable {
             case "nativeFetch": handleFetch(message.body)
             case "places": handlePlaces(message.body)
             case "route": handleRoute(message.body)
+            case "journey":
+                guard let d = message.body as? [String: Any] else { return }
+                let result = JourneyRecorder.shared.handle(d) ?? NSNull()
+                if let id = d["reply"] as? Int { reply("__cfJourneyDone", id, ok: true, result) }
             case "log": cfLog("web \(message.body)")
             case "location":
                 if let d = message.body as? [String: Int] {

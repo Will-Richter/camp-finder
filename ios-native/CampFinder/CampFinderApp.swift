@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct CampFinderApp: App {
+    init() { _ = JourneyRecorder.shared } // resumes a journey that was running
+
     var body: some Scene {
         WindowGroup {
             WebAppView()

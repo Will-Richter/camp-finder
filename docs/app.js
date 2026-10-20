@@ -581,13 +581,15 @@
       raw = d; norm.clear(); grid = new Map();
       const put = (kind, la, lo, item) => {
         const k = cellOf(la, lo); let g = grid.get(k);
-        if (!g) grid.set(k, (g = { camps: [], ramps: [], dumps: [], fuel: [] }));
+        if (!g) grid.set(k, (g = { camps: [], ramps: [], dumps: [], fuel: [], water: [], low: [] }));
         g[kind].push(item);
       };
       d.camps.forEach((c) => put("camps", c[1], c[2], c));
       (d.ramps || []).forEach((p, i) => put("ramps", p[0], p[1], { id: `ramp/${i}`, lat: p[0], lon: p[1] }));
       (d.dumps || []).forEach((p, i) => put("dumps", p[0], p[1], { id: `dump/${i}`, lat: p[0], lon: p[1] }));
       (d.fuel || []).forEach((p, i) => put("fuel", p[0], p[1], { id: `fuel/${i}`, lat: p[0], lon: p[1], name: p[2] || "Fuel station", addr: "", fuel: null }));
+      (d.water || []).forEach((p, i) => put("water", p[0], p[1], { id: `water/${i}`, lat: p[0], lon: p[1], tank: !!p[2] }));
+      (d.low || []).forEach((p, i) => put("low", p[0], p[1], { id: `low/${i}`, lat: p[0], lon: p[1], h: p[2] }));
     }
     async function load() {
       let cached = null;
@@ -637,6 +639,8 @@
       has: () => !!raw,
       inArea,
       info: () => (raw ? { count: raw.camps.length, built: raw.built } : null),
+      waterIn: (bb) => { if (!grid) return []; const out = []; for (const g of cells(bb)) for (const w of g.water) if (w.lat >= bb[0] && w.lat <= bb[2] && w.lon >= bb[1] && w.lon <= bb[3]) out.push({ ...w }); return out; },
+      lowIn: (bb) => { if (!grid) return []; const out = []; for (const g of cells(bb)) for (const w of g.low) if (w.lat >= bb[0] && w.lat <= bb[2] && w.lon >= bb[1] && w.lon <= bb[3]) out.push({ ...w }); return out; },
       fuelIn: (pt, radius) => { if (!grid) return []; const d = radius / 100000; const out = []; for (const g of cells([pt.lat - d, pt.lon - d, pt.lat + d, pt.lon + d])) for (const f of g.fuel) if (hav([pt.lat, pt.lon], [f.lat, f.lon]) <= radius) out.push({ ...f }); return out; },
       _use: use,
     };
@@ -726,7 +730,7 @@
 
   function makePlan({ from, to, route, nights, opts, data }) {
     const { line, camps } = data;
-    const usable = camps.filter((c) => rigOK(c, opts.rig) && !c.closed);
+    const usable = camps.filter((c) => rigOK(c, opts.rig) && !c.closed && (!settings.dog || (c.a.dogs !== false && !c.park)));
     const picks = [];
     const used = new Set();
     const seg = line.total / (nights + 1);
@@ -922,6 +926,7 @@
       if (el) el.style.setProperty("--rot", `${Math.round(heading)}deg`);
     }
     if (following) map.panTo([me.lat, me.lon], { animate: true, duration: .8 });
+    if (typeof recordPoint === "function") try { recordPoint(me); } catch {}
   }
   function startTracking() {
     if (tracking != null || !navigator.geolocation?.watchPosition) return;
@@ -1011,6 +1016,7 @@
   $("#nightsUp").addEventListener("click", () => setRefresh(+refreshIn.value));
   $("#nightsDown").addEventListener("click", () => setRefresh(+refreshIn.value));
   setRefresh(0);
+  (() => { const d = new Date(); $("#leaveDate").value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   $("#detourSeg").addEventListener("change", () => ($("#detourShown").textContent = (+radio("detour") / 1000) + " km"));
 
   $("#useHere").addEventListener("click", () => {
@@ -1046,7 +1052,7 @@
     try {
       savePrefs();
       const nights = +nightsIn.value;
-      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked };
+      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "" };
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
       say("Planning the route");
@@ -1105,7 +1111,7 @@
     stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
     p.picks.forEach((pk, i) => {
       fuelUpTo(pk.camp?.along ?? pk.target);
-      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}</p>`;
+      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}${weatherChip(i)}</p>`;
       if (pk.refresh) { stops.push(refreshStopHtml(pk, i, leg)); return; }
       if (!pk.camp) {
         stops.push(`<li class="stop"><div class="plate" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">${leg}<p class="note">${esc(pk.warn)}</p></div></li>`);
@@ -1294,6 +1300,11 @@
             <button class="btn" type="button" data-ci="full">Full</button>
           </div>
         </div>
+        <div class="checkin signal" id="signalBox">
+          <div class="ci-head"><b>Phone signal here</b><span id="sigSum" class="sig-sum"></span></div>
+          <div class="ci-btns">${CARRIERS.map(([k, n]) => `<button class="btn" type="button" data-carrier="${k}">${n}</button>`).join("")}</div>
+          <div class="ci-btns" id="sigBars" hidden><button class="btn" type="button" data-bars="0">No signal</button><button class="btn" type="button" data-bars="2">Weak</button><button class="btn" type="button" data-bars="4">Good</button></div>
+        </div>
         ${c.rule ? `<div class="notice"><b>Overnight stays</b><span>${esc(c.rule)}</span></div>` : ""}
         ${rulesNear(c.lat, c.lon).map((r) => `<div class="notice warn"><b>Local rule: ${esc(r.place)}</b><span>${esc(r.text)}</span><a href="${esc(r.src)}" target="_blank" rel="noopener">Source</a></div>`).join("")}
         <dl class="facts">
@@ -1340,6 +1351,7 @@
       closeDetail(); refreshAfterUserChange(); toast("Camp removed");
     });
     wireRating(c);
+    wireSignal(c);
     loadGallery(c, ownPhoto);
   }
   // ---------------------------------------------------------------- photos: travellers, Google, Wikimedia
@@ -1642,6 +1654,7 @@
     $("#mineCamps").innerHTML = mine.length ? mine.map((c) => `<li>${campCard(c)}</li>`).join("") : `<li class="empty">Know a good spot? Add it by dropping a pin on the map or entering its coordinates.</li>`;
     renderOffline();
     renderAccount();
+    renderJournal();
   }
   $("#savedTrips").addEventListener("click", (e) => {
     const del = e.target.closest("[data-del]"), load = e.target.closest("[data-load]");
@@ -2371,6 +2384,7 @@
   }
   async function planExtras(p) {
     if (p !== plan) return;
+    if (!p.alerts) loadAlerts(p); else renderAlerts();
     const jobs = [];
     p.picks.forEach((pk) => { if (pk.refresh && !pk.refresh.options) jobs.push(findStays(p, pk).then((o) => { pk.refresh.options = o; })); });
     if (!p.fuel) { p.fuelState = "loading"; renderItinerary(); jobs.push(computeFuelStops(p).then((f) => { p.fuel = f; }).catch(() => { p.fuel = []; }).finally(() => { p.fuelState = "done"; })); }
@@ -2378,6 +2392,365 @@
     renderItinerary();
     await Promise.all(jobs.map((j) => j.catch(() => {})));
     if (p === plan) { renderItinerary(); renderBudget(); }
+  }
+
+  // ================================================================ weather, bushfires, road links, rig check
+  const WX = { 0: ["☀️", "Clear"], 1: ["🌤️", "Mostly clear"], 2: ["⛅", "Partly cloudy"], 3: ["☁️", "Cloudy"], 45: ["🌫️", "Fog"], 48: ["🌫️", "Fog"], 51: ["🌦️", "Drizzle"], 53: ["🌦️", "Drizzle"], 55: ["🌦️", "Drizzle"], 61: ["🌧️", "Rain"], 63: ["🌧️", "Rain"], 65: ["🌧️", "Heavy rain"], 80: ["🌦️", "Showers"], 81: ["🌧️", "Showers"], 82: ["⛈️", "Heavy showers"], 95: ["⛈️", "Storms"], 96: ["⛈️", "Storms, hail"], 99: ["⛈️", "Storms, hail"] };
+  const dayOffset = (p) => { const d = p.opts.leave ? new Date(p.opts.leave + "T00:00:00") : new Date(); d.setHours(0, 0, 0, 0); const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((d - t) / 864e5); };
+  async function loadWeather(p) {
+    const spots = p.picks.map((pk, i) => ({ i, lat: (pk.refresh?.options?.[0] || pk.camp || pointAt(p.line, pk.target)).lat, lon: (pk.refresh?.options?.[0] || pk.camp || pointAt(p.line, pk.target)).lon }));
+    spots.push({ i: p.picks.length, lat: p.to.lat, lon: p.to.lon });
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${spots.map((s) => s.lat.toFixed(3)).join(",")}&longitude=${spots.map((s) => s.lon.toFixed(3)).join(",")}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_gusts_10m_max&timezone=auto&forecast_days=16`;
+    const j = await getJSON(url);
+    const arr = Array.isArray(j) ? j : [j];
+    const off = dayOffset(p);
+    p.weather = spots.map((s, k) => {
+      const d = arr[k]?.daily; const idx = off + s.i + (s.i === p.picks.length ? 0 : 0);
+      if (!d || idx < 0 || idx >= (d.time || []).length) return null;
+      return { date: d.time[idx], code: d.weather_code[idx], max: d.temperature_2m_max[idx], min: d.temperature_2m_min[idx], rain: d.precipitation_probability_max[idx], mm: d.precipitation_sum[idx], gust: d.wind_gusts_10m_max[idx] };
+    });
+  }
+  function weatherChip(i) {
+    const w = plan?.weather?.[i]; if (!w) return "";
+    const [e, t] = WX[w.code] || ["🌡️", ""];
+    const warn = w.max >= 40 ? " hot" : (w.rain >= 70 && w.mm >= 10) || w.code >= 95 || w.gust >= 70 ? " wet" : "";
+    return `<span class="wx${warn}" title="${esc(t)}">${e} ${Math.round(w.max)}°/${Math.round(w.min)}° · ${w.rain ?? 0}%</span>`;
+  }
+  function weatherAlerts(p) {
+    const out = [];
+    (p.weather || []).forEach((w, i) => {
+      if (!w) return;
+      const where = i < p.picks.length ? `night ${i + 1}${p.picks[i].camp ? ` (${p.picks[i].camp.name})` : ""}` : short(p.to.name);
+      if (w.rain >= 70 && w.mm >= 10) out.push({ lvl: 2, icon: "🌧️", title: `Heavy rain likely at ${where}`, text: `${Math.round(w.mm)} mm forecast. Dirt roads and low crossings can close; check before you go.` });
+      if (w.code >= 95) out.push({ lvl: 2, icon: "⛈️", title: `Storms forecast at ${where}`, text: "Avoid camping under big trees and secure your awning." });
+      if (w.max >= 40) out.push({ lvl: 2, icon: "🥵", title: `Extreme heat at ${where}`, text: `${Math.round(w.max)}°C forecast. Carry extra water and avoid driving in the hottest part of the day.` });
+      if (w.gust >= 70) out.push({ lvl: 1, icon: "💨", title: `Strong winds at ${where}`, text: `Gusts to ${Math.round(w.gust)} km/h. Take care towing and pick a sheltered spot.` });
+    });
+    return out;
+  }
+  // Bushfire incidents near the route from the state emergency feeds
+  const statesOf = (p) => [...new Set(sample(p.line, 50000).map(([la, lo]) => stateOf(la, lo)))];
+  function pointOfGeom(g) {
+    if (!g) return null;
+    if (g.type === "Point") return { lon: g.coordinates[0], lat: g.coordinates[1] };
+    if (g.type === "GeometryCollection") { for (const x of g.geometries || []) { const pt = pointOfGeom(x); if (pt) return pt; } return null; }
+    if (g.type === "Polygon" || g.type === "MultiPolygon") { const ring = g.type === "Polygon" ? g.coordinates[0] : g.coordinates[0][0]; const n = ring.length; return { lon: ring.reduce((a, c) => a + c[0], 0) / n, lat: ring.reduce((a, c) => a + c[1], 0) / n }; }
+    return null;
+  }
+  const FIRE_LVL = (s) => /emergency/i.test(s) ? 3 : /watch and act/i.test(s) ? 2 : /advice|going|out of control|being controlled/i.test(s) ? 1 : 0;
+  async function loadFires(p) {
+    const R = window.CF_ROAD; if (!R) return [];
+    const out = [];
+    await Promise.all(statesOf(p).filter((st) => R.feeds[st]).map(async (st) => {
+      try {
+        const j = await soon(getJSON(R.feeds[st]), 12000, null); if (!j) return;
+        for (const f of j.features || []) {
+          const pr = f.properties || {};
+          const kind = `${pr.category || ""} ${pr.category1 || ""} ${pr.category2 || ""} ${pr.feedType || ""} ${pr.WarningLevel || ""}`;
+          if (st === "VIC" && !/fire|burn|bushfire/i.test(kind)) continue;
+          const pt = pointOfGeom(f.geometry); if (!pt) continue;
+          const pos = project(p.line, pt);
+          if (pos.off > 20000) continue;
+          const level = pr.category || pr.action || pr.WarningLevel || pr.status || pr.category2 || "";
+          if (/planned burn/i.test(kind) && pos.off > 5000) continue;
+          const title = pr.title || pr.sourceTitle || pr.WarningTitle || pr.Header || pr.Locality || "Fire";
+          out.push({ lvl: Math.max(1, FIRE_LVL(level + " " + (pr.description || ""))), icon: /planned burn/i.test(kind) ? "🟠" : "🔥", title: `${/planned burn/i.test(kind) ? "Planned burn" : "Fire"}: ${title}`, text: `${level ? level + " · " : ""}${pos.off < 1000 ? "on your route" : km(pos.off) + " from your route"}, about ${km(pos.along)} from the start.`, link: pr.link || pr.url || R.fires[st]?.[1] || "" });
+        }
+      } catch { /* feed unavailable: links below still work */ }
+    }));
+    return out.sort((a, b) => b.lvl - a.lvl).slice(0, 6);
+  }
+  // Rig check: low clearances from the map data and steep climbs from elevation
+  const RIG_HEIGHT = { tent: 2.1, rooftop: 2.4, camper: 2.5, caravan: 3.0, motorhome: 3.3 };
+  const rigHeight = (rig) => settings.height || RIG_HEIGHT[rig] || 2.5;
+  function lowClearances(p) {
+    if (!campDB.lowIn) return [];
+    const h = rigHeight(p.opts.rig);
+    const out = [];
+    for (const part of [p.line.pts.filter((_, k) => k % 25 === 0)]) {
+      const bb = bboxOf(part.length ? part : p.line.pts, 0.02);
+      for (const c of campDB.lowIn(bb)) {
+        if (c.h >= h + 0.15) continue;
+        const pos = project(p.line, c);
+        if (pos.off < 40) out.push({ ...c, ...pos });
+      }
+    }
+    const seen = new Set();
+    return out.filter((c) => { const k = Math.round(c.along / 2000); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8);
+  }
+  async function steepClimbs(p) {
+    const step = Math.max(1500, p.line.total / 499), pts = [];
+    for (let a = 0; a <= p.line.total; a += step) pts.push({ along: a, ...pointAt(p.line, a) });
+    const elev = [];
+    for (let k = 0; k < pts.length; k += 100) {
+      const ch = pts.slice(k, k + 100);
+      const j = await getJSON(`https://api.open-meteo.com/v1/elevation?latitude=${ch.map((x) => x.lat.toFixed(4)).join(",")}&longitude=${ch.map((x) => x.lon.toFixed(4)).join(",")}`);
+      elev.push(...(j.elevation || []));
+    }
+    const out = [];
+    const real = step;
+    for (let k = 1; k < elev.length; k++) {
+      const g = (elev[k] - elev[k - 1]) / real * 100;
+      if (Math.abs(g) >= 8) out.push({ along: pts[k].along, grade: g, h: elev[k] });
+    }
+    // merge neighbours into one climb or descent
+    const merged = [];
+    for (const s of out) { const last = merged.at(-1); if (last && s.along - last.end <= step * 1.5 && Math.sign(s.grade) === Math.sign(last.grade)) { last.end = s.along; last.grade = Math.abs(s.grade) > Math.abs(last.grade) ? s.grade : last.grade; } else merged.push({ start: s.along - step, end: s.along, grade: s.grade }); }
+    return merged.sort((a, b) => Math.abs(b.grade) - Math.abs(a.grade)).slice(0, 5).sort((a, b) => a.start - b.start);
+  }
+  async function loadAlerts(p) {
+    const box = $("#tripAlerts"); if (!box) return;
+    p.alerts = p.alerts || { loading: true };
+    renderAlerts();
+    const [w, fires, climbs] = await Promise.all([
+      soon(loadWeather(p).then(() => true), 15000, false),
+      soon(loadFires(p), 15000, []),
+      soon(steepClimbs(p).catch((e) => { console.warn("Elevation check failed:", e && e.message); return []; }), 20000, []),
+    ]);
+    if (p !== plan) return;
+    p.alerts = { fires, climbs, low: lowClearances(p), weather: weatherAlerts(p), weatherOk: w };
+    renderAlerts(); renderItinerary();
+  }
+  function renderAlerts() {
+    const box = $("#tripAlerts"), p = plan; if (!box || !p) return;
+    const a = p.alerts || {};
+    if (a.loading) { box.innerHTML = `<div class="alerts"><p class="help"><span class="spinner"></span>Checking weather, fires and the road for your rig</p></div>`; return; }
+    const items = [...(a.fires || []), ...(a.weather || [])].sort((x, y) => y.lvl - x.lvl);
+    const h = rigHeight(p.opts.rig);
+    (a.low || []).forEach((c) => items.push({ lvl: 2, icon: "⚠️", title: `Possible low clearance: ${c.h} m`, text: `About ${km(c.along)} from the start. Your rig is set at ${h} m. Check the sign; this may be on a road that passes over or under your route.` }));
+    (a.climbs || []).forEach((c) => items.push({ lvl: Math.abs(c.grade) >= 12 ? 2 : 1, icon: c.grade > 0 ? "⛰️" : "⬇️", title: `${c.grade > 0 ? "Steep climb" : "Steep descent"}, about ${Math.round(Math.abs(c.grade))}%`, text: `Around ${km(c.start)} from the start.${towing(p.opts.rig) ? " Use a lower gear and watch your temperatures when towing." : ""}` }));
+    if (settings.dog) items.push({ lvl: 0, icon: "🐕", title: "Dog mode is on", text: "Camps that don't allow dogs and national park camps were left out. Dogs aren't allowed in most national parks, even in the car on some roads, so check the rules for parks on your route." });
+    const st = statesOf(p), R = window.CF_ROAD || { roads: {}, fires: {} };
+    const links = st.map((s) => R.roads[s] ? `<a href="${R.roads[s][1]}" target="_blank" rel="noopener">${esc(R.roads[s][0])}</a>` : "").filter(Boolean).join(" · ");
+    const fireLinks = st.map((s) => R.fires[s] ? `<a href="${R.fires[s][1]}" target="_blank" rel="noopener">${esc(R.fires[s][0])}</a>` : "").filter(Boolean).join(" · ");
+    box.innerHTML = `<div class="alerts">
+      <div class="al-head"><b>${items.filter((x) => x.lvl >= 1).length ? `${items.filter((x) => x.lvl >= 1).length} thing${items.filter((x) => x.lvl >= 1).length > 1 ? "s" : ""} to know` : "Road check: all clear"}</b><span class="help">${a.weatherOk ? "Weather, fires and your rig" : "Fires and your rig"}</span></div>
+      ${items.map((x) => `<div class="al lvl${x.lvl}"><span class="al-ic">${x.icon}</span><div><b>${esc(x.title)}</b><small>${esc(x.text)}</small>${x.link ? ` <a href="${esc(x.link)}" target="_blank" rel="noopener">Details</a>` : ""}</div></div>`).join("") || `<p class="help">No fire warnings near your route, no low clearances found for a ${h} m rig${a.weatherOk ? ", and no severe weather forecast" : ""}.</p>`}
+      <p class="al-links">Road conditions: ${links || "check the state road authority"}<br>Fire warnings: ${fireLinks}</p>
+    </div>`;
+  }
+
+  // ================================================================ need water / dump point / fuel
+  function nearbyNeeds(kind, from) {
+    let list = [];
+    const bb = [from.lat - 0.9, from.lon - 0.9, from.lat + 0.9, from.lon + 0.9];
+    if (kind === "dump") list = (campDB.inArea(bb, 0).dumps || []).map((d) => ({ ...d, name: "Dump point" }));
+    if (kind === "water") {
+      list = (campDB.waterIn ? campDB.waterIn(bb) : []).map((w) => ({ ...w, name: w.tank ? "Water fill point" : "Drinking water tap" }));
+      list.push(...campDB.inArea(bb, 0).camps.filter((c) => c.a.water === true).map((c) => ({ id: c.id, lat: c.lat, lon: c.lon, name: `Water at ${c.name}` })));
+    }
+    if (kind === "fuel") list = (campDB.fuelIn ? campDB.fuelIn(from, 90000) : []);
+    // ahead on the planned route first, then closest
+    const onTrip = journey && plan;
+    const here = onTrip ? project(plan.line, from).along : 0;
+    list.forEach((x) => { x.d = hav([from.lat, from.lon], [x.lat, x.lon]); if (onTrip) Object.assign(x, project(plan.line, x)); });
+    if (onTrip) list = list.filter((x) => x.off < 8000 && x.along > here - 1500).sort((a, b) => a.along - b.along);
+    else list.sort((a, b) => a.d - b.d);
+    return list.slice(0, 6);
+  }
+  async function showNeeds(kind) {
+    const title = { water: "Water nearby", dump: "Dump points nearby", fuel: "Fuel nearby" }[kind];
+    const go = async (from, label) => {
+      let list = nearbyNeeds(kind, from);
+      if (kind === "fuel" && CFG.googleKey) { const live = await soon(stationsNear(from, 30000), 8000, []); if (live.length) list = live.map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6); }
+      showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${title}</h2><p class="d-kind">${esc(label)}</p>
+        ${list.length ? `<ul class="need-list">${list.map((x) => `<li><div><b>${esc(x.name)}</b><small>${x.along != null && journey ? `${km(Math.max(0, x.along - project(plan.line, from).along))} ahead on your route` : `${km(x.d)} away`}${x.fuel ? ` · ${money(x.fuel.price)}/L ${esc(settings.fuel)}` : ""}</small></div><a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
+          : `<p class="msg">Nothing found within about 90 km. ${kind === "water" ? "Town visitor centres, roadhouses and caravan parks usually let you fill up." : kind === "dump" ? "Caravan parks often allow dump use for a small fee." : ""}</p>`}
+        <p class="caveat">From OpenStreetMap${kind === "fuel" && CFG.googleKey ? " and Google Maps" : ""}. Check water is drinkable and dump points are open before relying on them.</p></div>`);
+    };
+    if (me) return go(me, journey ? "Ahead of you on your route" : "Closest to you");
+    showDetail(`<div class="d-pad" style="padding-top:22px"><p class="msg"><span class="spinner"></span>Finding you</p></div>`);
+    locate((pt) => go(pt, "Closest to you"));
+  }
+  document.addEventListener("click", (e) => { const b = e.target.closest("[data-need]"); if (b) showNeeds(b.dataset.need); });
+
+  // ================================================================ journeys, live sharing and the travel journal
+  const jkv = (() => {
+    const open = () => new Promise((res, rej) => { const r = indexedDB.open("cf-journal", 1); r.onupgradeneeded = () => r.result.createObjectStore("j", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+    const run = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("j", mode); const q = fn(t.objectStore("j")); t.oncomplete = () => res(q?.result); t.onerror = () => rej(t.error); }); };
+    return { put: (v) => run("readwrite", (s) => s.put(v)), get: (id) => run("readonly", (s) => s.get(id)), all: () => run("readonly", (s) => s.getAll()), del: (id) => run("readwrite", (s) => s.delete(id)) };
+  })();
+  const nativeJourney = nativeCall("journey", "__cfJourneyDone");
+  const jcall = (cmd, extra = {}) => nativeJourney ? nativeJourney({ cmd, ...extra, reply: true }, 8000).catch(() => null) : Promise.resolve(null);
+  let journey = store.get("cf-journey", null);
+  const saveJourney = () => store.set("cf-journey", journey);
+  const trackKm = (pts) => { let d = 0; for (let k = 1; k < pts.length; k++) d += hav([pts[k - 1][1], pts[k - 1][2]], [pts[k][1], pts[k][2]]); return d; };
+
+  function campAlertList(p) {
+    return [...p.camps].filter((c) => c.cost === "free" && !c.closed && c.source !== "rest")
+      .map((c) => ({ c, s: score(c, p.opts.wants, "free") + ((ratingCache.get(c.id)?.avg || 0) * 6) }))
+      .sort((a, b) => b.s - a.s).slice(0, 40)
+      .map(({ c }) => ({ name: c.name, lat: c.lat, lon: c.lon, why: [c.a.toilets ? "toilets" : "", c.a.water ? "water" : "", c.a.dogs ? "dogs OK" : "", ratingCache.get(c.id)?.avg ? `rated ${ratingCache.get(c.id).avg.toFixed(1)}★` : ""].filter(Boolean).join(", ") || "free camp" }));
+  }
+  async function startJourney() {
+    if (!plan) return;
+    journey = {
+      id: `j-${Date.now()}`, name: `${short(plan.from.name)} to ${short(plan.to.name)}`, started: new Date().toISOString(),
+      from: plan.from, to: plan.to, nights: plan.picks.map((pk) => ({ name: pk.refresh?.options?.[0]?.name || pk.camp?.name || "", lat: (pk.refresh?.options?.[0] || pk.camp)?.lat, lon: (pk.refresh?.options?.[0] || pk.camp)?.lon })),
+      route: plan.route.geometry.coordinates.filter((_, k, a) => k % Math.max(1, Math.floor(a.length / 300)) === 0),
+      points: [], notes: [], share: null,
+    };
+    saveJourney();
+    await jcall("start", { id: journey.id, notify: !!settings.campAlerts, camps: settings.campAlerts ? campAlertList(plan) : [] });
+    startTracking(); setFollow(true);
+    await jkv.put({ ...journey }).catch(() => {});
+    showJourneyBar(); toast("Journey started. Safe travels!");
+  }
+  async function syncJourney() {
+    if (!journey) return;
+    const pts = await jcall("points", { id: journey.id, from: journey.points.length });
+    if (Array.isArray(pts) && pts.length) journey.points.push(...pts);
+    saveJourney(); jkv.put({ ...journey }).catch(() => {});
+    updateJourneyBar();
+  }
+  function recordPoint(pos) { // used when there's no native recorder (and while the app is open)
+    if (!journey || nativeJourney) return;
+    const last = journey.points.at(-1);
+    if (last && hav([last[1], last[2]], [pos.lat, pos.lon]) < 120) return;
+    journey.points.push([Math.round(Date.now() / 1000), +pos.lat.toFixed(5), +pos.lon.toFixed(5)]);
+    if (journey.points.length % 5 === 0) { saveJourney(); jkv.put({ ...journey }).catch(() => {}); }
+    updateJourneyBar();
+  }
+  function showJourneyBar() { $("#journeyBar").hidden = !journey; $("#app").classList.toggle("on-journey", !!journey); updateJourneyBar(); }
+  function updateJourneyBar() {
+    if (!journey) return;
+    const day = Math.floor((Date.now() - Date.parse(journey.started)) / 864e5) + 1;
+    $("#jbTitle").textContent = journey.name;
+    $("#jbStats").textContent = `Day ${day} · ${km(trackKm(journey.points))} driven${journey.share ? " · sharing live" : ""}`;
+    $("#startJourney").textContent = "Journey in progress";
+    $("#startJourney").disabled = true;
+  }
+  async function endJourney() {
+    const b = $("#jbEnd");
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Tap to end"; setTimeout(() => { b.dataset.sure = ""; b.textContent = "End"; }, 3000); return; }
+    await syncJourney();
+    await jcall("stop");
+    if (journey.share && window.CFCloud?.updateShare) window.CFCloud.updateShare(journey.share, me, null, true).catch(() => {});
+    journey.ended = new Date().toISOString();
+    await jkv.put({ ...journey }).catch(() => {});
+    const done = journey; journey = null; store.set("cf-journey", null);
+    showJourneyBar();
+    $("#startJourney").disabled = false; $("#startJourney").innerHTML = `${icon("nav")}Start journey`;
+    toast(`Journey saved to your journal: ${km(trackKm(done.points))}`);
+  }
+  $("#startJourney").addEventListener("click", startJourney);
+  $("#jbEnd").addEventListener("click", endJourney);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncJourney(); });
+  setInterval(() => { if (journey && !document.hidden) syncJourney(); }, 60000);
+  if (journey) { showJourneyBar(); startTracking(); jcall("status").then((s) => { if (s && !s.active) jcall("start", { id: journey.id, notify: !!settings.campAlerts, camps: [] }); }); syncJourney(); }
+
+  // Live sharing with family
+  const SHARE_PAGE = "https://will-richter.github.io/camp-finder/share.html";
+  async function shareJourney() {
+    if (!journey) return;
+    const C = window.CFCloud;
+    if (!C?.enabled) return toast("Sharing isn't switched on in this version yet");
+    if (!C.signedIn()) { toast("Sign in (free) to share your trip"); return goSignIn(); }
+    try {
+      if (!journey.share) {
+        const tonight = journey.nights.find((n) => n.name)?.name || short(journey.to.name);
+        const route = journey.route.map(([lo, la]) => [+la.toFixed(4), +lo.toFixed(4)]);
+        journey.share = await C.createShare(journey.name, { route, to: journey.to.name, nights: journey.nights.map((n) => n.name) }, tonight);
+        saveJourney();
+        await jcall("share", { share: { url: C.url, key: C.anonKey, id: journey.share.id, secret: journey.share.secret } });
+        if (me) C.updateShare(journey.share, me, tonight).catch(() => {});
+      }
+      const link = `${SHARE_PAGE}#${journey.share.id}`;
+      const text = `Follow my trip ${journey.name} live on Camp Finder: ${link}`;
+      if (navigator.share) await navigator.share({ title: "My trip", text, url: link }).catch(() => {});
+      else { await navigator.clipboard?.writeText(link).catch(() => {}); toast("Link copied. Paste it in a text to family."); }
+      updateJourneyBar();
+    } catch (e) { toast("Couldn't create the share link right now"); }
+  }
+  $("#jbShare").addEventListener("click", shareJourney);
+  setInterval(() => { if (journey?.share && me && !nativeJourney && window.CFCloud?.updateShare) window.CFCloud.updateShare(journey.share, me, null).catch(() => {}); }, 300000);
+
+  // Travel journal
+  function addJournalEntry(j) {
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Add to journal</h2><p class="d-kind">${esc(j.name)}</p>
+      <form id="jnForm" class="jn-form">
+        <textarea id="jnText" rows="4" maxlength="2000" placeholder="What happened today? Best camp, a great view, the bloke at the servo…"></textarea>
+        <div class="jn-photos" id="jnPhotos"></div>
+        <div class="stop-actions"><button class="btn" type="button" id="jnPhoto">${icon("photo")}Add photos</button><button class="cta" type="submit">Save</button></div>
+      </form></div>`);
+    const photos = [];
+    $("#jnPhoto").addEventListener("click", () => {
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+      inp.addEventListener("change", async () => {
+        for (const f of [...inp.files].slice(0, 6)) { const d = await shrinkImage(f, 1400); if (d) photos.push(d); }
+        $("#jnPhotos").innerHTML = photos.map((d) => `<img src="${d}" alt="">`).join("");
+      });
+      inp.click();
+    });
+    $("#jnForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = $("#jnText").value.trim();
+      if (!text && !photos.length) return toast("Write something or add a photo");
+      j.notes.push({ at: new Date().toISOString(), text, photos, lat: me?.lat, lon: me?.lon });
+      if (journey && journey.id === j.id) { journey.notes = j.notes; saveJourney(); }
+      try { await jkv.put({ ...j }); } catch { return toast("Your phone's storage is full"); }
+      toast("Saved to your journal"); closeDetail(); if (view === "saved") renderJournal();
+    });
+  }
+  $("#jbJournal").addEventListener("click", () => journey && addJournalEntry(journey));
+  async function renderJournal() {
+    const box = $("#journalList"); if (!box) return;
+    let all = [];
+    try { all = (await jkv.all()).sort((a, b) => b.started.localeCompare(a.started)); } catch {}
+    box.innerHTML = all.length ? all.map((j) => `<li class="trip-item">
+        <b>${esc(j.name)}${j.ended ? "" : " · on now"}</b>
+        <span class="help">${new Date(j.started).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })} · ${km(trackKm(j.points))} · ${j.notes.length} entr${j.notes.length === 1 ? "y" : "ies"}</span>
+        <span class="row"><button class="btn" type="button" data-journal="${esc(j.id)}">Open</button></span>
+      </li>`).join("") : `<li class="empty">Start a journey from a trip and it's recorded here automatically, with your notes and photos.</li>`;
+  }
+  $("#journalList").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-journal]"); if (!b) return;
+    const j = await jkv.get(b.dataset.journal); if (!j) return;
+    openJournal(j);
+  });
+  function openJournal(j) {
+    tripLayer.clearLayers(); legLayer.clearLayers();
+    const pts = j.points.map((p) => [p[1], p[2]]);
+    if (j.route?.length) L.polyline(j.route.map(([lo, la]) => [la, lo]), { color: "#0E5A3E", weight: 3, opacity: .35, dashArray: "4 6" }).addTo(legLayer);
+    if (pts.length > 1) { const pl = L.polyline(pts, { color: "#D9A400", weight: 6 }).addTo(legLayer); map.fitBounds(pl.getBounds(), fitPad()); }
+    const days = j.ended ? Math.max(1, Math.ceil((Date.parse(j.ended) - Date.parse(j.started)) / 864e5)) : Math.floor((Date.now() - Date.parse(j.started)) / 864e5) + 1;
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${esc(j.name)}</h2>
+      <p class="d-kind">${new Date(j.started).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}${j.ended ? "" : " · still on the road"}</p>
+      <div class="dir-sum"><div><b>${km(trackKm(j.points))}</b><span>driven</span></div><div><b>${days}</b><span>day${days > 1 ? "s" : ""}</span></div><div><b>${j.notes.length}</b><span>entries</span></div></div>
+      <div class="stop-actions"><button class="btn" type="button" id="jnAdd">${icon("plus")}Add a note or photos</button><button class="btn line" type="button" id="jnDel">Delete</button></div>
+      <ol class="jn-entries">${[...j.notes].reverse().map((n) => `<li><small>${new Date(n.at).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</small>${n.text ? `<p>${esc(n.text)}</p>` : ""}${n.photos?.length ? `<div class="jn-photos">${n.photos.map((d) => `<img src="${d}" alt="Journal photo">`).join("")}</div>` : ""}</li>`).join("") || `<li class="empty">No entries yet.</li>`}</ol>
+    </div>`);
+    $("#jnAdd").addEventListener("click", () => addJournalEntry(j));
+    $("#jnDel").addEventListener("click", async (e) => {
+      if (e.currentTarget.dataset.sure !== "1") { e.currentTarget.dataset.sure = "1"; e.currentTarget.textContent = "Tap again to delete"; return; }
+      if (journey?.id === j.id) return toast("End the journey first");
+      await jkv.del(j.id).catch(() => {}); closeDetail(); renderJournal(); toast("Journal deleted");
+    });
+  }
+
+  // ================================================================ phone signal at camps
+  const CARRIERS = [["telstra", "Telstra"], ["optus", "Optus"], ["vodafone", "Vodafone"], ["starlink", "Starlink"]];
+  async function wireSignal(c) {
+    const box = $("#signalBox"); if (!box) return;
+    const sum = $("#sigSum");
+    const show = (list) => {
+      if (!$("#sigSum")) return;
+      const by = {};
+      for (const r of list) (by[r.carrier] ||= []).push(r);
+      sum.innerHTML = CARRIERS.filter(([k]) => by[k]).map(([k, n]) => { const r = by[k]; const avg = r.reduce((a, x) => a + x.bars, 0) / r.length; return `<span class="sig ${avg >= 2.5 ? "good" : avg >= 1 ? "ok" : "none"}">${n}: ${avg >= 2.5 ? "good" : avg >= 1 ? "weak" : "none"} <small>(${r.length})</small></span>`; }).join("") || `<span class="help">No signal reports yet.</span>`;
+    };
+    if (window.CFCloud?.enabled) window.CFCloud.signalFor(c.id).then(show).catch(() => {}); else show([]);
+    let carrier = null;
+    box.addEventListener("click", async (e) => {
+      const cb = e.target.closest("[data-carrier]"), bb = e.target.closest("[data-bars]");
+      if (cb) { carrier = cb.dataset.carrier; box.querySelectorAll("[data-carrier]").forEach((x) => x.classList.toggle("is-on", x === cb)); $("#sigBars").hidden = false; return; }
+      if (bb && carrier) {
+        if (!window.CFCloud?.enabled) return toast("Signal reports are coming soon");
+        if (!window.CFCloud.signedIn()) { toast("Sign in (free) to report signal"); return goSignIn(); }
+        try { await window.CFCloud.reportSignal(c.id, carrier, +bb.dataset.bars); toast("Thanks, that helps other travellers"); window.CFCloud.signalFor(c.id).then(show); $("#sigBars").hidden = true; }
+        catch { toast("Couldn't send that. Try again with signal."); }
+      }
+    });
   }
 
   function openLegal(kind) {
@@ -2406,6 +2779,8 @@
     $("#stFuel").value = settings.fuel; $("#stUse").value = settings.use; $("#stTank").value = settings.tank;
     $("#stPrice").value = settings.prices[settings.fuel]; $("#stTow").value = settings.tow; $("#stTowOut").textContent = `+${settings.tow}%`;
     $("#stCamp").value = settings.campUnknown; $("#stDaily").value = settings.daily || ""; $("#stMaxKm").value = settings.maxKm;
+    $("#stHeight").value = settings.height || RIG_HEIGHT[prefs.rig] || ""; $("#stLength").value = settings.length || "";
+    $("#stDog").checked = !!settings.dog; $("#stCampAlerts").checked = !!settings.campAlerts;
     $("#stWelcomeEvery").checked = settings.welcomeEveryTime; $("#stAnim").checked = settings.anim; $("#stFollow").checked = settings.follow; $("#stSat").checked = settings.sat;
     const C = window.CFCloud;
     $("#stAccount").textContent = !C?.enabled ? "Accounts aren't switched on in this version." : C.signedIn() ? `Signed in as ${C.email()}.` : "Not signed in. Sign in to rate camps, post photos and keep your trips on every device.";
@@ -2432,6 +2807,9 @@
     $("#stFollow").addEventListener("change", (e) => { settings.follow = e.target.checked; saveSettings(); if (settings.follow) locate(() => setFollow(true)); else setFollow(false); });
     $("#stSat").addEventListener("change", (e) => { settings.sat = e.target.checked; saveSettings(); if (settings.sat !== onSat) $("#layerBtn").click(); });
     $("#stWelcome").addEventListener("click", () => showWelcome());
+    num("#stHeight", "height", 1.5, 4.6); num("#stLength", "length", 3, 30);
+    $("#stDog").addEventListener("change", (e) => { settings.dog = e.target.checked; saveSettings(); toast(settings.dog ? "Dog mode on: plan a trip to see dog-friendly camps" : "Dog mode off"); });
+    $("#stCampAlerts").addEventListener("change", (e) => { settings.campAlerts = e.target.checked; saveSettings(); });
     $("#stWelcomeEvery").addEventListener("change", (e) => { settings.welcomeEveryTime = e.target.checked; saveSettings(); });
     $("#stGoAccount").addEventListener("click", () => setView("saved"));
     $("#stTerms").addEventListener("click", () => openLegal("terms"));

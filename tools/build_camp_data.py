@@ -33,7 +33,7 @@ def query(bbox):
     s, w, n, e = bbox
     b = f"{s},{w},{n},{e}"
     q = (f'[out:json][timeout:180];(nwr["tourism"~"^(camp_site|caravan_site)$"]({b});'
-         f'nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b});nwr["amenity"="fuel"]({b}););out center tags;')
+         f'nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b});nwr["amenity"="fuel"]({b});nwr["amenity"~"^(water_point|drinking_water)$"]({b});nwr["maxheight"]({b}););out center tags;')
     data = urllib.parse.urlencode({"data": q}).encode()
     last = None
     for attempt in range(6):
@@ -92,6 +92,8 @@ def all_elements():
         els += ohsome("leisure=slipway")
         els += ohsome("amenity=sanitary_dump_station")
         els += ohsome("amenity=fuel")
+        els += ohsome("amenity in (water_point, drinking_water)")
+        els += ohsome("maxheight=* and (bridge=yes or tunnel=yes or barrier=height_restrictor or highway in (motorway, trunk, primary, secondary, tertiary, unclassified, residential, motorway_link, trunk_link, primary_link, secondary_link, track))")
         return els
     except Exception as ex:
         print(f"ohsome unavailable ({ex}); using Overpass tiles", file=sys.stderr)
@@ -110,8 +112,21 @@ def all_elements():
     return els
 
 
+def parse_height(v):
+    """'3.5', '3.5 m', "12'6\"" -> metres"""
+    import re
+    v = v.strip().lower()
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*m?$", v)
+    if m:
+        return float(m.group(1))
+    m = re.match(r"^(\d+)'\s*(\d+)?", v)
+    if m:
+        return round(int(m.group(1)) * 0.3048 + int(m.group(2) or 0) * 0.0254, 2)
+    return None
+
+
 def main(out_path):
-    camps, ramps, dumps, fuel, seen = [], [], [], [], set()
+    camps, ramps, dumps, fuel, water, low, seen = [], [], [], [], [], [], set()
     if True:
         for el in all_elements():
             key = f"{el['type']}/{el['id']}"
@@ -131,24 +146,32 @@ def main(out_path):
                 ramps.append(pt)
             elif tags.get("amenity") == "sanitary_dump_station":
                 dumps.append(pt)
+            elif tags.get("amenity") in ("water_point", "drinking_water"):
+                if tags.get("access") in ("private", "no") or tags.get("drinking_water") == "no":
+                    continue
+                water.append([*pt, 1 if tags.get("amenity") == "water_point" else 0])
             elif tags.get("amenity") == "fuel":
                 nm = (tags.get("brand") or tags.get("name") or "Fuel station")[:40]
                 if tags.get("name") and tags.get("brand") and tags["brand"] not in tags["name"]:
                     nm = f'{tags["brand"]} {tags["name"]}'[:50]
                 fuel.append([*pt, nm])
+            elif tags.get("maxheight") and tags.get("highway") not in ("service", "footway", "cycleway", "path") and tags.get("amenity") != "parking" and not tags.get("parking"):
+                h = parse_height(tags["maxheight"])
+                if h and h < 4.6:
+                    low.append([*pt, h])
     if len(camps) < 3000:
         raise SystemExit(f"Only {len(camps)} camps found; keeping the old file.")
     out = {
         "built": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": "OpenStreetMap contributors (ODbL)",
-        "camps": camps, "ramps": ramps, "dumps": dumps, "fuel": fuel,
+        "camps": camps, "ramps": ramps, "dumps": dumps, "fuel": fuel, "water": water, "low": low,
     }
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     tmp = out_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp, out_path)
-    print(f"{len(camps)} camps, {len(ramps)} boat ramps, {len(dumps)} dump points, {len(fuel)} fuel stations -> {out_path}", file=sys.stderr)
+    print(f"{len(camps)} camps, {len(ramps)} boat ramps, {len(dumps)} dump points, {len(fuel)} fuel stations, {len(water)} water points, {len(low)} low clearances -> {out_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -179,6 +179,31 @@
     },
     async reportPhoto(id) { mustUser(); const { error } = await sb.rpc("report_photo", { target: id }); fail(error); },
 
+    // ---- live trip sharing
+    url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY,
+    async createShare(name, route, tonight) {
+      mustUser();
+      const { data, error } = await sb.rpc("create_share", { p_name: name, p_route: route, p_tonight: tonight || "" }); fail(error);
+      const row = Array.isArray(data) ? data[0] : data;
+      return { id: row.id, secret: row.secret };
+    },
+    async updateShare(sh, pos, tonight, ended = false) {
+      if (!sb || !sh) return;
+      await sb.rpc("update_share", { p_id: sh.id, p_secret: sh.secret, p_lat: pos?.lat ?? null, p_lon: pos?.lon ?? null, p_speed: pos?.speed ?? null, p_heading: pos?.heading ?? null, p_tonight: tonight || null, p_ended: ended });
+    },
+
+    // ---- phone signal at camps
+    async signalFor(key) {
+      if (!sb) return [];
+      const { data, error } = await sb.from("signal_reports").select("carrier,bars,created_at").eq("camp_key", key).order("created_at", { ascending: false }).limit(40);
+      if (error) return [];
+      return data || [];
+    },
+    async reportSignal(key, carrier, bars) {
+      mustUser();
+      const { error } = await sb.from("signal_reports").insert({ camp_key: key, carrier, bars }); fail(error);
+    },
+
     async saveTripNotes(key, data) {
       if (!sb || !session) return;
       const { error } = await sb.from("trip_notes").upsert({ key, data, updated_at: new Date().toISOString() }); fail(error);

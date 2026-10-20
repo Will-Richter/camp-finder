@@ -13,5 +13,11 @@
 			</array>
 		</dict>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Camp Finder records your journey while you drive, even when the app is in the background, so your trip log and family sharing stay up to date.</string>
 </dict>
 </plist>
