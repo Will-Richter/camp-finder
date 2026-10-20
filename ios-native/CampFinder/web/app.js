@@ -2092,7 +2092,7 @@
   const DEFAULT_PRICE = { diesel: 2.05, petrol: 1.95, lpg: 1.05 };
   const settings = Object.assign({
     make: "", model: "", fuel: "diesel", use: 10.5, tank: 80, prices: { ...DEFAULT_PRICE }, tow: 30,
-    campUnknown: 35, daily: 0, maxKm: 500, anim: true, follow: false, sat: false,
+    campUnknown: 35, daily: 0, maxKm: 500, anim: true, follow: false, sat: false, welcomeEveryTime: true,
   }, store.get("cf-settings", {}));
   const saveSettings = () => store.set("cf-settings", settings);
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -2176,7 +2176,7 @@
     $("#stFuel").value = settings.fuel; $("#stUse").value = settings.use; $("#stTank").value = settings.tank;
     $("#stPrice").value = settings.prices[settings.fuel]; $("#stTow").value = settings.tow; $("#stTowOut").textContent = `+${settings.tow}%`;
     $("#stCamp").value = settings.campUnknown; $("#stDaily").value = settings.daily || ""; $("#stMaxKm").value = settings.maxKm;
-    $("#stAnim").checked = settings.anim; $("#stFollow").checked = settings.follow; $("#stSat").checked = settings.sat;
+    $("#stWelcomeEvery").checked = settings.welcomeEveryTime; $("#stAnim").checked = settings.anim; $("#stFollow").checked = settings.follow; $("#stSat").checked = settings.sat;
     const C = window.CFCloud;
     $("#stAccount").textContent = !C?.enabled ? "Accounts aren't switched on in this version." : C.signedIn() ? `Signed in as ${C.email()}.` : "Not signed in. Sign in to rate camps, post photos and keep your trips on every device.";
     const info = campDB.info();
@@ -2201,6 +2201,7 @@
     $("#stFollow").addEventListener("change", (e) => { settings.follow = e.target.checked; saveSettings(); if (settings.follow) locate(() => setFollow(true)); else setFollow(false); });
     $("#stSat").addEventListener("change", (e) => { settings.sat = e.target.checked; saveSettings(); if (settings.sat !== onSat) $("#layerBtn").click(); });
     $("#stWelcome").addEventListener("click", () => showWelcome());
+    $("#stWelcomeEvery").addEventListener("change", (e) => { settings.welcomeEveryTime = e.target.checked; saveSettings(); });
     $("#stGoAccount").addEventListener("click", () => setView("saved"));
   })();
   if (settings.sat && !onSat) $("#layerBtn").click();
@@ -2214,21 +2215,30 @@
   }
   window.addEventListener("resize", moveInk); setTimeout(moveInk, 50);
 
-  // ---- opening animation, then the welcome on first launch
-  (async () => {
+  // ---- opening animation, then the welcome screens, every time the app opens
+  async function playIntro(first) {
     const sp = $("#splash"); if (!sp) return;
+    if (!first) { sp.classList.remove("gone", "out"); void sp.offsetWidth; sp.querySelectorAll("animateMotion").forEach((a) => a.beginElement?.()); }
+    const placeHole = () => { const e = $("#spEnd")?.getBoundingClientRect(); if (e && e.width) { sp.style.setProperty("--ox", `${e.left + e.width / 2}px`); sp.style.setProperty("--oy", `${e.top + e.height / 2}px`); } };
     const started = performance.now();
     let skipped = false;
     sp.addEventListener("click", () => (skipped = true), { once: true });
-    const minShow = animOn() ? 2500 : 400;
+    const minShow = animOn() ? 3000 : 400;
     while (!skipped && performance.now() - started < minShow) await sleep(60);
     await Promise.race([campDB.ready(), sleep(1500)]);
-    sp.classList.add("out");
-    await sleep(animOn() ? 760 : 0);
+    placeHole(); sp.classList.add("out");
+    await sleep(animOn() ? 880 : 0);
     sp.classList.add("gone");
     moveInk();
-    if (!store.get("cf-welcomed", false)) showWelcome();
-  })();
+    if (settings.welcomeEveryTime || !store.get("cf-welcomed", false)) showWelcome();
+  }
+  playIntro(true);
+  // iPhones keep apps open in the background, so replay the intro when you come back after a while
+  let hiddenAt = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (hiddenAt && Date.now() - hiddenAt > 3 * 60 * 1000 && $("#welcome").hidden) playIntro(false);
+  });
 
   function showWelcome() {
     const w = $("#welcome"), track = $("#wlTrack"), slides = $$(".wl-slide", w), dots = $$("#wlDots i");

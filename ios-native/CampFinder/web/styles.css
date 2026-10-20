@@ -489,34 +489,48 @@ a { color: inherit; }
 .gallery:has(.none .spinner) { background: linear-gradient(90deg, var(--well) 25%, var(--hair) 50%, var(--well) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 
 /* =================================================================== opening animation */
-.splash { position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 35%, #157350 0%, #0E5A3E 45%, #083826 100%);
-  clip-path: circle(150% at 50% 50%); transition: clip-path .75s cubic-bezier(.7, 0, .3, 1), opacity .4s; }
-.splash.out { clip-path: circle(0% at 50% 42%); }
-.splash.gone { display: none; }
-.sp-stage { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; transform: translateY(-3vh); }
-.sp-scene { width: min(72vw, 330px); height: auto; filter: drop-shadow(0 18px 40px rgba(0,0,0,.35)); animation: spIn .9s var(--spring) both; }
-@keyframes spIn { from { transform: scale(.6) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
-.sp-sun { animation: sunUp 1.6s var(--ease-out) .1s both; transform-box: fill-box; transform-origin: center; }
-@keyframes sunUp { from { transform: translateY(70px) scale(.7); } to { transform: none; } }
-.sp-far { animation: hill 1.2s var(--ease-out) .15s both; } .sp-mid { animation: hill 1.2s var(--ease-out) .25s both; } .sp-near { animation: hill 1.2s var(--ease-out) .35s both; }
-.sp-gums { animation: hill 1.2s var(--ease-out) .3s both; }
-@keyframes hill { from { transform: translateY(60px); } to { transform: none; } }
-.sp-road { stroke-dasharray: 260; stroke-dashoffset: 260; animation: draw .9s var(--ease-out) .35s forwards; }
-.sp-line { opacity: 0; animation: fadeIn .3s .9s forwards, laneRun .5s linear .9s infinite; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
-@keyframes laneRun { to { stroke-dashoffset: -22; } }
-.sp-car-body { animation: carShrink 2.1s cubic-bezier(.35, 0, .25, 1) .25s both; }
-@keyframes carShrink { from { transform: scale(1.5); } to { transform: scale(.42); } }
-.sp-ring { stroke-dasharray: 1120; stroke-dashoffset: 1120; animation: draw 1.4s var(--ease-out) .1s forwards; }
-.sp-sign { background: var(--gold); color: var(--gold-ink); border: 3px solid var(--gold-ink); border-radius: 10px; padding: 8px 20px 6px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 0 0 3px var(--gold);
-  animation: signDrop .8s var(--spring) .55s both; }
-.sp-sign small { display: block; font: 800 11px/1 var(--display); letter-spacing: .28em; margin-bottom: 3px; }
-.sp-sign b { display: block; font: 900 30px/1 var(--display); letter-spacing: .04em; }
-@keyframes signDrop { 0% { transform: translateY(-40px) rotate(-6deg) scale(.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
-.sp-tag { margin: 2px 0 0; color: rgba(255,255,255,.88); font: 700 15px var(--display); animation: rise .6s var(--ease-out) .95s both; }
-.sp-bar { width: 140px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.18); overflow: hidden; animation: fadeIn .4s .9s both; }
-.sp-bar span { display: block; height: 100%; width: 100%; background: var(--gold); transform-origin: left; animation: barFill 1.5s var(--ease-out) .9s both; }
-@keyframes barFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@property --hole { syntax: "<length>"; inherits: false; initial-value: 0px; }
+.splash { position: fixed; inset: 0; z-index: 5000; overflow: hidden; color: #fff;
+  background: radial-gradient(140% 90% at 50% 110%, #12553B 0%, #0A3B29 40%, #04190F 100%);
+  -webkit-mask-image: radial-gradient(circle at var(--ox, 80%) var(--oy, 17%), transparent var(--hole), #000 calc(var(--hole) + 1px));
+  mask-image: radial-gradient(circle at var(--ox, 80%) var(--oy, 17%), transparent var(--hole), #000 calc(var(--hole) + 1px)); }
+.splash.out { animation: holeOpen .85s cubic-bezier(.7, 0, .25, 1) forwards; }
+@keyframes holeOpen { from { --hole: 0px; } to { --hole: 160vmax; } }
+.splash.gone { display: none; }
+.sp-bg { position: absolute; inset: 0; width: 100%; height: 100%; animation: spCam 3.2s cubic-bezier(.3, 0, .2, 1) both; transform-origin: 70% 30%; }
+@keyframes spCam { from { transform: scale(1.12) translateY(18px); } to { transform: scale(1); } }
+.sp-dawn { opacity: 0; animation: fadeIn 2.4s ease .2s forwards; }
+.sp-stars circle { opacity: 0; animation: twinkle 2.6s ease-in-out both; }
+.sp-stars circle:nth-child(3n) { animation-delay: .2s; } .sp-stars circle:nth-child(3n+1) { animation-delay: .45s; } .sp-stars circle:nth-child(3n+2) { animation-delay: .7s; }
+@keyframes twinkle { 0% { opacity: 0; } 30% { opacity: .9; } 55% { opacity: .35; } 75% { opacity: .8; } 100% { opacity: .15; } }
+.sp-topo path { stroke-opacity: .08; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 2.2s cubic-bezier(.4, 0, .2, 1) forwards; }
+.sp-topo path:nth-child(2) { animation-delay: .1s; } .sp-topo path:nth-child(3) { animation-delay: .2s; } .sp-topo path:nth-child(4) { animation-delay: .3s; }
+.sp-topo path:nth-child(5) { animation-delay: .4s; } .sp-topo path:nth-child(6) { animation-delay: .15s; } .sp-topo path:nth-child(7) { animation-delay: .3s; } .sp-topo path:nth-child(8) { animation-delay: .45s; }
+.sp-route-base { opacity: 0; animation: fadeIn .6s ease .2s forwards; }
+.sp-route, .sp-route-glow { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.9s cubic-bezier(.45, 0, .2, 1) .35s forwards; }
+.sp-route-glow { opacity: .55; }
+.sp-pin .ring { fill: none; stroke: #F5C518; stroke-width: 1.5; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.sp-pin .dot { fill: #0A3B29; stroke: #F5C518; stroke-width: 2.5; transform: scale(0); transform-box: fill-box; transform-origin: center; }
+.sp-pin .dot { animation: pinPop .5s cubic-bezier(.2, .9, .25, 1.4) var(--d) forwards; }
+.sp-pin .ring { animation: ringOut 1.1s ease-out var(--d) forwards; }
+.sp-pin.end .dot { fill: #F5C518; stroke: #fff; }
+.sp-pin.end .ring { animation: ringOut 1.1s ease-out var(--d) forwards, ringOut 1.4s ease-out calc(var(--d) + .5s) infinite; }
+@keyframes pinPop { to { transform: scale(1); } }
+@keyframes ringOut { 0% { opacity: .9; transform: scale(.4); } 100% { opacity: 0; transform: scale(2.6); } }
+.sp-traveller { opacity: 0; animation: fadeIn .3s ease .35s forwards; }
+.sp-brand { position: absolute; left: 0; right: 0; bottom: calc(16vh + env(safe-area-inset-bottom, 0px)); text-align: center; padding: 0 24px; }
+.sp-kicker { display: inline-block; font: 800 12px/1 var(--display); letter-spacing: .42em; color: var(--gold); padding-left: .42em; opacity: 0; animation: kick .8s cubic-bezier(.16, 1, .3, 1) 1.1s forwards; }
+@keyframes kick { from { opacity: 0; letter-spacing: .9em; } to { opacity: 1; letter-spacing: .42em; } }
+.sp-word { margin: 12px 0 0; font: 900 clamp(46px, 14vw, 64px)/.95 var(--display); letter-spacing: -.035em; display: flex; justify-content: center; overflow: hidden; padding-bottom: .08em; }
+.sp-word span { display: inline-block; transform: translateY(105%); animation: letterUp .9s cubic-bezier(.16, 1, .3, 1) forwards; }
+.sp-word .sp-sp { width: .26em; }
+.sp-word span:nth-child(1) { animation-delay: 1.25s; } .sp-word span:nth-child(2) { animation-delay: 1.29s; } .sp-word span:nth-child(3) { animation-delay: 1.33s; }
+.sp-word span:nth-child(4) { animation-delay: 1.37s; } .sp-word span:nth-child(6) { animation-delay: 1.45s; } .sp-word span:nth-child(7) { animation-delay: 1.49s; }
+.sp-word span:nth-child(8) { animation-delay: 1.53s; } .sp-word span:nth-child(9) { animation-delay: 1.57s; } .sp-word span:nth-child(10) { animation-delay: 1.61s; } .sp-word span:nth-child(11) { animation-delay: 1.65s; }
+@keyframes letterUp { to { transform: none; } }
+.sp-tag { margin: 14px 0 0; font: 600 15px/1.4 var(--text); color: rgba(255,255,255,.72); opacity: 0; animation: tagIn .8s ease 1.85s forwards; }
+@keyframes tagIn { from { opacity: 0; transform: translateY(6px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
 
 /* =================================================================== welcome */
 .welcome { position: fixed; inset: 0; z-index: 4900; display: flex; flex-direction: column; color: #fff;

@@ -75,43 +75,46 @@
 
 <!-- Opening animation -->
 <div id="splash" class="splash" aria-hidden="true">
-  <div class="sp-stage">
-    <svg class="sp-scene" viewBox="0 0 400 400">
-      <defs>
-        <clipPath id="spClip"><circle cx="200" cy="200" r="178"/></clipPath>
-        <linearGradient id="spSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD978"/><stop offset=".55" stop-color="#F4A85A"/><stop offset="1" stop-color="#D9774A"/></linearGradient>
-      </defs>
-      <g clip-path="url(#spClip)">
-        <rect width="400" height="400" fill="url(#spSky)"/>
-        <circle class="sp-sun" cx="262" cy="170" r="40" fill="#FFF3C4"/>
-        <path class="sp-far" d="M0 250 Q60 205 120 232 T240 222 T400 236 V400 H0z" fill="#3E6B4E"/>
-        <path class="sp-mid" d="M0 278 Q90 238 170 266 T330 256 T400 262 V400 H0z" fill="#1E5A3C"/>
-        <g class="sp-gums" fill="#123F2A">
-          <path d="M70 270v-26M70 250c-14-4-18-16-8-22 4-10 18-8 20 2 10 2 10 16-2 18z"/>
-          <path d="M330 262v-30M330 240c-16-4-20-18-8-24 4-12 20-10 22 2 12 2 12 18-2 20z"/>
-          <path d="M300 268v-16M300 256c-9-2-11-10-5-14 3-6 11-5 12 1 6 1 6 10-1 11z"/>
-        </g>
-        <path class="sp-near" d="M0 300 Q120 276 210 296 T400 292 V400 H0z" fill="#0E5A3E"/>
-        <path class="sp-road" d="M150 400 C170 352 196 330 206 310 S226 284 238 268" fill="none" stroke="#2B2F2D" stroke-width="30" stroke-linecap="round"/>
-        <path class="sp-line" d="M150 400 C170 352 196 330 206 310 S226 284 238 268" fill="none" stroke="#F5C518" stroke-width="3" stroke-dasharray="10 12"/>
-        <g class="sp-car-wrap">
-          <g class="sp-car">
-            <animateMotion dur="2.1s" begin="0.25s" fill="freeze" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".35 0 .25 1" path="M150 392 C170 352 196 330 206 310 S226 284 238 268"/>
-            <g class="sp-car-body">
-              <rect x="-13" y="-9" width="26" height="15" rx="4" fill="#F5C518" stroke="#1A1608" stroke-width="2"/>
-              <rect x="-9" y="-15" width="18" height="8" rx="2" fill="#2B2F2D"/>
-              <rect x="-11" y="-17" width="22" height="3" rx="1.5" fill="#1A1608"/>
-              <circle cx="-8" cy="7" r="3.4" fill="#1A1608"/><circle cx="8" cy="7" r="3.4" fill="#1A1608"/>
-              <circle cx="-9" cy="-2" r="1.6" fill="#FF6B4A"/><circle cx="9" cy="-2" r="1.6" fill="#FF6B4A"/>
-            </g>
-          </g>
-        </g>
-      </g>
-      <circle cx="200" cy="200" r="178" fill="none" stroke="#F5C518" stroke-width="5" class="sp-ring"/>
-    </svg>
-    <div class="sp-sign"><small>GONE LAPPIN'</small><b>CAMP FINDER</b></div>
-    <p class="sp-tag">Free &amp; cheap camps, Australia-wide</p>
-    <div class="sp-bar"><span></span></div>
+  <svg class="sp-bg" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <radialGradient id="spDawn" cx="50%" cy="100%" r="75%"><stop offset="0" stop-color="#F5A742" stop-opacity=".55"/><stop offset=".45" stop-color="#C2602E" stop-opacity=".18"/><stop offset="1" stop-color="#C2602E" stop-opacity="0"/></radialGradient>
+      <linearGradient id="spRoute" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#F5C518" stop-opacity=".2"/><stop offset=".5" stop-color="#F5C518"/><stop offset="1" stop-color="#FFE48A"/></linearGradient>
+      <filter id="spGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    </defs>
+    <rect class="sp-dawn" width="390" height="844" fill="url(#spDawn)"/>
+    <g class="sp-stars" fill="#fff">
+      <circle cx="40" cy="80" r="1.1"/><circle cx="96" cy="150" r=".8"/><circle cx="150" cy="60" r="1.3"/><circle cx="210" cy="120" r=".7"/><circle cx="270" cy="70" r="1"/>
+      <circle cx="340" cy="110" r="1.2"/><circle cx="360" cy="40" r=".8"/><circle cx="20" cy="200" r=".9"/><circle cx="120" cy="230" r=".7"/><circle cx="300" cy="190" r=".9"/>
+      <circle cx="70" cy="30" r=".7"/><circle cx="230" cy="30" r="1"/><circle cx="185" cy="190" r=".6"/><circle cx="375" cy="230" r=".7"/>
+    </g>
+    <g class="sp-topo" fill="none" stroke="#fff" stroke-width="1">
+      <path pathLength="1" d="M-20 610 C 60 560, 140 640, 220 590 S 340 540, 420 580"/>
+      <path pathLength="1" d="M-20 650 C 70 600, 150 680, 230 630 S 340 590, 420 620"/>
+      <path pathLength="1" d="M-20 690 C 80 650, 160 720, 240 670 S 350 640, 420 660"/>
+      <path pathLength="1" d="M-20 735 C 90 700, 170 765, 250 715 S 350 690, 420 705"/>
+      <path pathLength="1" d="M-20 780 C 100 750, 180 810, 260 765 S 360 740, 420 750"/>
+      <path pathLength="1" d="M60 330 C 100 290, 180 300, 200 340 S 140 410, 100 390 S 30 360, 60 330z"/>
+      <path pathLength="1" d="M40 330 C 90 270, 200 280, 222 342 S 150 440, 92 412 S 0 370, 40 330z"/>
+      <path pathLength="1" d="M18 332 C 80 250, 222 262, 246 344 S 160 470, 84 436 S -30 380, 18 332z"/>
+    </g>
+    <path class="sp-route-base" d="M-20 700 C 70 640, 40 560, 120 520 S 260 470, 230 390 S 150 290, 250 250 S 360 200, 310 140" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>
+    <path class="sp-route-glow" d="M-20 700 C 70 640, 40 560, 120 520 S 260 470, 230 390 S 150 290, 250 250 S 360 200, 310 140" pathLength="1" fill="none" stroke="#F5C518" stroke-width="9" filter="url(#spGlow)" stroke-linecap="round"/>
+    <path class="sp-route" d="M-20 700 C 70 640, 40 560, 120 520 S 260 470, 230 390 S 150 290, 250 250 S 360 200, 310 140" pathLength="1" fill="none" stroke="url(#spRoute)" stroke-width="3.5" stroke-linecap="round"/>
+    <g class="sp-pins">
+      <g class="sp-pin" style="--d:.95s" transform="translate(120 520)"><circle class="ring" r="9"/><circle class="dot" r="4.5"/></g>
+      <g class="sp-pin" style="--d:1.3s" transform="translate(226 420)"><circle class="ring" r="9"/><circle class="dot" r="4.5"/></g>
+      <g class="sp-pin" style="--d:1.65s" transform="translate(178 300)"><circle class="ring" r="9"/><circle class="dot" r="4.5"/></g>
+      <g class="sp-pin end" id="spEnd" style="--d:2.05s" transform="translate(310 140)"><circle class="ring" r="12"/><circle class="dot" r="6.5"/></g>
+    </g>
+    <g class="sp-traveller">
+      <circle r="10" fill="#FFE48A" opacity=".35" filter="url(#spGlow)"/><circle r="4.2" fill="#fff"/>
+      <animateMotion id="spMove" dur="1.9s" begin="0.35s" fill="freeze" calcMode="spline" keyPoints="0;1" keyTimes="0;1" keySplines=".45 0 .2 1" path="M-20 700 C 70 640, 40 560, 120 520 S 260 470, 230 390 S 150 290, 250 250 S 360 200, 310 140"/>
+    </g>
+  </svg>
+  <div class="sp-brand">
+    <small class="sp-kicker">GONE LAPPIN'</small>
+    <h1 class="sp-word" aria-label="Camp Finder"><span>C</span><span>a</span><span>m</span><span>p</span><span class="sp-sp"> </span><span>F</span><span>i</span><span>n</span><span>d</span><span>e</span><span>r</span></h1>
+    <p class="sp-tag">Every free camp in Australia, mapped.</p>
   </div>
 </div>
 
@@ -358,6 +361,7 @@
 
         <section class="set-card">
           <h2 class="set-h">App</h2>
+          <label class="switch"><span><b>Welcome screens when the app opens</b><small>Show the intro every time</small></span><input type="checkbox" id="stWelcomeEvery"><i></i></label>
           <label class="switch"><span><b>Animations</b><small>Turn off for a calmer, faster feel</small></span><input type="checkbox" id="stAnim"><i></i></label>
           <label class="switch"><span><b>Follow me on the map</b><small>Keep the car in view while you drive</small></span><input type="checkbox" id="stFollow"><i></i></label>
           <label class="switch"><span><b>Satellite map</b><small>Start on satellite view</small></span><input type="checkbox" id="stSat"><i></i></label>
