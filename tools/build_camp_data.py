@@ -89,6 +89,9 @@ def ohsome(filt):
     raise RuntimeError(f"ohsome failed: {last}")
 
 
+FAILED_CORE, FAILED_EXTRA = [], []
+
+
 def all_elements():
     try:
         els = ohsome("tourism in (camp_site, caravan_site)")
@@ -111,7 +114,7 @@ def all_elements():
             els += query(t)
         except Exception as ex:
             print(f"  tile failed: {ex}", file=sys.stderr)
-            failed.append(t)
+            failed.append(t); FAILED_CORE.append(t)
         time.sleep(2)
     if len(failed) > 4:
         raise RuntimeError(f"{len(failed)} tiles failed")
@@ -119,12 +122,14 @@ def all_elements():
     for k, t in enumerate(tiles, 1):
         if time.time() - started > 100 * 60:
             print("  extras: out of time, keeping what we have", file=sys.stderr)
+            FAILED_EXTRA.extend(tiles[k - 1:])
             break
         print(f"extras {k}/{len(tiles)} {t}", file=sys.stderr)
         try:
             els += query(t, "extra", tries=3)
         except Exception as ex:
             print(f"  extras tile skipped: {ex}", file=sys.stderr)
+            FAILED_EXTRA.append(t)
         time.sleep(2)
     return els
 
@@ -176,6 +181,27 @@ def main(out_path):
                 h = parse_height(tags["maxheight"])
                 if h and h < 4.6:
                     low.append([*pt, h])
+    # Tiles a busy server couldn't answer keep last week's data instead of losing it
+    try:
+        with open(out_path, encoding="utf-8") as f:
+            old = json.load(f)
+    except Exception:
+        old = {}
+    inside = lambda t, la, lo: t[0] <= la < t[2] and t[1] <= lo < t[3]
+    def keep(key, rows, tiles, latlon):
+        for r in old.get(key, []):
+            la, lo = latlon(r)
+            if any(inside(t, la, lo) for t in tiles):
+                rows.append(r)
+    keep("camps", camps, FAILED_CORE, lambda r: (r[1], r[2]))
+    keep("ramps", ramps, FAILED_CORE, lambda r: (r[0], r[1]))
+    keep("dumps", dumps, FAILED_CORE, lambda r: (r[0], r[1]))
+    for key, rows in (("fuel", fuel), ("water", water), ("low", low)):
+        keep(key, rows, FAILED_EXTRA, lambda r: (r[0], r[1]))
+    if FAILED_CORE or FAILED_EXTRA:
+        print(f"kept previous data for {len(FAILED_CORE)} camp tiles and {len(FAILED_EXTRA)} extra tiles", file=sys.stderr)
+    if old.get("camps") and len(camps) < len(old["camps"]) * 0.97:
+        raise SystemExit(f"Only {len(camps)} camps vs {len(old['camps'])} last time; keeping the old file.")
     if len(camps) < 3000:
         raise SystemExit(f"Only {len(camps)} camps found; keeping the old file.")
     out = {
