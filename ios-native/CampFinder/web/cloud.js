@@ -37,6 +37,31 @@
   }
   async function dataUrlToBlob(u) { const r = await fetch(u); return r.blob(); }
 
+  // Sign-in link from the email: campfinder://auth#access_token=...&refresh_token=...
+  async function handleAuthLink(href) {
+    if (!sb) return false;
+    const u = new URL(href.replace(/^campfinder:\/\//, "https://app.invalid/"));
+    const p = new URLSearchParams((u.hash || "").replace(/^#/, ""));
+    u.searchParams.forEach((v, k) => { if (!p.has(k)) p.set(k, v); });
+    const say = (ok, text) => window.dispatchEvent(new CustomEvent("cf-auth-link", { detail: { ok, text } }));
+    if (p.get("error_description") || p.get("error")) { say(false, (p.get("error_description") || p.get("error")).replace(/\+/g, " ")); return false; }
+    try {
+      if (p.get("access_token") && p.get("refresh_token")) {
+        const { error } = await sb.auth.setSession({ access_token: p.get("access_token"), refresh_token: p.get("refresh_token") }); fail(error);
+      } else if (p.get("code")) {
+        const { error } = await sb.auth.exchangeCodeForSession(p.get("code")); fail(error);
+      } else if (p.get("token_hash")) {
+        const { error } = await sb.auth.verifyOtp({ token_hash: p.get("token_hash"), type: p.get("type") || "email" }); fail(error);
+      } else return false;
+      say(true, "Signed in"); return true;
+    } catch (e) { say(false, e.message); return false; }
+  }
+  window.__cfAuthLink = handleAuthLink;
+  // Web version: the link lands back on this page with the tokens in the address
+  if (sb && /access_token=|[?&]code=|error_description=/.test(location.href)) {
+    handleAuthLink(location.href).finally(() => history.replaceState(null, "", location.pathname));
+  }
+
   window.CFCloud = {
     enabled,
     signedIn: () => !!session,
@@ -45,7 +70,10 @@
 
     async sendCode(email) {
       must();
-      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+      // In the iPhone app the email link opens Camp Finder directly (campfinder://auth); on the web it comes back to this page
+      const native = !!window.webkit?.messageHandlers?.nativeFetch;
+      const emailRedirectTo = native ? "campfinder://auth" : location.href.split("#")[0];
+      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo } });
       fail(error);
     },
     async verifyCode(email, token) {

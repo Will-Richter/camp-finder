@@ -1862,7 +1862,7 @@
     }
     box.innerHTML = `<form class="acct" id="acctForm" novalidate><b>Sign in or create an account</b>
       <p class="help">Share the camps you add, report if spots are still free, and keep your trips on every device. We'll email you a 6-digit code, no password needed.</p>
-      <div class="coord-row"><label class="sr" for="acctEmail">Email</label><input id="acctEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"><button class="btn gold" type="submit" id="acctSend">Send code</button></div>
+      <div class="coord-row"><label class="sr" for="acctEmail">Email</label><input id="acctEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"><button class="btn gold" type="submit" id="acctSend">Send link</button></div>
       <div class="coord-row" id="acctCodeRow" hidden><label class="sr" for="acctCode">Code</label><input id="acctCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6-digit code"><button class="btn gold" type="button" id="acctVerify">Sign in</button></div>
       <p class="msg" id="acctMsg" role="status" aria-live="polite"></p></form>`;
     const msg = $("#acctMsg");
@@ -1870,8 +1870,8 @@
       e.preventDefault();
       const email = $("#acctEmail").value.trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.className = "msg is-error"; msg.textContent = "Enter your email address."; return; }
-      msg.className = "msg"; msg.innerHTML = `<span class="spinner"></span>Sending code`;
-      try { await C.sendCode(email); msg.textContent = `We've emailed a code to ${email}.`; $("#acctCodeRow").hidden = false; $("#acctCode").focus(); }
+      msg.className = "msg"; msg.innerHTML = `<span class="spinner"></span>Sending your sign-in email`;
+      try { await C.sendCode(email); msg.innerHTML = `Email sent to <b>${esc(email)}</b>. Open it <b>on this phone</b> and tap the sign-in link. It brings you straight back here, signed in.<br><small>If your email shows a 6-digit code instead, type it below.</small>`; $("#acctCodeRow").hidden = false; }
       catch (err) { msg.className = "msg is-error"; msg.textContent = err.message; }
     });
     $("#acctVerify").addEventListener("click", async () => {
@@ -1899,6 +1899,10 @@
     refreshAfterUserChange();
   }
   window.CFCloud?.onChange?.(() => { if (view === "saved") renderAccount(); });
+  window.addEventListener("cf-auth-link", async (e) => {
+    if (e.detail.ok) { await afterSignIn(); $("#tab-saved")?.click(); renderAccount(); toast("You're signed in"); }
+    else toast(/expired|invalid/i.test(e.detail.text) ? "That sign-in link has expired. Send a new one from the Saved tab." : "Sign-in didn't work. Send a new link from the Saved tab.", 4500);
+  });
 
   // ---------------------------------------------------------------- DESTINATION GUIDES and TRIP BOOKINGS
   const GUIDES = window.CF_GUIDES || [];

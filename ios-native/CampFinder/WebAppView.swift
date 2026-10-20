@@ -39,6 +39,7 @@ struct WebAppView: UIViewRepresentable {
         if #available(iOS 16.4, *) { webView.isInspectable = true }
         #endif
         context.coordinator.webView = webView
+        AuthLinks.shared.deliver = { [weak coord = context.coordinator] url in coord?.sendAuthLink(url) }
         webView.load(URLRequest(url: URL(string: "campfinder://app/index.html")!))
         return webView
     }
@@ -212,6 +213,21 @@ struct WebAppView: UIViewRepresentable {
         private func finishAll(error: String) {
             let ids = pending; pending.removeAll()
             for id in ids { webView?.evaluateJavaScript("window.__cfLocation(\(id), false, 0, 0, 0, '\(error)')") }
+        }
+
+        // MARK: sign-in links
+        private var pageReady = false
+        private var queuedLink: URL?
+        func sendAuthLink(_ url: URL) {
+            guard pageReady else { queuedLink = url; return }
+            let s = (try? JSONSerialization.data(withJSONObject: [url.absoluteString])).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
+            webView?.evaluateJavaScript("window.__cfAuthLink && window.__cfAuthLink(\(s)[0])")
+        }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            pageReady = true
+            if let u = queuedLink ?? AuthLinks.shared.pending { queuedLink = nil; AuthLinks.shared.pending = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self.sendAuthLink(u) }
+            }
         }
 
         // MARK: navigation
