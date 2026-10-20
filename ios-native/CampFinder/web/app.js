@@ -2223,7 +2223,7 @@
     const started = performance.now();
     let skipped = false;
     sp.addEventListener("click", () => (skipped = true), { once: true });
-    const minShow = animOn() ? 3000 : 400;
+    const minShow = animOn() ? 3700 : 400;
     while (!skipped && performance.now() - started < minShow) await sleep(60);
     await Promise.race([campDB.ready(), sleep(1500)]);
     placeHole(); sp.classList.add("out");
