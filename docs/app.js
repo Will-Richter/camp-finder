@@ -1035,6 +1035,7 @@
     if (following) map.panTo([me.lat, me.lon], { animate: true, duration: .8 });
     if (typeof recordPoint === "function") try { recordPoint(me); } catch {}
     if (typeof onRoadCheck === "function") try { onRoadCheck(me); } catch {}
+    if (typeof famOnPos === "function") try { famOnPos(c); } catch {}
   }
   function startTracking() {
     if (tracking != null || !navigator.geolocation?.watchPosition) return;
@@ -3113,6 +3114,7 @@
     startTracking(); setFollow(true);
     await jkv.put({ ...journey }).catch(() => {});
     showJourneyBar(); toast("Journey started. Safe travels!");
+    if (famMe) { famLastPos = 0; famPushFull(); }
   }
   // One sync at a time, and only points newer than the last one we have, so nothing is counted twice
   let syncing = null, lastBadgeRun = 0;
@@ -3199,6 +3201,7 @@
     showJourneyBar();
     $("#startJourney").disabled = false; $("#startJourney").innerHTML = `${icon("nav")}Start journey`;
     updateBadges(true);
+    if (famMe) famPushFull();
     toast(`Journey saved to your journal: ${km(trackKm(done.points))}`);
     setTimeout(() => openJournal(done, true), 600);
   }
@@ -3233,6 +3236,286 @@
   }
   $("#jbShare").addEventListener("click", shareJourney);
   setInterval(() => { if (journey?.share && me && !nativeJourney && window.CFCloud?.updateShare) window.CFCloud.updateShare(journey.share, me, null).catch(() => {}); }, 300000);
+
+  // ================================================================ Family sharing (like Life360, for road trips)
+  // You turn it on and get an invite code. Family type the code into their Camp Finder and can watch
+  // you live on the map: speed, how far away you are, the trip you're on, where you've camped,
+  // kilometres, states and badges. Pause or turn it off any time; a new code locks out old ones.
+  const FAM_ME = "cf-family-me", FAM_FOLLOW = "cf-family-follow";
+  let famMe = store.get(FAM_ME, null);          // { id, secret, code, name, paused }
+  let famFollow = store.get(FAM_FOLLOW, []);    // [{ code, name }]
+  const famData = new Map();                    // code -> what they last shared
+  const famMarkers = new Map();
+  const famLayer = L.layerGroup().addTo(map);
+  const famTripLayer = L.layerGroup().addTo(map);
+  let famWatch = null, famLastPos = 0, famLastPosAt = null, famLastFull = 0;
+  const fmtCode = (c) => (c ? `${c.slice(0, 4)}-${c.slice(4)}` : "");
+  const cleanCode = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const r4 = (n) => +(+n).toFixed(4);
+  const famCloud = () => window.CFCloud?.enabled && window.CFCloud.getFamily ? window.CFCloud : null;
+  const agoText = (iso) => { if (!iso) return "never"; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+  const whereText = (lat, lon) => { const t = campDB.townNear?.(lat, lon); if (t) return t.d < 3000 ? `in ${t.name}` : `near ${t.name}`; return window.CFGeo ? `in ${CFGeo.STATE_NAME[CFGeo.stateAt(lat, lon)] || "Australia"}` : ""; };
+
+  // ---- what you share
+  function spotName(j, lat, lon) {
+    const ns = (j.nightSpots || []).find((c) => c && hav([c.lat, c.lon], [lat, lon]) < 1500); if (ns) return ns.name;
+    if (campDB.has()) {
+      const near = campDB.inArea([lat - 0.015, lon - 0.015, lat + 0.015, lon + 0.015], 0).camps.map((c) => ({ c, d: hav([c.lat, c.lon], [lat, lon]) })).sort((a, b) => a.d - b.d)[0];
+      if (near && near.d < 1200) return near.c.name;
+    }
+    const t = campDB.townNear?.(lat, lon);
+    return t ? (t.d < 3000 ? t.name : `Near ${t.name}`) : "Overnight stop";
+  }
+  // Where you stopped overnight: a gap of 5+ hours between points means you slept there
+  function campedList(js) {
+    const out = [];
+    for (const j of js) {
+      const pts = (j.points || []).filter((p) => p && p.length >= 3);
+      for (let k = 1; k < pts.length; k++) {
+        if (pts[k][0] - pts[k - 1][0] < 5 * 3600) continue;
+        const [t, lat, lon] = pts[k - 1], prev = out.at(-1);
+        if (prev && hav([prev.lat, prev.lon], [lat, lon]) < 1500 && t - prev.t < 40 * 3600) { prev.nights++; prev.t = t; continue; }
+        out.push({ name: spotName(j, lat, lon), lat: r4(lat), lon: r4(lon), t, nights: 1 });
+      }
+    }
+    return out;
+  }
+  async function famStats() {
+    const js = await allJourneys();
+    const res = window.CFBadges ? CFBadges.compute(js) : { stats: {}, list: [] };
+    const got = store.get("cf-badges", {});
+    const badges = res.list.filter((b) => b.earned).map((b) => ({ name: b.name, icon: b.icon, short: b.short || "", tier: b.tier, at: got[b.id] || "" }));
+    const s = res.stats || {};
+    return { km: Math.round(s.km || 0), hours: Math.round(s.hours || 0), nights: s.nights || 0, journeys: s.journeys || 0, states: s.states || [], badges: badges.slice(-80), camped: campedList(js).slice(-40) };
+  }
+  function famTrip() {
+    if (!journey) return null;
+    const pts = journey.points || [];
+    const visited = (c) => pts.some((p) => Math.abs(p[1] - c.lat) < 0.02 && Math.abs(p[2] - c.lon) < 0.02 && hav([p[1], p[2]], [c.lat, c.lon]) < 1500);
+    const nights = (journey.nights || []).filter((n) => n && n.lat != null).map((n) => ({ name: n.name || "Camp", lat: r4(n.lat), lon: r4(n.lon), done: visited(n) }));
+    const step = Math.max(1, Math.ceil(pts.length / 400)), track = [];
+    for (let i = 0; i < pts.length; i += step) track.push([r4(pts[i][1]), r4(pts[i][2])]);
+    if (pts.length) track.push([r4(pts.at(-1)[1]), r4(pts.at(-1)[2])]);
+    const pt = (x) => ({ name: short(x.name || ""), lat: r4(x.lat), lon: r4(x.lon) });
+    return { name: journey.name, from: pt(journey.from), to: pt(journey.to), started: journey.started, route: (journey.route || []).map(([lo, la]) => [r4(la), r4(lo)]), nights, track, tonight: nights.find((n) => !n.done)?.name || short(journey.to.name) };
+  }
+  const famNative = () => jcall("family", { family: famMe && !famMe.paused && famCloud() ? { url: CFCloud.url, key: CFCloud.anonKey, id: famMe.id, secret: famMe.secret } : null });
+  async function famPushFull() {
+    const C = famCloud(); if (!famMe || famMe.paused || !C) return;
+    famLastFull = Date.now();
+    const trip = famTrip();
+    await C.updateFamily(famMe, { name: famMe.name, car: myCar(), stats: await famStats(), trip: trip || undefined, clear_trip: !trip }).catch(() => {});
+  }
+  // while the app is open (the phone does it in the background on a journey)
+  function famOnPos(c) {
+    const C = famCloud(); if (!famMe || famMe.paused || !C || isOffline()) return;
+    const moving = (c.speed || 0) > 2, since = Date.now() - famLastPos;
+    const moved = famLastPosAt ? hav(famLastPosAt, [c.latitude, c.longitude]) : Infinity;
+    if (since < (moving ? 20000 : 300000) && !(moved > 400 && since > 10000)) return;
+    famLastPos = Date.now(); famLastPosAt = [c.latitude, c.longitude];
+    C.updateFamily(famMe, { lat: c.latitude, lon: c.longitude, speed: c.speed != null && c.speed >= 0 ? c.speed : 0, heading: c.heading != null && c.heading >= 0 ? c.heading : (typeof heading === "number" ? heading : null), accuracy: c.accuracy || null }).catch(() => {});
+    if (Date.now() - famLastFull > 5 * 60000) famPushFull();
+  }
+  async function famTurnOn(name) {
+    const C = famCloud(); if (!C) return toast("Family sharing isn't switched on in this version yet");
+    if (!C.signedIn()) { toast("Sign in (free) to share with family"); return goSignIn(); }
+    const r = await C.createFamily(name, myCar());
+    famMe = { ...r, name, paused: false }; store.set(FAM_ME, famMe);
+    settings.famName = name; saveSettings();
+    await famNative();
+    if (!me) locate(() => {}); else famOnPos({ latitude: me.lat, longitude: me.lon, speed: 0 });
+    famPushFull();
+  }
+  function famInvite() {
+    if (!famMe) return;
+    const text = `Follow my trips live 🚙 Watch here: https://gonelappin.au/family.html#${famMe.code}\nOr in the Camp Finder app: My stuff → Family, and type my code ${fmtCode(famMe.code)}`;
+    if (navigator.share) navigator.share({ title: "Follow my trip", text }).catch(() => {});
+    else { navigator.clipboard?.writeText(text).catch(() => {}); toast("Invite copied. Paste it in a text."); }
+  }
+
+  // ---- watching family
+  async function famRefresh(codes = famFollow.map((f) => f.code)) {
+    const C = famCloud(); if (!C || isOffline() || document.hidden) return;
+    await Promise.all(codes.map(async (code) => {
+      try {
+        const d = await C.getFamily(code);
+        if (!d) { famData.set(code, { gone: true }); return; }
+        const old = famData.get(code);
+        if (old?.trip && d.trip && JSON.stringify(old.trip.route?.[0]) === JSON.stringify(d.trip.route?.[0])) d._line = old._line;
+        d.fetched = Date.now(); famData.set(code, d);
+        const f = famFollow.find((x) => x.code === code); if (f && d.name && f.name !== d.name) { f.name = d.name; store.set(FAM_FOLLOW, famFollow); }
+      } catch { /* keep what we had */ }
+    }));
+    famDraw();
+    if (view === "saved" && store.get("cf-seg") === "family") renderFamily(true);
+  }
+  // Between updates the car keeps moving: along their planned route if they're on it, otherwise straight ahead
+  function famPredict(d) {
+    if (d.lat == null) return null;
+    let at = { lat: d.lat, lon: d.lon }, hd = d.heading;
+    const age = Math.min(90, Math.max(0, (Date.now() - Date.parse(d.pos_at || d.updated_at)) / 1000));
+    if ((d.speed || 0) > 2 && age > 0 && Date.now() - Date.parse(d.pos_at || 0) < 180000) {
+      const dist = d.speed * age;
+      if (d.trip?.route?.length > 1) {
+        d._line ||= buildLine({ geometry: { coordinates: d.trip.route.map(([la, lo]) => [lo, la]) } });
+        const pr = project(d._line, at);
+        if (pr.off < 400) { const nxt = pointAt(d._line, Math.min(d._line.total, pr.along + dist)); if (hav([at.lat, at.lon], [nxt.lat, nxt.lon]) > 5) hd = bearing(at, nxt); at = nxt; return { ...at, hd }; }
+      }
+      if (hd != null) { const R = 6371000, b = toRad(hd), la = toRad(at.lat), lo = toRad(at.lon), dr = dist / R;
+        const la2 = Math.asin(Math.sin(la) * Math.cos(dr) + Math.cos(la) * Math.sin(dr) * Math.cos(b));
+        const lo2 = lo + Math.atan2(Math.sin(b) * Math.sin(dr) * Math.cos(la), Math.cos(dr) - Math.sin(la) * Math.sin(la2));
+        at = { lat: la2 * 180 / Math.PI, lon: lo2 * 180 / Math.PI }; }
+    }
+    return { ...at, hd };
+  }
+  function famStatus(d) {
+    if (!d || d.gone) return { ic: "⚠️", text: "This code doesn't work any more" };
+    if (d.paused) return { ic: "⏸️", text: "Sharing is paused" };
+    if (d.lat == null) return { ic: "⏳", text: "Waiting for their first location" };
+    const stale = Date.now() - Date.parse(d.pos_at || d.updated_at) > 3 * 3600000;
+    const kmh = Math.round((d.speed || 0) * 3.6);
+    const atCamp = (d.trip?.nights || []).find((n) => hav([n.lat, n.lon], [d.lat, d.lon]) < 600);
+    if (!stale && kmh >= 8) return { ic: "🚙", text: `Driving ${kmh} km/h ${whereText(d.lat, d.lon)}`, moving: true, kmh };
+    if (atCamp) return { ic: "🏕️", text: `At camp: ${atCamp.name}` };
+    return { ic: stale ? "📵" : "🅿️", text: `${stale ? "Last seen" : "Stopped"} ${whereText(d.lat, d.lon)}${stale ? ". Probably out of signal" : ""}` };
+  }
+  function famIcon(d, name, sub) {
+    const car = window.CFCar ? CFCar.top({ ...(d.car || {}), withTrailer: true }).svg : CAR_SVG;
+    return `<div class="fam-mk"><div class="fam-car" style="--rot:${Math.round(d._hd ?? d.heading ?? 0)}deg">${car}</div><span class="fam-tag"><b>${esc(name)}</b>${sub ? ` · ${esc(sub)}` : ""}</span></div>`;
+  }
+  function famDraw() {
+    const seen = new Set();
+    for (const f of famFollow) {
+      const d = famData.get(f.code); if (!d || d.gone || d.paused || d.lat == null) continue;
+      seen.add(f.code);
+      const p = famPredict(d) || d; d._hd = p.hd ?? d.heading;
+      const st = famStatus(d), sub = st.moving ? `${st.kmh} km/h` : "";
+      let m = famMarkers.get(f.code);
+      const html = famIcon(d, (d.name || f.name || "Family").split(" ")[0], sub);
+      if (!m) {
+        m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: "fam-icon", html, iconSize: [46, 46], iconAnchor: [23, 23] }), zIndexOffset: 1800, title: d.name });
+        m.on("click", () => famOpen(f.code)); m.addTo(famLayer); famMarkers.set(f.code, m); m._html = html;
+      } else {
+        m.setLatLng([p.lat, p.lon]);
+        if (m._html !== html) { m.setIcon?.(L.divIcon({ className: "fam-icon", html, iconSize: [46, 46], iconAnchor: [23, 23] })); m._html = html; }
+      }
+      if (famWatch === f.code && !map._cfDragging) map.panTo([p.lat, p.lon], { animate: true, duration: 0.9 });
+    }
+    for (const [code, m] of famMarkers) if (!seen.has(code)) { famLayer.removeLayer(m); famMarkers.delete(code); }
+  }
+  map.on("dragstart", () => { if (famWatch) { famWatch = null; renderFamily(); } });
+  function famDrawTrip(d) {
+    famTripLayer.clearLayers();
+    if (!d || !d.trip) return;
+    if (d.trip.route?.length > 1) L.polyline(d.trip.route, { color: "#0E5A3E", weight: 4, opacity: .55, dashArray: "6 8" }).addTo(famTripLayer);
+    if (d.trip.track?.length > 1) L.polyline(d.trip.track, { color: "#E07A1F", weight: 5, opacity: .9 }).addTo(famTripLayer);
+    (d.trip.nights || []).forEach((n, i) => L.marker([n.lat, n.lon], { icon: divIcon(`<div class="fam-night${n.done ? " done" : ""}">${i + 1}</div>`, [24, 24]), title: n.name, interactive: false }).addTo(famTripLayer));
+  }
+  function famOpen(code) {
+    famWatch = code;
+    const d = famData.get(code);
+    famDrawTrip(d);
+    if (d?.lat != null) map.setView([d.lat, d.lon], Math.max(map.getZoom(), 11));
+    setView("saved"); setSeg("family"); setSheet("half");
+    setTimeout(() => $(".fam-card.is-watch")?.scrollIntoView({ block: "start", behavior: animOn() ? "smooth" : "auto" }), 80);
+    famRefresh([code]);
+  }
+
+  // ---- the Family page
+  function medalMini(b) { return `<span class="fam-medal" title="${esc(b.name)}">${b.tier === "state" ? `<b>${esc(b.short)}</b>` : esc(b.icon)}</span>`; }
+  function famCard(f) {
+    const d = famData.get(f.code), st = famStatus(d), name = d?.name || f.name || "Family";
+    const dist = me && d?.lat != null ? `${km(hav([me.lat, me.lon], [d.lat, d.lon]))} from you` : "";
+    const watching = famWatch === f.code;
+    const s = d?.stats || {}, t = d?.trip;
+    const car = window.CFCar && d?.car ? CFCar.side(d.car).svg : "";
+    let more = "";
+    if (watching && d && !d.gone && !d.paused) {
+      const done = (t?.nights || []).filter((n) => n.done).length;
+      more = `<div class="fam-more">
+        ${st.moving ? `<div class="fam-speed"><b>${st.kmh}</b><span>km/h</span></div>` : ""}
+        ${t ? `<div class="fam-trip"><span class="fam-k">On a trip</span><b>${esc(t.from.name)} → ${esc(t.to.name)}</b><small>Night ${Math.min(done + 1, t.nights.length || 1)} of ${t.nights.length || 1} · Tonight: ${esc(t.tonight || "")}</small>
+          <div class="fam-prog"><i style="width:${Math.round((done / Math.max(1, t.nights.length)) * 100)}%"></i></div></div>` : ""}
+        <div class="fam-stats"><div><b>${(s.km || 0).toLocaleString("en-AU")}</b><span>km driven</span></div><div><b>${s.nights || 0}</b><span>nights away</span></div><div><b>${(s.states || []).length}</b><span>states</span></div><div><b>${(s.badges || []).length}</b><span>badges</span></div></div>
+        ${(s.badges || []).length ? `<h4 class="fam-h">Badges</h4><div class="fam-medals">${s.badges.slice(-24).reverse().map(medalMini).join("")}</div>` : ""}
+        ${(s.camped || []).length ? `<h4 class="fam-h">Where they've camped</h4><ul class="fam-camps">${s.camped.slice(-12).reverse().map((c) => `<li data-fam-go="${c.lat},${c.lon}"><span>🏕️</span><b>${esc(c.name)}</b><small>${new Date(c.t * 1000).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}${c.nights > 1 ? ` · ${c.nights} nights` : ""}</small></li>`).join("")}</ul>` : ""}
+      </div>`;
+    }
+    return `<li class="fam-card${watching ? " is-watch" : ""}" data-fam="${esc(f.code)}">
+      <div class="fam-top">${car ? `<span class="fam-pic">${car}</span>` : ""}<div class="fam-who"><b>${esc(name)}</b><span>${st.ic} ${esc(st.text)}</span><small>${[dist, d && !d.gone ? `updated ${agoText(d.pos_at || d.updated_at)}` : ""].filter(Boolean).join(" · ")}</small></div></div>
+      ${more}
+      <div class="fam-btns">${d && !d.gone && !d.paused && d.lat != null ? `<button class="btn${watching ? " line" : " gold"}" type="button" data-fam-watch="${esc(f.code)}">${watching ? "Stop watching" : "👀 Watch live"}</button>` : ""}<button class="btn line" type="button" data-fam-del="${esc(f.code)}">Remove</button></div>
+    </li>`;
+  }
+  function renderFamily(quiet = false) {
+    const box = $("#famBox"); if (!box) return;
+    if (quiet && box.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return; // don't wipe what they're typing
+    const C = famCloud(), moreOpen = !!box.querySelector(".fs-more[open]");
+    const mine = famMe ? `<div class="fam-share on${famMe.paused ? " paused" : ""}">
+        <div class="fs-head"><span class="fs-dot"></span><b>${famMe.paused ? "Sharing paused" : "Family can see you"}</b></div>
+        <p class="help">Your invite code. Family type this into Camp Finder to follow you.</p>
+        <div class="fs-code" aria-label="Invite code">${fmtCode(famMe.code)}</div>
+        <div class="fs-btns"><button class="cta" type="button" id="famInvite">Send invite</button><button class="btn line" type="button" id="famPause">${famMe.paused ? "▶️ Resume" : "⏸️ Pause"}</button></div>
+        <details class="fs-more"><summary>Settings and privacy</summary>
+          <p class="help">They see your live location and speed, the trip you're on, where you've camped, your kilometres, states and badges. Not your notes or photos.</p>
+          <p class="help">On a journey your phone updates every 20 seconds while driving. Otherwise it updates when you move a few hundred metres, if you've allowed location "Always" in iPhone Settings.</p>
+          <div class="fs-btns"><button class="btn line" type="button" id="famNewCode">New code</button><button class="btn line danger" type="button" id="famOff">Turn off sharing</button></div>
+          <small class="help">A new code stops old codes working, so anyone you gave it to can't see you any more.</small>
+        </details></div>`
+      : `<div class="fam-share">
+        <div class="fs-head"><span class="fs-ic">📍</span><b>Share your trips with family</b></div>
+        <p class="help">Let family watch you travel live, like Life360 for road trips: where you are, how fast you're going, tonight's camp, your kilometres and badges. You get a code to send them. Pause or turn it off any time.</p>
+        <label class="field-lab" for="famName">Your name (what family see)</label>
+        <input id="famName" type="text" maxlength="40" autocomplete="name" value="${esc(settings.famName || (C?.email?.() || "").split("@")[0] || "")}" placeholder="e.g. Mum and Dad">
+        <button class="cta" type="button" id="famOn" style="width:100%;margin-top:10px">${C && !C.signedIn() ? "Sign in to turn on" : "Turn on family sharing"}</button>
+      </div>`;
+    const follow = `<h2 class="h2">Family you follow</h2>
+      <ul class="list fam-list">${famFollow.map(famCard).join("") || `<li class="empty">No one yet. When family send you their code, add it here to watch their trip.</li>`}</ul>
+      <form class="fam-add" id="famAdd"><label class="sr" for="famCode">Their invite code</label><input id="famCode" type="text" maxlength="9" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH"><button class="btn gold" type="submit">Follow</button></form>
+      <p class="msg" id="famMsg" role="status"></p>`;
+    // people you follow come first once you have some; your own sharing below
+    box.innerHTML = famFollow.length ? `${follow}<h2 class="h2">Share your trips</h2>${mine}` : `${mine}${follow}`;
+    if (moreOpen) box.querySelector(".fs-more")?.setAttribute("open", "");
+  }
+  $("#view-saved").addEventListener("click", async (e) => {
+    const t = e.target;
+    try {
+      if (t.closest("#famOn")) { const n = ($("#famName")?.value || "").trim(); if (!n) { $("#famName").focus(); return toast("Add your name so family know it's you"); } t.closest("#famOn").disabled = true; await famTurnOn(n); renderFamily(); if (famMe) toast("Family sharing is on. Send them your code!"); return; }
+      if (t.closest("#famInvite")) return famInvite();
+      if (t.closest("#famPause")) { famMe.paused = !famMe.paused; store.set(FAM_ME, famMe); await famCloud()?.updateFamily(famMe, { paused: famMe.paused }); await famNative(); if (!famMe.paused) { famLastPos = 0; famPushFull(); if (me) famOnPos({ latitude: me.lat, longitude: me.lon, speed: 0 }); } renderFamily(); toast(famMe.paused ? "Paused: family can't see where you are" : "Sharing again"); return; }
+      if (t.closest("#famNewCode")) { const c = await famCloud().newFamilyCode(famMe); if (c) { famMe.code = c; store.set(FAM_ME, famMe); renderFamily(); toast(`New code ${fmtCode(c)}. Old codes no longer work.`); } return; }
+      if (t.closest("#famOff")) { const b = t.closest("#famOff"); if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Tap again to turn off"; return; } await famCloud()?.stopFamily(famMe).catch(() => {}); famMe = null; store.set(FAM_ME, null); await famNative(); renderFamily(); toast("Family sharing is off and your location was deleted"); return; }
+      const w = t.closest("[data-fam-watch]"); if (w) { if (famWatch === w.dataset.famWatch) { famWatch = null; famTripLayer.clearLayers(); renderFamily(); } else famOpen(w.dataset.famWatch); return; }
+      const del = t.closest("[data-fam-del]"); if (del) { famFollow = famFollow.filter((f) => f.code !== del.dataset.famDel); store.set(FAM_FOLLOW, famFollow); famData.delete(del.dataset.famDel); if (famWatch === del.dataset.famDel) { famWatch = null; famTripLayer.clearLayers(); } famDraw(); renderFamily(); return; }
+      const go = t.closest("[data-fam-go]"); if (go) { const [la, lo] = go.dataset.famGo.split(",").map(Number); famWatch = null; map.setView([la, lo], 13); return; }
+    } catch (err) { toast(err?.message === "Sign in first." ? "Sign in (free) first" : "Couldn't do that right now. Check your signal."); renderFamily(); }
+  });
+  $("#view-saved").addEventListener("submit", async (e) => {
+    if (e.target.id !== "famAdd") return;
+    e.preventDefault();
+    const code = cleanCode($("#famCode").value), msg = $("#famMsg");
+    if (code.length !== 8) { msg.className = "msg is-error"; msg.textContent = "Codes are 8 letters and numbers, like ABCD-EFGH."; return; }
+    if (famFollow.some((f) => f.code === code)) { msg.textContent = "You already follow them."; return; }
+    if (famMe && code === famMe.code) { msg.textContent = "That's your own code. Send it to family instead."; return; }
+    const C = famCloud(); if (!C) { msg.textContent = "Family sharing isn't switched on in this version yet."; return; }
+    msg.className = "msg"; msg.innerHTML = `<span class="spinner"></span>Looking up the code`;
+    try {
+      const d = await C.getFamily(code);
+      if (!d) { msg.className = "msg is-error"; msg.textContent = "No one is sharing with that code. Check it with them."; return; }
+      famFollow.push({ code, name: d.name || "Family" }); store.set(FAM_FOLLOW, famFollow);
+      d.fetched = Date.now(); famData.set(code, d);
+      famDraw(); renderFamily(); toast(`Following ${d.name || "them"}`);
+      if (d.lat != null) famOpen(code);
+    } catch { msg.className = "msg is-error"; msg.textContent = "Couldn't check the code. You need signal."; }
+  });
+  // keep everything fresh: watching someone every 15 s, otherwise every minute; cars glide in between
+  setInterval(() => { if (famWatch) famRefresh([famWatch]); }, 15000);
+  setInterval(() => { if (famFollow.length) famRefresh(); }, 60000);
+  setInterval(() => { if (famMarkers.size && !document.hidden) famDraw(); }, 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && famFollow.length) famRefresh(); });
+  if (famFollow.length) setTimeout(() => famRefresh(), 2500);
+  window.__cfFam = () => ({ markers: famMarkers.size, watching: famWatch });
+  if (famMe) setTimeout(() => { famNative(); famPushFull(); if (store.get("cf-loc-ok", false)) startTracking(); }, 3000);
 
   // Travel journal
   function addJournalEntry(j) {
@@ -3306,6 +3589,7 @@
     store.set("cf-seg", name);
     if (name === "badges") renderBadges();
     if (name === "journal") renderJournal();
+    if (name === "family") { renderFamily(); if (famFollow.length) famRefresh(); }
     $("#sheetScroll").scrollTop = 0;
   }
   $("#view-saved .seg-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-seg]"); if (b) setSeg(b.dataset.seg); });
@@ -3324,7 +3608,7 @@
   // finished journeys only change when one ends or is deleted, so keep just their points in memory
   let doneJourneys = null;
   async function allJourneys() {
-    if (!doneJourneys) { try { doneJourneys = (await jkv.all()).filter((j) => j.ended && (!journey || j.id !== journey.id)).map((j) => ({ id: j.id, points: j.points, started: j.started, ended: j.ended })); } catch { doneJourneys = []; } }
+    if (!doneJourneys) { try { doneJourneys = (await jkv.all()).filter((j) => j.ended && (!journey || j.id !== journey.id)).map((j) => ({ id: j.id, points: j.points, started: j.started, ended: j.ended, nightSpots: j.nightSpots || [] })); } catch { doneJourneys = []; } }
     return journey ? [...doneJourneys, journey] : [...doneJourneys];
   }
   async function updateBadges(announce = false) {
@@ -3940,6 +4224,7 @@
     $("#stWelcomeEvery").addEventListener("change", (e) => { settings.welcomeEveryTime = e.target.checked; saveSettings(); });
     $("#stGoAccount").addEventListener("click", () => setView("saved"));
     $("#stFeedback").addEventListener("click", () => openFeedback());
+    $("#stFamily").addEventListener("click", () => { setView("saved"); setSeg("family"); });
     $("#stTerms").addEventListener("click", () => openLegal("terms"));
     $("#stPrivacy").addEventListener("click", () => openLegal("privacy"));
   })();

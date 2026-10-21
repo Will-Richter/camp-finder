@@ -200,6 +200,23 @@
       await sb.rpc("update_share", { p_id: sh.id, p_secret: sh.secret, p_lat: pos?.lat ?? null, p_lon: pos?.lon ?? null, p_speed: pos?.speed ?? null, p_heading: pos?.heading ?? null, p_tonight: tonight || null, p_ended: ended });
     },
 
+    // ---- family sharing (like Life360): you get an invite code, family use it to watch you live
+    async createFamily(name, car) {
+      mustUser();
+      const { data, error } = await sb.rpc("create_family", { p_name: name, p_car: car }); fail(error);
+      const row = Array.isArray(data) ? data[0] : data;
+      return { id: row.id, secret: row.secret, code: row.code };
+    },
+    async updateFamily(me, f = {}) {
+      if (!sb || !me) return;
+      const args = { p_id: me.id, p_secret: me.secret };
+      for (const [k, v] of Object.entries(f)) if (v !== undefined) args[`p_${k}`] = v;
+      const { error } = await sb.rpc("update_family", args); fail(error);
+    },
+    async newFamilyCode(me) { must(); const { data, error } = await sb.rpc("new_family_code", { p_id: me.id, p_secret: me.secret }); fail(error); return data; },
+    async stopFamily(me) { must(); const { error } = await sb.rpc("stop_family", { p_id: me.id, p_secret: me.secret }); fail(error); },
+    async getFamily(code) { must(); const { data, error } = await sb.rpc("get_family", { p_code: code }); fail(error); return data || null; },
+
     // ---- shared trip plans (anyone with the link can view; no sign-in needed)
     async createPlan(data) {
       if (!sb) throw new Error("offline");

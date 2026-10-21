@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Family · Camp Finder</title>
+<meta name="theme-color" content="#0E5A3E">
+<link rel="stylesheet" href="vendor/leaflet.min.css">
+<style>
+  :root { --sign: #0E5A3E; --gold: #F5C518; --ink: #17201C; --sub: #5B6761; --paper: #F6F7F4; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); background: var(--paper); }
+  #map { position: absolute; inset: 0; }
+  .card { position: absolute; z-index: 1000; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); max-width: 480px; margin: 0 auto;
+    background: #fff; border-radius: 20px; padding: 16px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+  .kicker { font: 800 11px/1 sans-serif; letter-spacing: .25em; color: var(--sign); }
+  h1 { margin: 6px 0 2px; font-size: 22px; line-height: 1.15; }
+  p { margin: 6px 0 0; color: var(--sub); font-size: 15px; line-height: 1.4; }
+  .live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #1F8A4C; margin-right: 6px; box-shadow: 0 0 0 0 rgba(31,138,76,.6); animation: pulse 1.6s infinite; }
+  .stale .live { background: #A9521C; animation: none; }
+  @keyframes pulse { to { box-shadow: 0 0 0 10px rgba(31,138,76,0); } }
+  .car { width: 40px; height: 40px; }
+  .car svg { width: 40px; height: 40px; transform: rotate(var(--rot, 0deg)); filter: drop-shadow(0 3px 4px rgba(0,0,0,.35)); }
+  a.btn { display: inline-block; margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: var(--gold); color: #1A1608; font-weight: 800; text-decoration: none; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="card" id="card"><div class="kicker">CAMP FINDER · FAMILY</div><h1 id="title">Loading…</h1><p id="status"></p><p id="tonight"></p><a class="btn" href="./#beta">Get Camp Finder to see more</a></div>
+<script src="vendor/leaflet.min.js"></script>
+<script>
+(() => {
+  const URL_ = "https://cesprkqwzmcioeydxsms.supabase.co", KEY = "sb_publishable_VIMVz7yyvc5-GR_v1aQmwg_oBtMIju0";
+  const id = location.hash.slice(1);
+  const $ = (s) => document.querySelector(s);
+  const map = L.map("map", { zoomControl: false }).setView([-25.5, 134], 4);
+  // On gonelappin.au the map comes from Stadia Maps (the domain is registered with them); anywhere else, OpenStreetMap
+  const stadia = /(^|\.)gonelappin\.au$/.test(location.hostname);
+  L.tileLayer(stadia ? "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png" : "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 18, attribution: stadia ? "© Stadia Maps © OpenMapTiles © OpenStreetMap" : "© OpenStreetMap contributors" }).addTo(map);
+  const CAR = '<svg viewBox="-20 -20 40 40"><rect x="-9" y="-15" width="18" height="30" rx="6" fill="#F5C518" stroke="#1A1608" stroke-width="2.4"/><rect x="-6.5" y="-9" width="13" height="7" rx="2" fill="#2B2F2D"/><rect x="-6.5" y="5" width="13" height="5" rx="1.5" fill="#2B2F2D"/></svg>';
+  let marker = null, routeDrawn = false, first = true, trackLine = null;
+  const ago = (t) => { const m = Math.round((Date.now() - Date.parse(t)) / 60000); return m < 2 ? "just now" : m < 60 ? `${m} minutes ago` : m < 1440 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`; };
+  const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const code = id.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  async function load() {
+    if (!code) { $("#title").textContent = "This link is missing its family code."; return; }
+    try {
+      const r = await fetch(`${URL_}/rest/v1/rpc/get_family`, { method: "POST", headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_code: code }) });
+      const s = r.ok ? await r.json() : null;
+      if (!s) { $("#title").textContent = "No one is sharing with this code any more."; $("#status").textContent = ""; return; }
+      $("#title").textContent = s.name || "Family";
+      if (s.paused) { $("#status").textContent = "They've paused sharing for now."; $("#tonight").textContent = ""; return; }
+      const t = s.trip, st = s.stats || {};
+      if (t && !routeDrawn && t.route?.length > 1) { const pl = L.polyline(t.route, { color: "#0E5A3E", weight: 4, opacity: .55, dashArray: "6 8" }).addTo(map); routeDrawn = true; if (s.lat == null) map.fitBounds(pl.getBounds(), { padding: [30, 30] }); }
+      if (t?.track?.length > 1) { if (trackLine) trackLine.setLatLngs(t.track); else trackLine = L.polyline(t.track, { color: "#E07A1F", weight: 5 }).addTo(map); }
+      if (s.lat != null) {
+        const stale = Date.now() - Date.parse(s.pos_at || s.updated_at) > 3 * 3600e3, kmh = Math.round((s.speed || 0) * 3.6);
+        $("#card").classList.toggle("stale", stale);
+        $("#status").innerHTML = `<span class="live"></span>${!stale && kmh >= 8 ? `Driving about <b>${kmh} km/h</b>` : stale ? "Last seen" : "Stopped"}, updated ${ago(s.pos_at || s.updated_at)}${stale ? ". They may be out of signal." : ""}`;
+        const icon = L.divIcon({ className: "car", html: `<div style="--rot:${Math.round(s.heading || 0)}deg">${CAR}</div>`, iconSize: [40, 40], iconAnchor: [20, 20] });
+        if (!marker) marker = L.marker([s.lat, s.lon], { icon }).addTo(map); else { marker.setLatLng([s.lat, s.lon]); marker.setIcon(icon); }
+        if (first) { map.setView([s.lat, s.lon], 9); first = false; }
+      } else $("#status").textContent = "Waiting for their first location update.";
+      $("#tonight").innerHTML = [t ? `On a trip: <b>${esc(t.from?.name)} → ${esc(t.to?.name)}</b>. Tonight: ${esc(t.tonight || "")}` : "", `${(st.km || 0).toLocaleString("en-AU")} km driven · ${(st.states || []).length} states · ${(st.badges || []).length} badges`].filter(Boolean).join("<br>");
+    } catch { $("#status").textContent = "Couldn't load. Check your connection."; }
+  }
+  load(); setInterval(load, 20000);
+})();
+</script>
+</body>
+</html>

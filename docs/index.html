@@ -462,6 +462,7 @@
           <button type="button" role="tab" data-seg="saved" aria-selected="true">🔖 Saved</button>
           <button type="button" role="tab" data-seg="badges" aria-selected="false">🏅 Badges</button>
           <button type="button" role="tab" data-seg="journal" aria-selected="false">📔 Journal</button>
+          <button type="button" role="tab" data-seg="family" aria-selected="false">👨‍👩‍👧 Family</button>
         </div>
         <section class="seg-pane" data-pane="saved">
           <h2 class="h2">Trips</h2>
@@ -478,6 +479,9 @@
         <section class="seg-pane" data-pane="badges" hidden>
           <div id="badgeBox" class="badge-box"></div>
         </section>
+        <section class="seg-pane" data-pane="family" hidden>
+          <div id="famBox"></div>
+        </section>
         <section class="seg-pane" data-pane="journal" hidden>
           <p class="help" style="margin-top:4px">Every journey you start is recorded here with your notes and photos. Open one to make a trip video.</p>
           <ul class="list" id="journalList"></ul>
@@ -487,6 +491,7 @@
       <!-- SETTINGS -->
       <div id="view-settings" class="view" hidden>
         <h1 class="title">Settings</h1>
+        <button type="button" class="fb-card fam-set" id="stFamily"><span class="fb-ic" aria-hidden="true">👨‍👩‍👧</span><span><b>Family sharing</b><small>Let family watch your trip live, or follow theirs.</small></span><svg class="ic sm"><use href="#i-chev"/></svg></button>
         <button type="button" class="fb-card" id="stFeedback"><span class="fb-ic" aria-hidden="true">💬</span><span><b>Send feedback</b><small>Found a bug, a wrong camp or got an idea? Tell us.</small></span><svg class="ic sm"><use href="#i-chev"/></svg></button>
 
         <section class="set-card mode-card">

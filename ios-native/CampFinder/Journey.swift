@@ -17,6 +17,9 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
     private var alertedDay = ""
     private var fuelAlerts: [[String: Any]] = []  // name, lat, lon, gapKm, next: last fuel before a long stretch
     private var fuelDone = Set<String>()
+    private var family: [String: String]?         // url, key, id, secret (Supabase family_shares): family can watch you live
+    private var lastFamily = Date.distantPast
+    private var lastFamilyLoc: CLLocation?
 
     override init() {
         super.init()
@@ -27,6 +30,8 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
         // Never let iOS pause the log at a long stop (lunch, overnight at camp): it doesn't resume by itself.
         // The 150 m filter and 100 m accuracy keep battery use low while parked.
         manager.pausesLocationUpdatesAutomatically = false
+        family = UserDefaults.standard.dictionary(forKey: "cf.family") as? [String: String]
+        if family != nil { startFamily() }
         if let id = UserDefaults.standard.string(forKey: "cf.journey.id") {
             journeyId = id
             share = UserDefaults.standard.dictionary(forKey: "cf.journey.share") as? [String: String]
@@ -70,7 +75,7 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
             return true
         case "stop":
             manager.stopUpdatingLocation()
-            manager.allowsBackgroundLocationUpdates = false
+            if family == nil { manager.allowsBackgroundLocationUpdates = false } else { startFamily() }
             journeyId = nil; share = nil; campAlerts = []; fuelAlerts = []; fuelDone = []
             for k in ["cf.journey.id", "cf.journey.share", "cf.journey.alerts", "cf.journey.fuel", "cf.journey.fuelDone"] { UserDefaults.standard.removeObject(forKey: k) }
             return true
@@ -82,6 +87,13 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
                 let p = line.split(separator: ",").compactMap { Double($0) }
                 return p.count == 3 ? p : nil
             }
+        case "family":
+            // family sharing on (config) or off (nothing)
+            family = body["family"] as? [String: String]
+            if let f = family { UserDefaults.standard.set(f, forKey: "cf.family"); lastFamily = .distantPast; startFamily() }
+            else { UserDefaults.standard.removeObject(forKey: "cf.family"); manager.stopMonitoringSignificantLocationChanges()
+                   if journeyId == nil { manager.allowsBackgroundLocationUpdates = false } }
+            return true
         case "status":
             ensureRunning()
             return ["active": journeyId != nil, "id": journeyId ?? ""]
@@ -101,6 +113,19 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
         manager.startUpdatingLocation()
     }
 
+    /// Family sharing without a journey running: cheap "significant change" updates (about every 500 m),
+    /// which iOS delivers even when the app is closed if the person allowed location "Always".
+    private func startFamily() {
+        switch manager.authorizationStatus {
+        case .notDetermined: manager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse: manager.requestAlwaysAuthorization()
+        default: break
+        }
+        guard CLLocationManager.significantLocationChangeMonitoringAvailable() else { return }
+        manager.allowsBackgroundLocationUpdates = true
+        manager.startMonitoringSignificantLocationChanges()
+    }
+
     func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
         if journeyId != nil { manager.startUpdatingLocation() }
     }
@@ -111,6 +136,10 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if family != nil, [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) {
+            manager.allowsBackgroundLocationUpdates = true
+            manager.startMonitoringSignificantLocationChanges()
+        }
         if journeyId != nil, [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) {
             manager.allowsBackgroundLocationUpdates = true
             manager.startUpdatingLocation()
@@ -118,6 +147,7 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if let loc = locations.last { pushFamily(loc) }
         guard let id = journeyId else { return }
         for loc in locations where loc.horizontalAccuracy > 0 && loc.horizontalAccuracy < 500 {
             if let last = lastSaved, loc.distance(from: last) < 120 { continue }
@@ -167,6 +197,27 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = ["p_id": id, "p_secret": secret, "p_lat": loc.coordinate.latitude, "p_lon": loc.coordinate.longitude,
                                    "p_speed": max(0, loc.speed), "p_heading": max(0, loc.course), "p_tonight": NSNull(), "p_ended": false]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: req).resume()
+    }
+
+    // Family watching live: every 20 s while driving, every 5 minutes when parked
+    private func pushFamily(_ loc: CLLocation) {
+        guard let f = family, let base = f["url"], let key = f["key"], let id = f["id"], let secret = f["secret"],
+              loc.horizontalAccuracy > 0, loc.horizontalAccuracy < 1000,
+              let url = URL(string: "\(base)/rest/v1/rpc/update_family") else { return }
+        let moving = loc.speed > 2
+        let since = Date().timeIntervalSince(lastFamily)
+        let moved = lastFamilyLoc.map { loc.distance(from: $0) } ?? .infinity
+        guard since > (moving ? 20 : 300) || (moved > 400 && since > 10) else { return }
+        lastFamily = Date(); lastFamilyLoc = loc
+        var req = URLRequest(url: url, timeoutInterval: 20)
+        req.httpMethod = "POST"
+        req.setValue(key, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["p_id": id, "p_secret": secret, "p_lat": loc.coordinate.latitude, "p_lon": loc.coordinate.longitude,
+                                   "p_speed": max(0, loc.speed), "p_heading": loc.course >= 0 ? (loc.course as Any) : (NSNull() as Any), "p_accuracy": loc.horizontalAccuracy]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req).resume()
     }
