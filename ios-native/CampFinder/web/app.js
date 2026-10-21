@@ -848,8 +848,10 @@
   const map = L.map("map", {
     zoomControl: false, attributionControl: true, preferCanvas: true, renderer: L.canvas({ padding: 0.8 }),
     fadeAnimation: false, bounceAtZoomLimits: false, minZoom: 3, worldCopyJump: false,
-    maxBounds: [[-62, 70], [20, 200]], maxBoundsViscosity: 0.85,
-  }).setView([-25.5, 134], 4);
+    zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
+    maxBounds: [[-47, 106], [-5, 161]], maxBoundsViscosity: 1, // stay on Australia
+  }).setView([-26.5, 134], 4);
+  const AU = [[-43.7, 113.1], [-10.6, 153.7]];
   const tileOpts = { maxZoom: 19, keepBuffer: 8, updateWhenZooming: false, updateWhenIdle: true };
   const backdropOpts = { maxZoom: 19, maxNativeZoom: 7, keepBuffer: 24, updateWhenZooming: false, attribution: "" };
   const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -875,8 +877,12 @@
   let userMovedMap = false;
   map.on("dragstart", () => (userMovedMap = true));
   const fixMapSize = () => {
+    const el = map.getContainer?.();
+    if (el && (el.clientWidth < 100 || el.clientHeight < 100)) return; // not laid out yet
     map.invalidateSize();
-    if (!plan && !userMovedMap && view === "plan" && window.innerHeight > 200) map.fitBounds([[-43.5, 113], [-10.5, 153.6]], fitPad());
+    // you can zoom out to see all of Australia, but not much further
+    if (map.getBoundsZoom && map.setMinZoom) map.setMinZoom(Math.max(2.5, map.getBoundsZoom(AU, false) - 0.75));
+    if (!plan && !userMovedMap && view === "plan" && window.innerHeight > 200) map.fitBounds(AU, fitPad());
   };
   [60, 400, 1200, 2500].forEach((ms) => setTimeout(fixMapSize, ms));
   window.addEventListener("load", () => setTimeout(fixMapSize, 120));
@@ -1176,6 +1182,98 @@
     planExtras(p);
   }
 
+  // ---- Things to see on the way: popular sights near your route, pick the ones you want
+  const POI_DETOUR = 50000;   // hand-picked sights up to 50 km off the route
+  const seeIds = new Set();   // sights you've added to this trip
+  const POIS = (window.CF_POIS || []).map(([name, lat, lon, emoji, blurb, star]) => ({ id: `poi:${name}`, name, lat, lon, emoji, blurb, star }));
+  function poisAlong(p) {
+    if (p._pois) return p._pois;
+    const pad = 0.6, lats = p.line.pts.map((x) => x[0]), lons = p.line.pts.map((x) => x[1]);
+    const bb = [Math.min(...lats) - pad, Math.min(...lons) - pad, Math.max(...lats) + pad, Math.max(...lons) + pad];
+    const list = POIS.filter((x) => x.lat >= bb[0] && x.lat <= bb[2] && x.lon >= bb[1] && x.lon <= bb[3])
+      .map((x) => ({ ...x, ...project(p.line, x) })).filter((x) => x.off <= POI_DETOUR || seeIds.has(x.id));
+    for (const g of p._gpois || []) if (!list.some((x) => hav([x.lat, x.lon], [g.lat, g.lon]) < 2500)) list.push(g);
+    list.sort((a, b) => a.along - b.along);
+    return (p._pois = list);
+  }
+  const dayOfAlong = (p, along) => { for (let i = 0; i < p.picks.length; i++) { const a = p.picks[i].camp?.along ?? p.picks[i].target; if (along <= a) return i; } return p.picks.length; };
+  function poiTeaserHtml(p) {
+    const list = poisAlong(p); if (!list.length) return "";
+    const picked = list.filter((x) => seeIds.has(x.id));
+    const top = [...list].sort((a, b) => (b.star || 0) - (a.star || 0) || (b.count || 0) - (a.count || 0)).slice(0, 3);
+    return `<li class="poi-teaser"><span class="pt-ic">📸</span><div><b>${picked.length ? `Seeing ${picked.length} thing${picked.length > 1 ? "s" : ""} on the way` : "Things to see on the way"}</b>
+      <p>${picked.length ? picked.map((x) => esc(x.name)).slice(0, 3).join(", ") : `${top.map((x) => esc(x.name)).join(", ")}${list.length > 3 ? ` and ${list.length - 3} more` : ""}`}</p></div>
+      <button type="button" class="btn" data-act="pois">${picked.length ? "Change" : "Pick"}</button></li>`;
+  }
+  function seeTodayLine(i) {
+    if (!seeIds.size || !plan) return "";
+    const today = poisAlong(plan).filter((x) => seeIds.has(x.id) && dayOfAlong(plan, x.along) === i);
+    return today.length ? `<p class="see-line">📸 See today: ${today.map((x) => `<button type="button" data-poi="${esc(x.id)}">${x.emoji} ${esc(x.name)}</button>`).join("")}</p>` : "";
+  }
+  // the most-reviewed attractions on Google Maps along the route (only when online with the key)
+  async function googlePois(p) {
+    if (!CFG.googleKey || p._gpois) return p._gpois || [];
+    const centers = []; const step = Math.max(90000, p.line.total / 22);
+    for (let a = 0; a <= p.line.total; a += step) centers.push(pointAt(p.line, a));
+    const found = new Map();
+    await Promise.all(centers.map(async (c) => {
+      try {
+        const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
+          method: "POST", fieldMask: "places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.editorialSummary,places.primaryTypeDisplayName,places.googleMapsUri",
+          body: { includedTypes: ["tourist_attraction", "national_park", "beach", "hiking_area"], rankPreference: "POPULARITY", maxResultCount: 10, locationRestriction: { circle: { center: { latitude: c.lat, longitude: c.lon }, radius: 30000 } } },
+        });
+        for (const g of j.places || []) if ((g.userRatingCount || 0) >= 400 && (g.rating || 0) >= 4.3) found.set(g.id, g);
+      } catch { /* skip this stretch */ }
+    }));
+    const out = [...found.values()].map((g) => ({ id: `g:${g.id}`, name: g.displayName?.text || "Attraction", lat: g.location.latitude, lon: g.location.longitude, emoji: "⭐",
+      blurb: g.editorialSummary?.text || g.primaryTypeDisplayName?.text || "Popular with visitors", rating: g.rating, count: g.userRatingCount, uri: g.googleMapsUri, star: g.userRatingCount > 3000 ? 3 : 2 }))
+      .map((x) => ({ ...x, ...project(p.line, x) })).filter((x) => x.off <= 25000);
+    p._gpois = out; p._pois = null;
+    return out;
+  }
+  function openPois(focusId) {
+    const p = plan; if (!p) return;
+    const draft = new Set(seeIds);
+    const row = (x) => {
+      const day = dayOfAlong(p, x.along) + 1;
+      const detour = x.off < 1500 ? "On your route" : `${km(x.off)} off route · about ${hrs((x.off * 2) / 22)} return`;
+      return `<li class="poi-row${draft.has(x.id) ? " on" : ""}" id="row-${CSS.escape(x.id)}"><label>
+        <input type="checkbox" value="${esc(x.id)}" ${draft.has(x.id) ? "checked" : ""}>
+        <span class="pr-ic">${x.emoji}</span>
+        <span class="pr-body"><b>${esc(x.name)}${x.star >= 3 ? ` <i class="must">Must see</i>` : ""}</b><small>${esc(x.blurb)}</small>
+        <em>Day ${day} · ${detour}${x.rating ? ` · ★ ${x.rating.toFixed(1)} (${x.count.toLocaleString("en-AU")})` : ""}</em></span></label></li>`;
+    };
+    const draw = () => {
+      const list = poisAlong(p);
+      $("#poiList").innerHTML = list.map(row).join("") || `<li class="empty">No well-known sights found near this route.</li>`;
+      updateBtn();
+    };
+    const updateBtn = () => { const n = draft.size; $("#poiApply").textContent = n ? `Add ${n} to my trip` : seeIds.size ? "Remove all from my trip" : "Pick the ones you want to see"; $("#poiApply").disabled = !n && !seeIds.size; };
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Things to see on the way</h2>
+      <p class="d-kind">Popular sights near your route, in the order you'll pass them. Tick the ones you want and we'll route you past them.</p>
+      <p class="help" id="poiMore">${CFG.googleKey ? `<span class="spinner"></span>Finding the most popular spots on Google…` : ""}</p>
+      <ul class="poi-list" id="poiList"></ul>
+      <div class="poi-bar"><button class="cta" type="button" id="poiApply">Pick the ones you want to see</button></div></div>`);
+    draw();
+    if (focusId) setTimeout(() => { const el = document.getElementById(`row-${CSS.escape(focusId)}`); el?.scrollIntoView({ block: "center" }); el?.classList.add("flash"); }, 60);
+    $("#poiList").addEventListener("change", (e) => { const cb = e.target.closest("input[type=checkbox]"); if (!cb) return; cb.checked ? draft.add(cb.value) : draft.delete(cb.value); cb.closest(".poi-row").classList.toggle("on", cb.checked); updateBtn(); });
+    if (CFG.googleKey) googlePois(p).then((g) => { if (!$("#poiMore")) return; $("#poiMore").textContent = g.length ? `Includes ${g.length} of the most-reviewed spots on Google Maps.` : ""; draw(); }).catch(() => { if ($("#poiMore")) $("#poiMore").textContent = ""; });
+    $("#poiApply").addEventListener("click", () => {
+      const all = poisAlong(p);
+      seeIds.clear(); draft.forEach((id) => seeIds.add(id));
+      const chosen = all.filter((x) => seeIds.has(x.id)).slice(0, 10);
+      // route past the sights you picked (a few km away counts as on the way: no detour)
+      const keep = viaStops.filter((v) => !v.poi);
+      const vias = [...keep.map((v) => ({ ...v, along: project(p.line, v).along })), ...chosen.filter((x) => x.off >= 1500).map((x) => ({ name: x.name, lat: x.lat, lon: x.lon, poi: true, along: x.along }))]
+        .sort((a, b) => a.along - b.along).map(({ along, ...v }) => v);
+      viaStops = vias; renderVia();
+      closeDetail();
+      toast(chosen.length ? `Adding ${chosen.length} sight${chosen.length > 1 ? "s" : ""} to your trip` : "Sights removed");
+      $("#results").hidden = true; $("#planForm").hidden = false;
+      $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
+    });
+  }
+
   // ---- Arrive before dark: sunset at each night's camp and the time to leave by
   const TOWING_SLOW = 1.12; // towing is a bit slower than the car-only drive times
   function legSeconds(i) {
@@ -1242,7 +1340,7 @@
     stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
     p.picks.forEach((pk, i) => {
       fuelUpTo(pk.camp?.along ?? pk.target);
-      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}${weatherChip(i)}</p>${daylightLine(i, pk.camp || pointAt(p.line, pk.target))}`;
+      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}${weatherChip(i)}</p>${daylightLine(i, pk.camp || pointAt(p.line, pk.target))}${seeTodayLine(i)}`;
       if (pk.refresh) { stops.push(refreshStopHtml(pk, i, leg)); return; }
       if (!pk.camp) {
         stops.push(`<li class="stop"><div class="plate" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">${leg}<p class="note">${esc(pk.warn)}</p></div></li>`);
@@ -1264,7 +1362,8 @@
     });
     const lastAlong = p.picks.at(-1)?.camp?.along ?? p.picks.at(-1)?.target ?? 0;
     fuelUpTo(p.line.total);
-    stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
+    stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p>${seeTodayLine(p.nights)}<div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
+    { const pt = poiTeaserHtml(p); if (pt) stops.unshift(pt); }
     if (p.fuelState === "done") { const fc = fuelCheckHtml(p); if (fc) stops.unshift(fc); }
     if (p.fuelState === "loading") stops.splice(1, 0, `<li class="stop fuel-wait"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="help"><span class="spinner"></span>Working out where you'll need fuel</p></div></li>`);
     $("#nightList").innerHTML = stops.join("");
@@ -1281,6 +1380,10 @@
     const pickIds = new Set(p.picks.map((x) => x.camp?.id));
     for (const c of p.camps) if (!pickIds.has(c.id)) campMarker(c).addTo(tripLayer);
     p.picks.forEach((pk, i) => { if (pk.camp) campMarker(pk.camp, { night: true, label: String(i + 1) }).addTo(tripLayer); });
+    for (const poi of poisAlong(p).slice(0, 40)) {
+      const m = L.marker([poi.lat, poi.lon], { icon: divIcon(`<div class="mk-poi${seeIds.has(poi.id) ? " on" : ""}">${poi.emoji}</div>`, [30, 30]), title: poi.name, zIndexOffset: 500 });
+      m.on("click", () => openPois(poi.id)); m.addTo(tripLayer);
+    }
     map.fitBounds(line.getBounds(), fitPad());
   }
 
@@ -1295,6 +1398,8 @@
       return;
     }
     if (b?.dataset.act === "leg") { showLeg(+b.dataset.i); return; }
+    if (b?.dataset.act === "pois") { openPois(); return; }
+    if (b?.dataset.poi) { openPois(b.dataset.poi); return; }
     if (b?.dataset.act === "fuelpick") { const fs = plan.fuel[+b.dataset.f]; const o = fs.options.find((x) => x.id === b.dataset.id); fs.options = [o, ...fs.options.filter((x) => x !== o)]; renderItinerary(); renderBudget(); return; }
     if (b?.dataset.act === "staypick") { const pk = plan.picks[+b.dataset.i]; const o = pk.refresh.options.find((x) => x.id === b.dataset.id); pk.refresh.options = [o, ...pk.refresh.options.filter((x) => x !== o)]; renderItinerary(); renderBudget(); return; }
     if (b?.dataset.act === "camphere") { const pk = plan.picks[+b.dataset.i]; pk.refresh = null; renderItinerary(); renderBudget(); toast(`Night ${+b.dataset.i + 1}: camping instead`); return; }
@@ -3324,7 +3429,7 @@
     const row = $("#viaRow");
     row.hidden = !viaStops.length;
     row.innerHTML = viaStops.length ? `<span class="help">Via</span>${viaStops.map((v, k) => `<span class="via-chip">${esc(v.name)}</span>`).join("")}<button type="button" class="via-clear" id="viaClear" aria-label="Remove stops">✕</button>` : "";
-    $("#viaClear")?.addEventListener("click", () => { viaStops = []; renderVia(); });
+    $("#viaClear")?.addEventListener("click", () => { viaStops = []; seeIds.clear(); renderVia(); });
   }
   function renderDiscover() {
     const T = window.CF_TRIPS || [];
@@ -3427,7 +3532,7 @@
   renderDiscover();
   paintCars();
   setTimeout(() => updateBadges(false), 1500);
-  ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { if (viaStops.length) { viaStops = []; renderVia(); } }));
+  ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); if (viaStops.length) { viaStops = []; renderVia(); } }));
 
   // ================================================================ first-time sign in
   function showLogin() {
@@ -3615,7 +3720,7 @@
     placeHole(); sp.classList.add("out");
     await sleep(animOn() ? 880 : 0);
     sp.classList.add("gone");
-    moveInk();
+    moveInk(); fixMapSize();
     if (first) await showLogin();
     if (settings.welcomeEveryTime || !store.get("cf-welcomed", false)) showWelcome();
   }
@@ -3659,7 +3764,7 @@
     const done = async () => {
       store.set("cf-welcomed", true);
       w.classList.add("out"); await sleep(animOn() ? 560 : 0); w.hidden = true;
-      if (plan) showPlan();
+      if (plan) showPlan(); else fixMapSize();
     };
     $("#wlNext").onclick = () => { const i = at(); if (i >= slides.length - 1) return done(); track.scrollTo({ left: (i + 1) * track.clientWidth, behavior: animOn() ? "smooth" : "auto" }); };
     $("#wlSkip").onclick = done;

@@ -1075,3 +1075,29 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .recap-cta { width: 100%; margin: 6px 0 12px; }
 .recap-stage { display: grid; place-items: center; min-height: 200px; margin: 12px 0; }
 .recap-stage canvas { width: min(100%, 300px); height: auto; aspect-ratio: 9 / 16; border-radius: 18px; box-shadow: 0 14px 34px rgba(0,0,0,.3); background: #0E5A3E; }
+
+/* ---------- things to see on the way ---------- */
+.poi-teaser { list-style: none; display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; margin: 0 0 14px; border-radius: 16px; background: linear-gradient(135deg, color-mix(in srgb, var(--gold) 22%, var(--sheet)), var(--sheet)); border: 2px solid color-mix(in srgb, var(--gold) 55%, transparent); }
+.poi-teaser .pt-ic { font-size: 26px; }
+.poi-teaser div { flex: 1; min-width: 0; }
+.poi-teaser b { font: 800 16px/1.25 var(--display); display: block; }
+.poi-teaser p { margin: 3px 0 0; font-size: 14px; color: var(--sub); line-height: 1.4; }
+.poi-teaser .btn { flex: none; }
+.see-line { margin: 0 0 8px; font-size: 14px; color: var(--ink); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.see-line button { border: 0; background: color-mix(in srgb, var(--gold) 25%, var(--sheet)); border-radius: 999px; padding: 5px 10px; font: 700 13.5px var(--text); color: var(--ink); }
+.mk-poi { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; background: #fff; border: 2px solid var(--gold); box-shadow: 0 3px 8px rgba(0,0,0,.25); }
+.mk-poi.on { background: var(--gold); border-color: #1A1608; transform: scale(1.15); }
+.poi-list { list-style: none; margin: 10px 0 90px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.poi-row label { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 14px; background: var(--well); border: 2px solid transparent; cursor: pointer; }
+.poi-row.on label { border-color: var(--sign); background: color-mix(in srgb, var(--sign) 8%, var(--sheet)); }
+.poi-row.flash label { animation: poiFlash 1.4s ease 2; }
+@keyframes poiFlash { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 70%, transparent); } }
+.poi-row input { width: 22px; height: 22px; margin-top: 3px; accent-color: var(--sign); flex: none; }
+.pr-ic { font-size: 26px; line-height: 1.1; }
+.pr-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pr-body b { font: 800 16px/1.25 var(--display); }
+.pr-body small { font-size: 14px; color: var(--ink); line-height: 1.4; }
+.pr-body em { font-style: normal; font-size: 12.5px; color: var(--sub); font-weight: 600; }
+.must { font-style: normal; font: 800 10.5px/1 var(--text); letter-spacing: .06em; text-transform: uppercase; background: var(--gold); color: #1A1608; border-radius: 6px; padding: 3px 6px; vertical-align: 2px; margin-left: 4px; }
+.poi-bar { position: sticky; bottom: 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, var(--sheet) 28%); }
+.poi-bar .cta { width: 100%; }
