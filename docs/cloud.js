@@ -120,6 +120,14 @@
       mustUser();
       const { error } = await sb.from("checkins").insert({ camp_key: key, status, note: note || null }); fail(error);
     },
+    // recent "how busy is it" reports for many camps at once (last 36 hours)
+    async crowdFor(keys) {
+      if (!sb || !keys.length) return [];
+      const since = new Date(Date.now() - 36 * 3600e3).toISOString();
+      const { data, error } = await sb.from("checkins").select("camp_key,status,note,created_at").in("camp_key", keys.slice(0, 80)).like("note", "crowd:%").gte("created_at", since).order("created_at", { ascending: false });
+      fail(error);
+      return data || [];
+    },
     async latestCheckins(key) {
       if (!sb) return [];
       const { data, error } = await sb.from("checkins").select("status,note,created_at").eq("camp_key", key).order("created_at", { ascending: false }).limit(5);

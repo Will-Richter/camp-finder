@@ -225,6 +225,8 @@
     <div class="crosshair" aria-hidden="true"><svg class="ic"><use href="#i-pin"/></svg></div>
   </div>
 
+  <div id="roadAlert" class="road-alert" role="status" aria-live="assertive" hidden></div>
+  <div id="badgePop" class="badge-pop" hidden><div class="bp-card" role="dialog" aria-modal="true" aria-labelledby="bpName"><div class="bp-burst" aria-hidden="true"></div><div id="bpMedal"></div><p class="bp-kicker">Badge unlocked!</p><h2 id="bpName"></h2><p id="bpDesc"></p><div class="bp-acts"><button type="button" class="cta" id="bpOk">Nice!</button><button type="button" class="btn" id="bpAll">See all badges</button></div></div></div>
   <section id="sheet" class="sheet" aria-label="Camp finder">
     <button id="sheetHandle" class="grabber" type="button" aria-label="Resize panel"><span></span></button>
     <button id="peekBar" class="peek-bar" type="button" aria-label="Open panel">
@@ -455,7 +457,9 @@
       <!-- SAVED -->
       <div id="view-saved" class="view" hidden>
         <h1 class="title">Saved</h1>
-        <div id="accountBox"></div>
+        <h2 class="h2" style="margin-top:4px">Your badges</h2>
+        <div id="badgeBox" class="badge-box"></div>
+        <div id="accountBox" style="margin-top:18px"></div>
         <h2 class="h2">Travel journal</h2>
         <ul class="list" id="journalList"></ul>
         <h2 class="h2">Trips</h2>
@@ -589,6 +593,8 @@
 <script src="guides.js"></script>
 <script src="vehicles.js"></script>
 <script src="cars.js"></script>
+<script src="badges.js"></script>
+<script src="recap.js"></script>
 <script src="road.js"></script>
 <script src="trips.js"></script>
 <script src="legal.js"></script>

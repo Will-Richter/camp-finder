@@ -949,6 +949,7 @@
     }
     if (following) map.panTo([me.lat, me.lon], { animate: true, duration: .8 });
     if (typeof recordPoint === "function") try { recordPoint(me); } catch {}
+    if (typeof onRoadCheck === "function") try { onRoadCheck(me); } catch {}
   }
   function startTracking() {
     if (tracking != null || !navigator.geolocation?.watchPosition) return;
@@ -1040,6 +1041,7 @@
     if (v === "plan" && plan) drawPlan();
     if (v === "saved") renderSaved();
     if (v === "settings") renderSettings();
+    if (v === "saved") renderBadges();
     moveInk();
   }
 
@@ -1174,6 +1176,64 @@
     planExtras(p);
   }
 
+  // ---- Arrive before dark: sunset at each night's camp and the time to leave by
+  const TOWING_SLOW = 1.12; // towing is a bit slower than the car-only drive times
+  function legSeconds(i) {
+    const p = plan, dist = nightKm(i);
+    const base = p.route.distance ? p.route.duration * dist / p.route.distance : dist / 22;
+    const drive = base * (towing(p.opts.rig) ? TOWING_SLOW : 1);
+    return drive + Math.floor(drive / 7200) * 900; // a 15 minute break every 2 hours
+  }
+  function daylightLine(i, at) {
+    if (!at || !window.CFGeo) return "";
+    const d = new Date(); d.setDate(d.getDate() + dayOffset(plan) + i); d.setHours(12, 0, 0, 0);
+    const sunset = sunTimes(at.lat, at.lon, d);
+    if (!isFinite(sunset)) return "";
+    const secs = legSeconds(i);
+    const leaveBy = new Date(sunset.getTime() - 45 * 60000 - secs * 1000);
+    const startPt = i === 0 ? plan.from : (plan.picks[i - 1].camp || pointAt(plan.line, plan.picks[i - 1].target));
+    const leaveMin = CFGeo.localMinutes(sunset, at.lat, at.lon) - 45 - secs / 60; // minutes after midnight
+    const tooLong = secs > 10 * 3600 || leaveMin < 6 * 60;
+    return `<p class="daylight${tooLong ? " long" : ""}">🌅 Sunset ${CFGeo.localTime(sunset, at.lat, at.lon)} at camp · ${hrs(secs)} with breaks · <b>${tooLong ? "Long day: consider an extra night" : `Leave by ${CFGeo.localTime(leaveBy, startPt.lat, startPt.lon)}`}</b></p>`;
+  }
+
+  // ---- Fuel check: is there any stretch longer than your range?
+  function fuelGaps(p) {
+    if (p._gaps) return p._gaps;
+    const found = new Map();
+    for (let a = 0; a <= p.line.total; a += 40000) for (const st of (campDB.fuelIn ? campDB.fuelIn(pointAt(p.line, a), 32000) : [])) found.set(st.id || `${st.lat},${st.lon}`, st);
+    (p.fuel || []).forEach((fs) => (fs.options || []).forEach((o) => found.set(o.id, o)));
+    const list = [...found.values()].map((st) => ({ ...st, ...project(p.line, st) })).filter((st) => st.off < 5000).sort((a, b) => a.along - b.along);
+    // nearby stations count as one stop
+    const stations = []; for (const st of list) if (!stations.length || st.along - stations.at(-1).along > 1500) stations.push(st);
+    const pts = [{ along: 0, name: short(p.from.name), start: true }, ...stations, { along: p.line.total, name: short(p.to.name), end: true }];
+    const gaps = [];
+    for (let k = 1; k < pts.length; k++) gaps.push({ from: pts[k - 1], to: pts[k], len: pts[k].along - pts[k - 1].along });
+    const worst = gaps.reduce((a, g) => (g.len > (a?.len || 0) ? g : a), null);
+    return (p._gaps = { stations, gaps, worst, known: stations.length > 0 || p.line.total < 150000 });
+  }
+  function fuelCheckHtml(p) {
+    const range = rangeKm(p.opts.rig) * 1000;
+    if (!isFinite(range)) return "";
+    const g = fuelGaps(p); if (!g.worst) return "";
+    const tow = towing(p.opts.rig) && settings.tow ? " towing" : "";
+    const where = `${esc(short(g.worst.from.name || "fuel"))} → ${esc(short(g.worst.to.name || "fuel"))}`;
+    if (!g.known) return `<li class="fuel-check warn"><span class="fck-ic">⛽</span><div><b>Fuel check</b><p>We don't know the fuel stations on this route. Fill up whenever you can and carry spare fuel.</p></div></li>`;
+    if (g.worst.len > range) {
+      const per100 = settings.use * (towing(p.opts.rig) ? 1 + settings.tow / 100 : 1);
+      const spare = Math.ceil(((g.worst.len - range) / 1000 + 50) * per100 / 100);
+      return `<li class="fuel-check bad"><span class="fck-ic">⛽</span><div><b>Fuel warning: you can't make it on one tank</b><p>${km(g.worst.len)} with no fuel (${where}). Your range${tow} is about ${km(range)}. Carry at least <b>${spare} L</b> spare (${Math.ceil(spare / 20)} × 20 L jerry can${spare > 20 ? "s" : ""}) and fill up before this stretch.</p></div></li>`;
+    }
+    if (g.worst.len > range * 0.75) return `<li class="fuel-check warn"><span class="fck-ic">⛽</span><div><b>Fuel check: tight</b><p>Longest stretch without fuel is ${km(g.worst.len)} (${where}). Your range${tow} is about ${km(range)}. Fill up at every chance before it.</p></div></li>`;
+    return `<li class="fuel-check ok"><span class="fck-ic">⛽</span><div><b>Fuel check: you're fine</b><p>Longest stretch without fuel is ${km(g.worst.len)} (${where}). Your range${tow} is about ${km(range)}.</p></div></li>`;
+  }
+  // stations that are the last fuel before a long stretch (used for alerts on the road)
+  function lastFuelList(p) {
+    const g = fuelGaps(p), out = [];
+    for (const gap of g.gaps) if (gap.len >= 150000 && !gap.from.start) out.push({ name: gap.from.name, lat: gap.from.lat, lon: gap.from.lon, gapKm: Math.round(gap.len / 1000), next: short(gap.to.name || "") });
+    return out.slice(0, 40);
+  }
+
   function renderItinerary() {
     const p = plan; if (!p) return;
     const stops = [];
@@ -1182,7 +1242,7 @@
     stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
     p.picks.forEach((pk, i) => {
       fuelUpTo(pk.camp?.along ?? pk.target);
-      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}${weatherChip(i)}</p>`;
+      const leg = `<p class="stop-leg">Day ${i + 1}: ${km(nightKm(i))}${legExtra(nightKm(i))}${weatherChip(i)}</p>${daylightLine(i, pk.camp || pointAt(p.line, pk.target))}`;
       if (pk.refresh) { stops.push(refreshStopHtml(pk, i, leg)); return; }
       if (!pk.camp) {
         stops.push(`<li class="stop"><div class="plate" aria-label="Night ${i + 1}">${i + 1}</div><div class="stop-body">${leg}<p class="note">${esc(pk.warn)}</p></div></li>`);
@@ -1205,6 +1265,7 @@
     const lastAlong = p.picks.at(-1)?.camp?.along ?? p.picks.at(-1)?.target ?? 0;
     fuelUpTo(p.line.total);
     stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
+    if (p.fuelState === "done") { const fc = fuelCheckHtml(p); if (fc) stops.unshift(fc); }
     if (p.fuelState === "loading") stops.splice(1, 0, `<li class="stop fuel-wait"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="help"><span class="spinner"></span>Working out where you'll need fuel</p></div></li>`);
     $("#nightList").innerHTML = stops.join("");
     cardPhotos();
@@ -1366,6 +1427,8 @@
         ${c.closed ? `<div class="notice bad"><b>Closed</b><span>${esc(c.closed)}</span></div>` : ""}
         ${c.park ? `<div class="notice"><b>National park camping</b><span>You need a camping permit before you arrive${c.park.state === "QLD" ? ", and fees apply" : ""}. Book with ${esc(c.park.who || "the parks service")}.</span>${c.park.url ? `<a class="btn line" href="${esc(c.park.url)}" target="_blank" rel="noopener">Book with ${esc(c.park.who)}</a>` : ""}</div>` : ""}
         <div class="checkin" id="checkinBox">
+          <p class="crowd-now" id="crowdNow" hidden></p>
+          <div class="ci-crowd"><span>Here now?</span>${CROWD.map(([k, l]) => `<button type="button" data-crowd="${k}">${l}</button>`).join("")}</div>
           <div class="ci-head"><b>Been here lately?</b><span id="ciLatest" class="help"></span></div>
           <div class="ci-btns">
             <button class="btn" type="button" data-ci="free">Still free</button>
@@ -1560,6 +1623,7 @@
       if (el.isConnected && !el.querySelector(".g-chip") && gPlace.get(c.id)?.rating) el.querySelector(".cc-meta")?.insertAdjacentHTML("beforeend", googleChip(c));
       const lm = el.closest(".stop-body")?.querySelector(`[data-learn="${CSS.escape(c.id)}"]`); if (lm) lm.href = learnUrl(c);
     }));
+    crowdTags();
   }
 
   // ---------------------------------------------------------------- ratings and reviews
@@ -2045,6 +2109,25 @@
 
   // ---------------------------------------------------------------- CHECK-INS ("is it still free?")
   const CI_TEXT = { free: "Still free", price_changed: "Price changed", closed: "Closed", full: "Full", great: "Great spot" };
+  // "How busy is it right now?" reports, kept low-key
+  const CROWD = [["quiet", "😌 Quiet"], ["some", "🙂 A few"], ["busy", "😬 Busy"], ["full", "⛔ Full"]];
+  const CROWD_TEXT = { quiet: "Quiet", some: "A few people", busy: "Busy", full: "Full" };
+  const crowdOf = (r) => (r?.note || "").startsWith("crowd:") ? r.note.slice(6) : null;
+  const crowdLine = (r) => { const k = crowdOf(r); if (!k || Date.now() - Date.parse(r.created_at) > 36 * 3600e3) return ""; return `${CROWD_TEXT[k] || k} right now · ${agoTime(r.created_at)}`; };
+  async function sendCrowd(campId, k) {
+    if (!window.CFCloud?.enabled) throw new Error("off");
+    if (!window.CFCloud.signedIn()) { toast("Sign in (free) to report"); goSignIn(); throw new Error("signin"); }
+    await window.CFCloud.checkin(campId, k === "full" ? "full" : "great", `crowd:${k}`);
+  }
+  const crowdCache = new Map();
+  async function crowdTags() {
+    if (!window.CFCloud?.enabled) return;
+    const cards = $$(".camp-card[data-id]:not([data-cw])");
+    cards.forEach((el) => (el.dataset.cw = "1"));
+    const ids = [...new Set(cards.map((el) => el.dataset.id))].filter((id) => !crowdCache.has(id));
+    if (ids.length) { try { const rows = await window.CFCloud.crowdFor(ids); ids.forEach((id) => crowdCache.set(id, rows.find((r) => r.camp_key === id) || null)); } catch { return; } }
+    cards.forEach((el) => { const r = crowdCache.get(el.dataset.id), line = r && crowdLine(r); if (line && el.isConnected && !el.querySelector(".cc-crowd")) el.querySelector(".cc-meta")?.insertAdjacentHTML("beforeend", `<span class="cc-crowd ${crowdOf(r)}">${esc(CROWD_TEXT[crowdOf(r)])} now</span>`); });
+  }
   function ago(iso) {
     const d = (Date.now() - Date.parse(iso)) / 86400000;
     if (d < 1) return "today"; if (d < 2) return "yesterday"; if (d < 30) return `${Math.floor(d)} days ago`;
@@ -2056,9 +2139,17 @@
     if (!window.CFCloud?.enabled) { latest.textContent = "Check-ins will appear here once sharing is switched on."; }
     else window.CFCloud.latestCheckins(c.id).then((list) => {
       if (!$("#ciLatest")) return;
-      latest.textContent = list.length ? `${CI_TEXT[list[0].status]}, reported ${ago(list[0].created_at)}${list.length > 1 ? ` (${list.length} recent reports)` : ""}` : "No reports yet. Be the first.";
+      const cw = list.find((r) => crowdLine(r)), plain = list.filter((r) => !crowdOf(r));
+      if (cw) { $("#crowdNow").hidden = false; $("#crowdNow").textContent = crowdLine(cw); }
+      latest.textContent = plain.length ? `${CI_TEXT[plain[0].status]}, reported ${ago(plain[0].created_at)}${plain.length > 1 ? ` (${plain.length} recent reports)` : ""}` : "No reports yet. Be the first.";
     }).catch(() => (latest.textContent = ""));
     box.addEventListener("click", async (e) => {
+      const cb = e.target.closest("[data-crowd]");
+      if (cb) {
+        try { await sendCrowd(c.id, cb.dataset.crowd); $("#crowdNow").hidden = false; $("#crowdNow").textContent = `${CROWD_TEXT[cb.dataset.crowd]} right now · just now (you)`; crowdCache.delete(c.id); toast("Thanks! That helps other travellers"); }
+        catch (err) { if (err?.message === "off") toast("Check-ins aren't switched on in this version yet"); else if (err?.message !== "signin") toast("Couldn't send that. Try again with signal."); }
+        return;
+      }
       const b = e.target.closest("[data-ci]"); if (!b) return;
       if (!window.CFCloud?.enabled) return toast("Check-ins aren't switched on in this version yet");
       if (!window.CFCloud.signedIn()) return toast("Sign in on the Saved tab to report");
@@ -2734,10 +2825,13 @@
       id: `j-${Date.now()}`, name: `${short(plan.from.name)} to ${short(plan.to.name)}`, started: new Date().toISOString(),
       from: plan.from, to: plan.to, nights: plan.picks.map((pk) => ({ name: pk.refresh?.options?.[0]?.name || pk.camp?.name || "", lat: (pk.refresh?.options?.[0] || pk.camp)?.lat, lon: (pk.refresh?.options?.[0] || pk.camp)?.lon })),
       route: plan.route.geometry.coordinates.filter((_, k, a) => k % Math.max(1, Math.floor(a.length / 300)) === 0),
-      points: [], notes: [], share: null,
+      points: [], notes: [], share: null, fuelAlerts: lastFuelList(plan), alerted: [], asked: [],
+      nightSpots: plan.picks.map((pk) => pk.camp && { id: pk.camp.id, name: pk.camp.name, lat: pk.camp.lat, lon: pk.camp.lon }).filter(Boolean),
     };
     saveJourney();
-    await jcall("start", { id: journey.id, notify: !!settings.campAlerts, camps: settings.campAlerts ? campAlertList(plan) : [] });
+    await jcall("start", { id: journey.id, notify: true, camps: settings.campAlerts ? campAlertList(plan) : [], fuel: journey.fuelAlerts });
+    const firstGap = fuelGaps(plan).gaps[0];
+    if (firstGap && firstGap.len >= 150000) setTimeout(() => roadAlert("⛽", "Fill up before you leave", `No fuel for ${km(firstGap.len)} after ${short(plan.from.name)}.`), 1500);
     startTracking(); setFollow(true);
     await jkv.put({ ...journey }).catch(() => {});
     showJourneyBar(); toast("Journey started. Safe travels!");
@@ -2748,6 +2842,46 @@
     if (Array.isArray(pts) && pts.length) journey.points.push(...pts);
     saveJourney(); jkv.put({ ...journey }).catch(() => {});
     updateJourneyBar();
+    updateBadges(true);
+  }
+
+  // ---- On the road: "last fuel" alerts and a quiet "how busy is it?" when you arrive at camp
+  function roadAlert(ic, title, text, actions = "") {
+    const el = $("#roadAlert");
+    el.innerHTML = `<span class="ra-ic">${ic}</span><div class="ra-body"><b>${esc(title)}</b><span>${esc(text)}</span>${actions}</div><button type="button" class="ra-x" aria-label="Dismiss">✕</button>`;
+    el.hidden = false; el.classList.remove("out");
+    clearTimeout(roadAlert.t); roadAlert.t = setTimeout(() => hideRoadAlert(), actions ? 30000 : 15000);
+    navigator.vibrate?.(60);
+  }
+  function hideRoadAlert() { const el = $("#roadAlert"); el.classList.add("out"); setTimeout(() => (el.hidden = true), 300); }
+  $("#roadAlert").addEventListener("click", (e) => {
+    if (e.target.closest(".ra-x")) return hideRoadAlert();
+    const b = e.target.closest("[data-crowd]");
+    if (b) { sendCrowd(b.dataset.camp, b.dataset.crowd).then(() => { hideRoadAlert(); toast("Thanks! That helps other travellers"); }).catch(() => toast("Couldn't send that. Try again with signal.")); }
+  });
+  function onRoadCheck(pos) {
+    if (!journey) return;
+    const d = (x) => hav([pos.lat, pos.lon], [x.lat, x.lon]);
+    // last fuel before a long stretch
+    for (const f of journey.fuelAlerts || []) {
+      const key = `f:${f.lat},${f.lon}`;
+      if (!journey.alerted.includes(key) && d(f) < 2500) {
+        journey.alerted.push(key); saveJourney();
+        roadAlert("⛽", `Last fuel for ${f.gapKm} km`, `${f.name} is the last fuel before ${f.next || "a long stretch"}. Top up here.`);
+        return;
+      }
+    }
+    // arrived at tonight's camp: ask once, quietly, how busy it is (signed-in people only)
+    if (!window.CFCloud?.enabled || !window.CFCloud.signedIn()) return;
+    const hour = new Date().getHours();
+    if (hour < 13 || hour > 21) return;
+    for (const c of journey.nightSpots || []) {
+      if (journey.asked.includes(c.id) || d(c) > 350) continue;
+      journey.asked.push(c.id); saveJourney();
+      roadAlert("🏕️", `At ${c.name}?`, "How busy is it? One tap helps others.",
+        `<span class="ra-acts">${CROWD.map(([k, l]) => `<button type="button" data-crowd="${k}" data-camp="${esc(c.id)}">${l}</button>`).join("")}</span>`);
+      return;
+    }
   }
   function recordPoint(pos) { // used when there's no native recorder (and while the app is open)
     if (!journey || nativeJourney) return;
@@ -2777,7 +2911,9 @@
     const done = journey; journey = null; store.set("cf-journey", null);
     showJourneyBar();
     $("#startJourney").disabled = false; $("#startJourney").innerHTML = `${icon("nav")}Start journey`;
+    updateBadges(true);
     toast(`Journey saved to your journal: ${km(trackKm(done.points))}`);
+    setTimeout(() => openJournal(done, true), 600);
   }
   $("#startJourney").addEventListener("click", startJourney);
   $("#jbEnd").addEventListener("click", endJourney);
@@ -2854,7 +2990,7 @@
     const j = await jkv.get(b.dataset.journal); if (!j) return;
     openJournal(j);
   });
-  function openJournal(j) {
+  function openJournal(j, justEnded = false) {
     tripLayer.clearLayers(); legLayer.clearLayers();
     const pts = j.points.map((p) => [p[1], p[2]]);
     if (j.route?.length) L.polyline(j.route.map(([lo, la]) => [la, lo]), { color: "#0E5A3E", weight: 3, opacity: .35, dashArray: "4 6" }).addTo(legLayer);
@@ -2863,15 +2999,135 @@
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${esc(j.name)}</h2>
       <p class="d-kind">${new Date(j.started).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}${j.ended ? "" : " · still on the road"}</p>
       <div class="dir-sum"><div><b>${km(trackKm(j.points))}</b><span>driven</span></div><div><b>${days}</b><span>day${days > 1 ? "s" : ""}</span></div><div><b>${j.notes.length}</b><span>entries</span></div></div>
+      ${j.points.length > 1 || j.route?.length ? `<button class="cta recap-cta" type="button" id="jnRecap">🎬 ${justEnded ? "Make your trip video" : "Trip video"}</button>` : ""}
       <div class="stop-actions"><button class="btn" type="button" id="jnAdd">${icon("plus")}Add a note or photos</button><button class="btn line" type="button" id="jnDel">Delete</button></div>
       <ol class="jn-entries">${[...j.notes].reverse().map((n) => `<li><small>${new Date(n.at).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</small>${n.text ? `<p>${esc(n.text)}</p>` : ""}${n.photos?.length ? `<div class="jn-photos">${n.photos.map((d) => `<img src="${d}" alt="Journal photo">`).join("")}</div>` : ""}</li>`).join("") || `<li class="empty">No entries yet.</li>`}</ol>
     </div>`);
     $("#jnAdd").addEventListener("click", () => addJournalEntry(j));
+    $("#jnRecap")?.addEventListener("click", () => makeRecap(j));
     $("#jnDel").addEventListener("click", async (e) => {
       if (e.currentTarget.dataset.sure !== "1") { e.currentTarget.dataset.sure = "1"; e.currentTarget.textContent = "Tap again to delete"; return; }
       if (journey?.id === j.id) return toast("End the journey first");
       await jkv.del(j.id).catch(() => {}); closeDetail(); renderJournal(); toast("Journal deleted");
     });
+  }
+
+  // ================================================================ badges
+  const STATE_COL = { QLD: "#7A1F3D", NSW: "#4FA3D9", VIC: "#1F3B7A", TAS: "#2E6B43", SA: "#C8372D", WA: "#E3A21A", NT: "#B5582C", ACT: "#2F6FD6" };
+  const TIER_COL = { bronze: "#C98A4B", silver: "#A9B4BA", gold: "#E3B23C", platinum: "#7FD1CF", special: "#2FA36B" };
+  let badgeState = { list: [], stats: null };
+  const medalColor = (b) => (b.tier === "state" ? STATE_COL[b.short] : TIER_COL[b.tier]) || "#E3B23C";
+  function medalHtml(b, big = false) {
+    const isState = b.tier === "state";
+    return `<span class="medal${big ? " big" : ""}${b.earned ? "" : " locked"}${isState ? " state" : ""}" style="--mc:${medalColor(b)};--p:${Math.round((b.progress || 0) * 100)}">
+      <span class="m-ring"></span><span class="m-face">${isState ? `<b>${esc(b.short)}</b>` : esc(b.icon)}</span></span>`;
+  }
+  async function allJourneys() { try { return await jkv.all(); } catch { return journey ? [journey] : []; } }
+  async function updateBadges(announce = false) {
+    if (!window.CFBadges) return;
+    const js = await allJourneys();
+    if (journey && !js.some((x) => x.id === journey.id)) js.push(journey);
+    const res = CFBadges.compute(js);
+    badgeState = res;
+    const had = store.get("cf-badges", null), firstRun = had == null, got = had || {};
+    const fresh = res.list.filter((b) => b.earned && !got[b.id]);
+    fresh.forEach((b) => (got[b.id] = new Date().toISOString()));
+    if (fresh.length || firstRun) store.set("cf-badges", got);
+    if (announce && !firstRun && fresh.length) queueBadges(fresh);
+    if (view === "saved") renderBadges();
+    return res;
+  }
+  const badgeQueue = [];
+  function queueBadges(list) { badgeQueue.push(...list); if ($("#badgePop").hidden) nextBadge(); }
+  function nextBadge() {
+    const b = badgeQueue.shift(); if (!b) return;
+    const more = badgeQueue.length;
+    $("#bpMedal").innerHTML = medalHtml(b, true);
+    $("#bpName").textContent = b.name;
+    $("#bpDesc").textContent = b.desc + (more ? ` (+${more} more)` : "");
+    const pop = $("#badgePop"); pop.hidden = false; pop.classList.remove("out");
+    navigator.vibrate?.([40, 60, 40]);
+  }
+  function closeBadgePop(thenAll) {
+    const pop = $("#badgePop"); pop.classList.add("out");
+    setTimeout(() => { pop.hidden = true; if (thenAll) { badgeQueue.length = 0; setView("saved"); setTimeout(() => $("#badgeBox").scrollIntoView({ block: "start", behavior: "smooth" }), 200); } else nextBadge(); }, 260);
+  }
+  $("#bpOk").addEventListener("click", () => closeBadgePop(false));
+  $("#bpAll").addEventListener("click", () => closeBadgePop(true));
+  function renderBadges() {
+    const box = $("#badgeBox"); if (!box) return;
+    const { list, stats } = badgeState;
+    if (!stats) { box.innerHTML = `<p class="help">Loading…</p>`; updateBadges(); return; }
+    const earned = list.filter((b) => b.earned).length;
+    const groups = [["km", "Distance"], ["hours", "Time behind the wheel"], ["nights", "Nights on the road"], ["states", "States and territories"], ["places", "Special places"], ["journeys", "Journeys"]];
+    box.innerHTML = `<div class="bx-stats"><div><b>${Math.round(stats.km).toLocaleString("en-AU")}</b><span>km driven</span></div><div><b>${Math.round(stats.hours)}</b><span>hours</span></div><div><b>${stats.states.length}</b><span>of 8 states</span></div><div><b>${earned}</b><span>badges</span></div></div>
+      ${groups.map(([g, title]) => { const items = list.filter((b) => b.group === g); if (!items.length) return ""; return `<h3 class="bx-h">${title} <small>${items.filter((b) => b.earned).length}/${items.length}</small></h3><div class="bx-grid">${items.map((b) => `<button type="button" class="bx-item${b.earned ? " got" : ""}" data-badge="${esc(b.id)}">${medalHtml(b)}<span>${esc(b.name)}</span></button>`).join("")}</div>`; }).join("")}
+      ${stats.journeys ? "" : `<p class="help bx-empty">Start a journey from any trip and your kilometres, hours and states count towards badges automatically.</p>`}`;
+  }
+  $("#badgeBox").addEventListener("click", (e) => {
+    const el = e.target.closest("[data-badge]"); if (!el) return;
+    const b = badgeState.list.find((x) => x.id === el.dataset.badge); if (!b) return;
+    const when = store.get("cf-badges", {})[b.id];
+    showDetail(`<div class="d-pad bx-detail" style="padding-top:26px">${medalHtml(b, true)}<h2 class="d-title">${esc(b.name)}</h2><p class="d-kind">${esc(b.desc)}</p>
+      ${b.earned ? `<p class="bx-when">Earned${when ? ` ${new Date(when).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}` : ""} 🎉</p>`
+        : `<div class="bx-prog"><span style="width:${Math.round(b.progress * 100)}%"></span></div><p class="help">${Math.round(b.progress * 100)}% there${b.target ? ` · ${esc(b.target)}` : ""}</p>`}</div>`);
+  });
+
+  // ================================================================ trip recap video
+  function recapData(j) {
+    let track = (j.points || []).map((p) => [p[1], p[2]]);
+    if (track.length < 2 && j.route?.length) track = j.route.map(([lo, la]) => [la, lo]);
+    const kmDriven = trackKm(j.points || []) / 1000 || (() => { let d = 0; for (let k = 1; k < track.length; k++) d += hav(track[k - 1], track[k]); return d / 1000; })();
+    const start = new Date(j.started), end = j.ended ? new Date(j.ended) : new Date();
+    const days = Math.max(1, Math.round((new Date(end.toDateString()) - new Date(start.toDateString())) / 864e5) + 1);
+    const states = [...new Set(track.filter((_, k) => k % 5 === 0).map((p) => CFGeo.stateAt(p[0], p[1])))];
+    const fmt = (d, o) => d.toLocaleDateString("en-AU", o);
+    const sub = days > 1 ? `${fmt(start, { day: "numeric", month: "short" })} – ${fmt(end, { day: "numeric", month: "short", year: "numeric" })}` : fmt(start, { day: "numeric", month: "long", year: "numeric" });
+    const photos = (j.notes || []).flatMap((n) => n.photos || []).slice(0, 6);
+    const got = store.get("cf-badges", {});
+    const t0 = start.getTime() - 3600e3, t1 = end.getTime() + 6 * 3600e3;
+    let won = badgeState.list.filter((b) => b.earned && got[b.id] && Date.parse(got[b.id]) >= t0 && Date.parse(got[b.id]) <= t1);
+    if (!won.length) won = badgeState.list.filter((b) => b.earned && b.group === "states" && b.tier === "state" && states.includes(b.short));
+    const badges = won.slice(-6).map((b) => ({ icon: b.tier === "state" ? b.short : b.icon, color: medalColor(b) }));
+    return { title: j.name, sub, track, stats: { km: kmDriven, days, nights: Math.max(0, days - 1), states }, photos, badges, carSvg: window.CFCar ? CFCar.top(myCar()).svg : "" };
+  }
+  async function makeRecap(j) {
+    if (!window.CFRecap) return toast("Trip videos aren't available in this version");
+    await updateBadges();
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Your trip video</h2><p class="d-kind">${esc(j.name)}</p><div class="recap-stage" id="recapStage"><span class="spinner"></span></div>
+      <div class="d-actions"><button class="cta" type="button" id="recapSave">⬇️ Save / share</button><button class="btn" type="button" id="recapPlay">▶ Play again</button></div>
+      <p class="help" id="recapMsg">Share it to Facebook, Instagram or send it to family.</p></div>`);
+    const r = await CFRecap.create(recapData(j));
+    const stage = $("#recapStage"); if (!stage) return;
+    stage.innerHTML = ""; stage.appendChild(r.canvas);
+    r.play();
+    $("#recapPlay").addEventListener("click", () => r.play());
+    $("#recapSave").addEventListener("click", async (e) => {
+      const btn = e.currentTarget; btn.disabled = true; $("#recapPlay").disabled = true;
+      const name = `${j.name.replace(/[^\w ]+/g, "").replace(/\s+/g, "-").toLowerCase() || "trip"}-camp-finder`;
+      try {
+        const blob = await r.record((p) => { btn.textContent = `Making your video… ${Math.round(p * 100)}%`; });
+        btn.textContent = "Opening share…";
+        await shareBlob(blob, `${name}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`);
+        $("#recapMsg").textContent = "Video ready. Pick where to send it.";
+      } catch (err) {
+        const pic = await r.still();
+        await shareBlob(pic, `${name}.jpg`).catch(() => {});
+        $("#recapMsg").textContent = "Video saving isn't available on this phone, so here's a picture of your trip instead.";
+      }
+      btn.disabled = false; $("#recapPlay").disabled = false; btn.textContent = "⬇️ Save / share";
+    });
+  }
+  async function shareBlob(blob, name) {
+    const nativeShare = window.webkit?.messageHandlers?.shareFile;
+    if (nativeShare) {
+      const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
+      nativeShare.postMessage({ name, mime: blob.type, b64 });
+      return;
+    }
+    const file = new File([blob], name, { type: blob.type });
+    if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: "My trip" }).catch(() => {}); return; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
   }
 
   // ================================================================ phone signal at camps
@@ -3170,6 +3426,7 @@
   }
   renderDiscover();
   paintCars();
+  setTimeout(() => updateBadges(false), 1500);
   ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { if (viaStops.length) { viaStops = []; renderVia(); } }));
 
   // ================================================================ first-time sign in

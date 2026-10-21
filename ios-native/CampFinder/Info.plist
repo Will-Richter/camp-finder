@@ -17,6 +17,8 @@
 	<string>Camp Finder turns what you say into a search, like "Bundaberg to Cairns" or "camp tonight".</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Camp Finder listens when you tap the microphone so you can search by voice.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Camp Finder saves your trip videos and pictures to your Photos when you choose Save.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

@@ -24,7 +24,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route", "journey", "speech"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "journey", "speech", "shareFile"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -215,6 +215,20 @@ struct WebAppView: UIViewRepresentable {
                 } else if (d["cmd"] as? String) == "finish" {
                     SpeechListener.shared.finish()   // Search tapped: use what's been heard so far
                 } else { SpeechListener.shared.stop() }
+            case "shareFile":
+                // the trip video (or picture): save to a temp file and open the iPhone share sheet
+                guard let d = message.body as? [String: Any], let b64 = d["b64"] as? String, let data = Data(base64Encoded: b64) else { return }
+                let name = ((d["name"] as? String) ?? "trip.mp4").replacingOccurrences(of: "/", with: "-")
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+                try? data.write(to: url, options: .atomic)
+                DispatchQueue.main.async { [weak self] in
+                    guard let web = self?.webView, let root = web.window?.rootViewController else { return }
+                    var top = root; while let p = top.presentedViewController { top = p }
+                    let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                    vc.popoverPresentationController?.sourceView = web
+                    vc.popoverPresentationController?.sourceRect = CGRect(x: web.bounds.midX, y: web.bounds.maxY - 80, width: 1, height: 1)
+                    top.present(vc, animated: true)
+                }
             case "journey":
                 guard let d = message.body as? [String: Any] else { return }
                 let result = JourneyRecorder.shared.handle(d) ?? NSNull()

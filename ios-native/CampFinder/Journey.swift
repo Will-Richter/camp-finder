@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import UserNotifications
+import UIKit
 
 /// Records a journey in the background with low battery use, keeps a shared live-location link
 /// up to date, and sends a "good free camp nearby" alert in the afternoon.
@@ -14,6 +15,8 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
     private var share: [String: String]?          // url, key, id, secret (Supabase trip_shares)
     private var campAlerts: [[String: Any]] = []  // name, lat, lon, why
     private var alertedDay = ""
+    private var fuelAlerts: [[String: Any]] = []  // name, lat, lon, gapKm, next: last fuel before a long stretch
+    private var fuelDone = Set<String>()
 
     override init() {
         super.init()
@@ -26,6 +29,8 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
             journeyId = id
             share = UserDefaults.standard.dictionary(forKey: "cf.journey.share") as? [String: String]
             campAlerts = (UserDefaults.standard.array(forKey: "cf.journey.alerts") as? [[String: Any]]) ?? []
+            fuelAlerts = (UserDefaults.standard.array(forKey: "cf.journey.fuel") as? [[String: Any]]) ?? []
+            fuelDone = Set((UserDefaults.standard.array(forKey: "cf.journey.fuelDone") as? [String]) ?? [])
             start(resume: true)
         }
     }
@@ -45,6 +50,10 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
             journeyId = id
             share = body["share"] as? [String: String]
             campAlerts = (body["camps"] as? [[String: Any]]) ?? []
+            fuelAlerts = (body["fuel"] as? [[String: Any]]) ?? []
+            fuelDone = []
+            UserDefaults.standard.set(fuelAlerts, forKey: "cf.journey.fuel")
+            UserDefaults.standard.set([String](), forKey: "cf.journey.fuelDone")
             UserDefaults.standard.set(id, forKey: "cf.journey.id")
             UserDefaults.standard.set(share, forKey: "cf.journey.share")
             UserDefaults.standard.set(campAlerts, forKey: "cf.journey.alerts")
@@ -60,8 +69,8 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
         case "stop":
             manager.stopUpdatingLocation()
             manager.allowsBackgroundLocationUpdates = false
-            journeyId = nil; share = nil; campAlerts = []
-            for k in ["cf.journey.id", "cf.journey.share", "cf.journey.alerts"] { UserDefaults.standard.removeObject(forKey: k) }
+            journeyId = nil; share = nil; campAlerts = []; fuelAlerts = []; fuelDone = []
+            for k in ["cf.journey.id", "cf.journey.share", "cf.journey.alerts", "cf.journey.fuel", "cf.journey.fuelDone"] { UserDefaults.standard.removeObject(forKey: k) }
             return true
         case "points":
             guard let id = body["id"] as? String, let text = try? String(contentsOf: file(id), encoding: .utf8) else { return [] }
@@ -108,6 +117,31 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
         guard let loc = locations.last else { return }
         if Date().timeIntervalSince(lastShared) > 300 { lastShared = Date(); pushShare(loc) }
         checkCampAlert(loc)
+        checkFuelAlert(loc)
+    }
+
+    // "Last fuel for 280 km": a heads-up as you reach the last servo before a long stretch.
+    // The app shows its own banner when it's open, so this only fires in the background.
+    private func checkFuelAlert(_ loc: CLLocation) {
+        guard !fuelAlerts.isEmpty else { return }
+        for f in fuelAlerts {
+            guard let lat = f["lat"] as? Double, let lon = f["lon"] as? Double else { continue }
+            let key = String(format: "%.4f,%.4f", lat, lon)
+            guard !fuelDone.contains(key), loc.distance(from: CLLocation(latitude: lat, longitude: lon)) < 3000 else { continue }
+            fuelDone.insert(key)
+            UserDefaults.standard.set(Array(fuelDone), forKey: "cf.journey.fuelDone")
+            DispatchQueue.main.async {
+                guard UIApplication.shared.applicationState != .active else { return }
+                let gap = (f["gapKm"] as? Int) ?? Int((f["gapKm"] as? Double) ?? 0)
+                let content = UNMutableNotificationContent()
+                content.title = "⛽ Last fuel for \(gap) km"
+                let next = (f["next"] as? String) ?? ""
+                content.body = "\((f["name"] as? String) ?? "This servo") is the last fuel\(next.isEmpty ? "" : " before \(next)"). Top up here."
+                content.sound = .default
+                UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "fuel-\(key)", content: content, trigger: nil))
+            }
+            return
+        }
     }
 
     // Live location for family: Supabase RPC update_share

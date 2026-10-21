@@ -993,3 +993,85 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .swatches.wl { justify-content: center; gap: 8px; }
 .swatches.wl .sw { width: 32px; height: 32px; border-color: rgba(255,255,255,.6); }
 .swatches.wl .sw[aria-checked="true"] { outline-color: #fff; }
+
+/* ---------- arrive before dark ---------- */
+.daylight { margin: 2px 0 8px; font-size: 13.5px; color: var(--sub); line-height: 1.4; }
+.daylight b { color: var(--ink); font-weight: 800; }
+.daylight.long b { color: #A9521C; }
+
+/* ---------- fuel check ---------- */
+.fuel-check { list-style: none; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; margin: 0 0 14px; border-radius: 16px; border: 2px solid transparent; }
+.fuel-check .fck-ic { font-size: 24px; line-height: 1; }
+.fuel-check b { font: 800 16px/1.25 var(--display); display: block; }
+.fuel-check p { margin: 4px 0 0; font-size: 14.5px; line-height: 1.45; color: var(--ink); }
+.fuel-check.ok { background: color-mix(in srgb, #1F8A4C 10%, var(--sheet)); border-color: color-mix(in srgb, #1F8A4C 30%, transparent); }
+.fuel-check.warn { background: color-mix(in srgb, #E3A21A 14%, var(--sheet)); border-color: color-mix(in srgb, #E3A21A 45%, transparent); }
+.fuel-check.bad { background: color-mix(in srgb, #C8372D 11%, var(--sheet)); border-color: #C8372D; }
+.fuel-check.bad b { color: #A3261D; }
+
+/* ---------- road alerts (last fuel, how busy) ---------- */
+.road-alert { position: absolute; z-index: 1600; left: 12px; right: 12px; top: calc(66px + env(safe-area-inset-top, 0px)); max-width: 520px; margin: 0 auto;
+  display: flex; gap: 12px; align-items: flex-start; padding: 14px 14px 14px 16px; border-radius: 18px; background: #14231C; color: #fff; box-shadow: 0 14px 36px rgba(0,0,0,.35); }
+.motion .road-alert:not([hidden]) { animation: rise .35s var(--spring) both; }
+.road-alert.out { opacity: 0; transform: translateY(-10px); transition: .25s; }
+.ra-ic { font-size: 26px; line-height: 1.1; }
+.ra-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ra-body b { font: 800 17px/1.25 var(--display); color: #F5C518; }
+.ra-body span { font-size: 14.5px; line-height: 1.4; color: rgba(255,255,255,.9); }
+.ra-x { border: 0; background: rgba(255,255,255,.12); color: #fff; width: 32px; height: 32px; border-radius: 50%; flex: none; }
+.ra-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ra-acts button { border: 0; border-radius: 999px; padding: 8px 12px; font: 700 14px var(--text); background: rgba(255,255,255,.14); color: #fff; }
+
+/* ---------- subtle "how busy" check-ins ---------- */
+.crowd-now { margin: 0 0 8px; font-size: 13.5px; font-weight: 700; color: var(--sign); }
+.ci-crowd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--hair); }
+.ci-crowd span { font-size: 13.5px; color: var(--sub); margin-right: 2px; }
+.ci-crowd button { border: 1px solid var(--hair); background: var(--sheet); border-radius: 999px; padding: 6px 10px; font: 600 13.5px var(--text); color: var(--ink); }
+.cc-crowd { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 700; color: var(--sub); }
+.cc-crowd::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; background: #1F8A4C; }
+.cc-crowd.some::before { background: #E3A21A; } .cc-crowd.busy::before, .cc-crowd.full::before { background: #C8372D; }
+
+/* ---------- badges ---------- */
+.medal { position: relative; display: inline-grid; place-items: center; width: 64px; height: 64px; flex: none; }
+.medal .m-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(var(--mc) calc(var(--p) * 1%), color-mix(in srgb, var(--hair) 80%, transparent) 0); }
+.medal:not(.locked) .m-ring { background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--mc) 55%, #fff), var(--mc) 55%, color-mix(in srgb, var(--mc) 70%, #000)); box-shadow: 0 4px 10px rgba(0,0,0,.22); }
+.medal .m-face { position: relative; width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; background: #14402E; color: #fff; box-shadow: inset 0 2px 6px rgba(0,0,0,.35); }
+.medal.state .m-face { background: color-mix(in srgb, var(--mc) 85%, #000); }
+.medal.state .m-face b { font: 900 15px/1 var(--display); letter-spacing: .02em; }
+.medal.locked .m-face { background: var(--well); filter: grayscale(1); opacity: .55; color: var(--sub); }
+.medal.big { width: 112px; height: 112px; }
+.medal.big .m-face { width: 88px; height: 88px; font-size: 46px; }
+.medal.big.state .m-face b { font-size: 26px; }
+.bx-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 4px 0 6px; }
+.bx-stats div { background: var(--well); border-radius: 14px; padding: 10px 6px; text-align: center; }
+.bx-stats b { display: block; font: 900 20px/1.1 var(--display); color: var(--sign); }
+.bx-stats span { font-size: 12px; color: var(--sub); }
+.bx-h { font: 800 15px var(--display); margin: 16px 0 8px; display: flex; justify-content: space-between; }
+.bx-h small { color: var(--sub); font-weight: 700; }
+.bx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 6px; }
+.bx-item { border: 0; background: none; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--sub); }
+.bx-item span:last-child { font-size: 12px; line-height: 1.25; text-align: center; font-weight: 600; }
+.bx-item.got span:last-child { color: var(--ink); font-weight: 700; }
+.bx-empty { margin-top: 12px; }
+.bx-detail { text-align: center; }
+.bx-detail .medal { margin: 0 auto 10px; }
+.bx-when { font-weight: 800; color: var(--sign); }
+.bx-prog { height: 10px; border-radius: 6px; background: var(--well); overflow: hidden; margin: 14px 0 6px; }
+.bx-prog span { display: block; height: 100%; background: var(--sign); border-radius: 6px; }
+.badge-pop { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 24px; background: rgba(8,22,16,.55); backdrop-filter: blur(4px); }
+.badge-pop.out { opacity: 0; transition: opacity .25s; }
+.bp-card { position: relative; width: min(100%, 340px); background: var(--sheet); border-radius: 26px; padding: 30px 22px 20px; text-align: center; box-shadow: 0 24px 60px rgba(0,0,0,.4); overflow: hidden; }
+.motion .badge-pop:not([hidden]) .bp-card { animation: rise .45s var(--spring) both; }
+.motion .badge-pop:not([hidden]) #bpMedal .medal { animation: medalPop .7s var(--spring) .1s both; }
+@keyframes medalPop { from { transform: scale(.2) rotate(-30deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.bp-burst { position: absolute; inset: -40% -20% auto; height: 260px; background: radial-gradient(circle, rgba(245,197,24,.35), transparent 60%); pointer-events: none; }
+#bpMedal .medal { margin: 0 auto 6px; }
+.bp-kicker { margin: 6px 0 0; font: 800 12px/1 var(--text); letter-spacing: .2em; text-transform: uppercase; color: var(--sign); }
+.bp-card h2 { font: 900 26px/1.15 var(--display); margin: 8px 0 6px; }
+.bp-card p#bpDesc { margin: 0 0 18px; color: var(--sub); line-height: 1.45; }
+.bp-acts { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---------- trip video ---------- */
+.recap-cta { width: 100%; margin: 6px 0 12px; }
+.recap-stage { display: grid; place-items: center; min-height: 200px; margin: 12px 0; }
+.recap-stage canvas { width: min(100%, 300px); height: auto; aspect-ratio: 9 / 16; border-radius: 18px; box-shadow: 0 14px 34px rgba(0,0,0,.3); background: #0E5A3E; }
