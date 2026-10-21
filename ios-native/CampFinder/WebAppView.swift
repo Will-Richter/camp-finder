@@ -24,7 +24,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route", "journey"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "journey", "speech"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -191,6 +191,16 @@ struct WebAppView: UIViewRepresentable {
             case "nativeFetch": handleFetch(message.body)
             case "places": handlePlaces(message.body)
             case "route": handleRoute(message.body)
+            case "speech":
+                guard let d = message.body as? [String: Any] else { return }
+                if (d["cmd"] as? String) == "start" {
+                    SpeechListener.shared.send = { [weak self] text, final, err in
+                        let payload: [String: Any] = ["text": text, "final": final, "error": err ?? NSNull()]
+                        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+                        DispatchQueue.main.async { self?.webView?.evaluateJavaScript("window.__cfSpeech && window.__cfSpeech(\(String(decoding: data, as: UTF8.self)))") }
+                    }
+                    SpeechListener.shared.start()
+                } else { SpeechListener.shared.stop() }
             case "journey":
                 guard let d = message.body as? [String: Any] else { return }
                 let result = JourneyRecorder.shared.handle(d) ?? NSNull()

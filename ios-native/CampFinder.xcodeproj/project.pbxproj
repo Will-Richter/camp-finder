@@ -10,6 +10,7 @@
 		3CE9CE024BECA2AC04C166F4 /* CampFinderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 878474EE137D71C487090E38 /* CampFinderApp.swift */; };
 		9DFAC49294F7473AB5D7ECDE /* WebAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B87B90FE3E9B1ABBA641F7E /* WebAppView.swift */; };
 		5BCB4347824C5E59A7737BA4 /* Journey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3604480FE44039BDA6C05674 /* Journey.swift */; };
+		C31EC03CBF87D36906C17E0B /* Speech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4EFFEB92CF26E47225D1AB /* Speech.swift */; };
 		D0317420F376B6D550DD3011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C951E0F6049D00803F4AB93 /* Assets.xcassets */; };
 		FDC660B7C2E37A9C3907B809 /* web in Resources */ = {isa = PBXBuildFile; fileRef = 5552E6103EA45AD792817FFC /* web */; };
 /* End PBXBuildFile section */
@@ -17,6 +18,7 @@
 /* Begin PBXFileReference section */
 		1B87B90FE3E9B1ABBA641F7E /* WebAppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAppView.swift; sourceTree = "<group>"; };
 		3604480FE44039BDA6C05674 /* Journey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Journey.swift; sourceTree = "<group>"; };
+		0A4EFFEB92CF26E47225D1AB /* Speech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Speech.swift; sourceTree = "<group>"; };
 		5552E6103EA45AD792817FFC /* web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = web; sourceTree = "<group>"; };
 		878474EE137D71C487090E38 /* CampFinderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampFinderApp.swift; sourceTree = "<group>"; };
 		9C951E0F6049D00803F4AB93 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -40,6 +42,7 @@
 				878474EE137D71C487090E38 /* CampFinderApp.swift */,
 				1B87B90FE3E9B1ABBA641F7E /* WebAppView.swift */,
 				3604480FE44039BDA6C05674 /* Journey.swift */,
+				0A4EFFEB92CF26E47225D1AB /* Speech.swift */,
 				5552E6103EA45AD792817FFC /* web */,
 				9C951E0F6049D00803F4AB93 /* Assets.xcassets */,
 			);
@@ -135,6 +138,7 @@
 				3CE9CE024BECA2AC04C166F4 /* CampFinderApp.swift in Sources */,
 				9DFAC49294F7473AB5D7ECDE /* WebAppView.swift in Sources */,
 				5BCB4347824C5E59A7737BA4 /* Journey.swift in Sources */,
+				C31EC03CBF87D36906C17E0B /* Speech.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

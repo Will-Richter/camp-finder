@@ -804,3 +804,56 @@ a { color: inherit; }
 .help-list li { counter-increment: h; display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--hair); font-size: 16px; line-height: 1.45; }
 .help-list li::before { content: counter(h); flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--gold); color: var(--gold-ink); display: grid; place-items: center; font: 900 16px var(--display); }
 .help-list b { display: block; font: 800 16.5px var(--display); }
+.camp-card .cc-photo { display: block; width: calc(100% + 26px); margin: -12px -13px 10px; height: 150px; object-fit: cover; border-radius: 14px 14px 0 0; background: var(--well); }
+.motion .camp-card .cc-photo { animation: fadeIn .5s ease both; }
+
+/* =================================================================== camp tonight, voice, discover */
+.quick-row { display: flex; gap: 10px; margin: 4px 0 14px; }
+.tonight-btn { flex: 1; display: flex; align-items: center; gap: 12px; text-align: left; border: 0; border-radius: 18px; padding: 12px 14px; color: #fff;
+  background: linear-gradient(135deg, #0E5A3E, #1F8A4C); box-shadow: 0 8px 20px rgba(14,90,62,.25); }
+.tonight-btn .tb-ic { font-size: 28px; }
+.tonight-btn b { display: block; font: 900 17px var(--display); }
+.tonight-btn small { opacity: .9; font-size: 12.5px; }
+.mic-btn { flex: none; width: 76px; border: 0; border-radius: 18px; background: var(--gold); color: var(--gold-ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: 800 12.5px var(--display); }
+.mic-btn .ic { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; }
+.simple .tonight-btn { padding: 16px; } .simple .tonight-btn b { font-size: 19px; } .simple .mic-btn { width: 88px; }
+.voice { position: fixed; inset: 0; z-index: 3000; background: rgba(4, 25, 15, .72); display: grid; place-items: center; padding: 24px; backdrop-filter: blur(6px); }
+.motion .voice:not([hidden]) { animation: fadeIn .25s ease both; }
+.vc-card { width: min(100%, 360px); background: var(--sheet); border-radius: 26px; padding: 28px 22px 20px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+.vc-orb { position: relative; width: 96px; height: 96px; margin: 0 auto 16px; border-radius: 50%; background: var(--gold); display: grid; place-items: center; color: var(--gold-ink); }
+.vc-orb .ic { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 2; position: relative; z-index: 1; }
+.vc-orb span { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--gold); animation: ringOut 1.8s ease-out infinite; }
+.vc-orb span:nth-child(2) { animation-delay: .6s; } .vc-orb span:nth-child(3) { animation-delay: 1.2s; }
+.vc-hint { color: var(--sub); font-size: 15.5px; line-height: 1.5; margin: 0 0 6px; }
+.vc-hint b { color: var(--ink); }
+.vc-text { min-height: 1.4em; font: 800 22px/1.3 var(--display); color: var(--ink); margin: 6px 0 16px; }
+.tonight-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 12px; }
+.tonight-list li { display: grid; grid-template-columns: 96px 1fr; gap: 12px; background: var(--well); border-radius: 16px; padding: 10px; }
+.tl-ph { width: 96px; height: 96px; border-radius: 12px; background: var(--hair) center/cover; overflow: hidden; display: grid; place-items: center; }
+.tl-ph::before { content: "🏕️"; font-size: 30px; opacity: .5; }
+.tl-ph:has(img)::before { content: none; }
+.tl-ph img { width: 100%; height: 100%; object-fit: cover; }
+.tl-body b { display: block; font: 800 16px/1.2 var(--display); }
+.tl-body small { color: var(--sub); font-size: 13px; }
+.tl-tags { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; flex-wrap: wrap; }
+.tl-body .stop-actions { margin-top: 8px; }
+.via-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 12px; }
+.via-chip { background: var(--well); border-radius: 999px; padding: 5px 10px; font: 700 13px var(--display); }
+.via-clear { border: 0; background: none; color: var(--sub); font-size: 16px; padding: 4px 8px; }
+.trip-grid { display: grid; gap: 12px; margin-top: 12px; }
+.trip-card { display: grid; grid-template-columns: 96px 1fr; gap: 0; text-align: left; border: 0; border-radius: 18px; overflow: hidden; background: var(--sheet); box-shadow: 0 1px 0 var(--hair), 0 6px 18px rgba(18,36,28,.08); padding: 0; }
+.tc-art { position: relative; background: linear-gradient(150deg, var(--a), var(--b)); display: grid; place-items: center; min-height: 104px; }
+.tc-emoji { font-size: 40px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.tc-km { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; color: #fff; font: 800 11px var(--display); text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.tc-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+.tc-body b { font: 900 17px/1.15 var(--display); color: var(--ink); }
+.tc-body small { color: var(--sub); font-size: 13.5px; line-height: 1.3; }
+.tc-meta { margin-top: 4px; font: 700 12px var(--display); color: var(--sign); }
+@media (prefers-color-scheme: dark) { .tc-meta { color: var(--free); } }
+.motion .trip-card { animation: rise .5s var(--ease-out) both; }
+.motion .trip-card:nth-child(2) { animation-delay: 40ms; } .motion .trip-card:nth-child(3) { animation-delay: 80ms; } .motion .trip-card:nth-child(n+4) { animation-delay: 120ms; }
+.trip-hero { height: 150px; border-radius: 18px 18px 0 0; background: linear-gradient(150deg, var(--a), var(--b)); display: grid; place-items: center; }
+.trip-hero span { font-size: 64px; filter: drop-shadow(0 6px 10px rgba(0,0,0,.3)); }
+.trip-hl { margin: 6px 0 12px; padding-left: 20px; }
+.trip-hl li { margin: 4px 0; }
+.tabbtn span { font-size: 11px; }

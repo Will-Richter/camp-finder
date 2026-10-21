@@ -13,6 +13,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Camp Finder turns what you say into a search, like "Bundaberg to Cairns" or "camp tonight".</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Camp Finder listens when you tap the microphone so you can search by voice.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

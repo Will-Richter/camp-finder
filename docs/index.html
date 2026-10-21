@@ -251,6 +251,10 @@
         <form id="planForm" autocomplete="off" novalidate>
           <div class="title-row"><h1 class="title">Where are you headed?</h1><button type="button" class="help-btn" id="helpBtn" aria-label="How to use Camp Finder">?</button></div>
 
+          <div class="quick-row">
+            <button type="button" class="tonight-btn" id="tonightBtn"><span class="tb-ic">🏕️</span><span><b>Camp tonight</b><small>Good camps near you, right now</small></span></button>
+            <button type="button" class="mic-btn" id="micBtn" aria-label="Search by voice"><svg viewBox="0 0 24 24" class="ic"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg><span>Say it</span></button>
+          </div>
           <div class="journey">
             <div class="journey-rail" aria-hidden="true"><span class="dot a"></span><span class="rail"></span><span class="dot b"></span></div>
             <div class="journey-fields">
@@ -268,6 +272,7 @@
             </div>
           </div>
 
+          <div class="via-row" id="viaRow" hidden></div>
           <button type="button" class="try-example" id="tryExample" data-adv>Try an example: Bundaberg to Agnes Water</button>
           <div class="group">
             <div class="group-row">
@@ -392,6 +397,13 @@
         <ul class="list" id="exploreList"></ul>
       </div>
 
+      <!-- DISCOVER -->
+      <div id="view-discover" class="view" hidden>
+        <h1 class="title">Discover</h1>
+        <p class="help">Australia's favourite road trips, ready to plan in one tap.</p>
+        <div class="trip-grid" id="tripGrid"></div>
+      </div>
+
       <!-- SAVED -->
       <div id="view-saved" class="view" hidden>
         <h1 class="title">Saved</h1>
@@ -500,10 +512,20 @@
   <nav class="tabbar" aria-label="Sections">
     <button class="tabbtn is-on" data-view="plan" id="tab-plan" aria-current="page"><svg class="ic"><use href="#i-route"/></svg><span>Trip</span></button>
     <button class="tabbtn" data-view="explore" id="tab-explore"><svg class="ic"><use href="#i-compass"/></svg><span>Explore</span></button>
+    <button class="tabbtn" data-view="discover" id="tab-discover"><svg class="ic"><use href="#i-star"/></svg><span>Discover</span></button>
     <button class="tabbtn" data-view="saved" id="tab-saved"><svg class="ic"><use href="#i-bookmark"/></svg><span>Saved</span></button>
     <button class="tabbtn" data-view="settings" id="tab-settings"><svg class="ic"><use href="#i-gear"/></svg><span>Settings</span></button>
     <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
   </nav>
+
+  <div id="voice" class="voice" hidden aria-live="polite">
+    <div class="vc-card">
+      <div class="vc-orb"><span></span><span></span><span></span><svg viewBox="0 0 24 24" class="ic"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></div>
+      <p class="vc-hint" id="vcHint">Say where you're going, like<br><b>"Bundaberg to Cairns"</b> or <b>"Camp tonight"</b></p>
+      <p class="vc-text" id="vcText"></p>
+      <button type="button" class="btn" id="vcCancel">Cancel</button>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>
@@ -515,6 +537,7 @@
 <script src="guides.js"></script>
 <script src="vehicles.js"></script>
 <script src="road.js"></script>
+<script src="trips.js"></script>
 <script src="legal.js"></script>
 <script src="app.js"></script>
 </body>

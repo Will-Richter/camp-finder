@@ -993,9 +993,9 @@
 
   const nightsIn = $("#nights");
   function setNights(n) {
-    n = Math.max(0, Math.min(30, n));
+    n = Math.max(0, Math.min(120, n));
     nightsIn.value = n; $("#nightsOut").textContent = n;
-    $("#nightsDown").disabled = n === 0; $("#nightsUp").disabled = n === 30;
+    $("#nightsDown").disabled = n === 0; $("#nightsUp").disabled = n === 120;
     $("#nightsHelp").textContent = n === 0 ? "Straight through, no overnight stops" : `One camp for each night, ${n + 1} days of driving`;
   }
   $("#nightsDown").addEventListener("click", () => setNights(+nightsIn.value - 1));
@@ -1057,7 +1057,7 @@
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
       say("Planning the route");
-      const route = await osrm([from, to]);
+      const route = await osrm([from, ...viaStops, to]);
       say("Looking for camps");
       const data = await campsAlong(route, opts.detour, (t) => say(t.replace("Searching for camps along the route… ", "Looking for camps ")));
       step(3);
@@ -1136,6 +1136,7 @@
     stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${p.nights + 1}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p><div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
     if (p.fuelState === "loading") stops.splice(1, 0, `<li class="stop fuel-wait"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="help"><span class="spinner"></span>Working out where you'll need fuel</p></div></li>`);
     $("#nightList").innerHTML = stops.join("");
+    cardPhotos();
   }
 
   function drawPlan() {
@@ -1419,34 +1420,61 @@
     return fetchJSON(url, { method, headers, body: body && JSON.stringify(body) }, 10000);
   }
   const gCache = new Map(), gPlace = new Map();
-  async function googlePhotos(c) {
-    if (!CFG.googleKey) return [];
-    if (gCache.has(c.id)) return gCache.get(c.id);
+  async function googlePlaceId(c) {
     let id = gIds[c.id];
-    if (id === undefined || (id === "" && Date.now() - (gIds[c.id + "@t"] || 0) > 30 * 864e5)) {
-      const d = 0.006;
+    if (id === undefined || (id === "" && Date.now() - (gIds[c.id + "@t"] || 0) > 14 * 864e5)) {
+      const near = c.named ? 3000 : 600;
       const j = await gfetch("https://places.googleapis.com/v1/places:searchText", {
-        method: "POST", fieldMask: "places.id",
-        body: { textQuery: c.named ? c.name : "campground", pageSize: 1, regionCode: "AU",
-          locationRestriction: { rectangle: { low: { latitude: c.lat - d, longitude: c.lon - d }, high: { latitude: c.lat + d, longitude: c.lon + d } } } },
+        method: "POST", fieldMask: "places.id,places.location",
+        body: { textQuery: c.named ? c.name : "campground", pageSize: 3, regionCode: "AU",
+          locationBias: { circle: { center: { latitude: c.lat, longitude: c.lon }, radius: near } } },
       });
-      id = j.places?.[0]?.id || "";
+      // only accept a match that's actually at this camp
+      const hit = (j.places || []).find((p) => p.location && hav([c.lat, c.lon], [p.location.latitude, p.location.longitude]) <= near * 1.2);
+      id = hit?.id || "";
       gIds[c.id] = id; if (!id) gIds[c.id + "@t"] = Date.now();
       store.set("cf-gpid", gIds);
     }
-    if (!id) { gCache.set(c.id, []); return []; }
-    const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos" });
-    if (det.rating) { gPlace.set(c.id, { rating: det.rating, count: det.userRatingCount || 0, reviews: det.reviews || [], uri: det.googleMapsUri || "" }); renderGoogleRating(c, gPlace.get(c.id)); }
-    const photos = (det.photos || []).slice(0, CFG.googlePhotos);
-    const out = (await Promise.all(photos.map(async (p) => {
+    return id;
+  }
+  const gPhotoNames = new Map();
+  async function googlePhotos(c, limit = CFG.googlePhotos) {
+    if (!CFG.googleKey) return [];
+    const have = gCache.get(c.id);
+    if (have && (have.length >= limit || have.done)) return have.slice(0, limit);
+    const id = await googlePlaceId(c);
+    if (!id) { const e = []; e.done = true; gCache.set(c.id, e); return []; }
+    let names = gPhotoNames.get(c.id);
+    if (!names) {
+      const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos" });
+      if (det.rating) { gPlace.set(c.id, { rating: det.rating, count: det.userRatingCount || 0, reviews: det.reviews || [], uri: det.googleMapsUri || "" }); renderGoogleRating(c, gPlace.get(c.id)); }
+      names = det.photos || []; gPhotoNames.set(c.id, names);
+    }
+    const out = have ? [...have] : [];
+    const todo = names.slice(out.length, limit);
+    const more = (await Promise.all(todo.map(async (p) => {
       try {
         const m = await gfetch(`https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=900&skipHttpRedirect=true`);
         const who = (p.authorAttributions || [])[0];
         return m.photoUri ? { src: m.photoUri, href: who?.uri || "", credit: `${who?.displayName || "Google user"} · Google`, google: true } : null;
       } catch { return null; }
     }))).filter(Boolean);
+    out.push(...more);
+    out.done = out.length >= names.length;
     gCache.set(c.id, out);
-    return out;
+    return out.slice(0, limit);
+  }
+  // A photo on each night's camp card in a trip (one Google photo each)
+  async function cardPhotos() {
+    const cards = $$("#nightList .camp-card[data-id]:not([data-ph])");
+    await Promise.all(cards.map(async (el) => {
+      el.dataset.ph = "1";
+      const c = findCamp(el.dataset.id); if (!c) return;
+      let src = c.photo || "";
+      if (!src && window.CFCloud?.enabled) { try { src = (await window.CFCloud.photosFor(c.id))[0]?.url || ""; } catch {} }
+      if (!src) { try { src = (await soon(googlePhotos(c, 1), 8000, []))[0]?.src || ""; } catch {} }
+      if (src && el.isConnected && !el.querySelector(".cc-photo")) el.insertAdjacentHTML("afterbegin", `<img class="cc-photo" src="${esc(src)}" alt="" loading="lazy">`);
+    }));
   }
 
   // ---------------------------------------------------------------- ratings and reviews
@@ -2755,6 +2783,152 @@
       }
     });
   }
+
+  // ================================================================ Camp tonight
+  function sunTimes(lat, lon, date = new Date()) { // NOAA approximation, returns local Date for sunset
+    const rad = Math.PI / 180, day = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 864e5);
+    const g = 2 * Math.PI / 365 * (day - 1);
+    const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(decl)) - Math.tan(lat * rad) * Math.tan(decl)) / rad;
+    const setUTC = 720 - 4 * (lon - ha) - eq; // minutes from UTC midnight
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    return new Date(d.getTime() + setUTC * 60000);
+  }
+  async function campTonight() {
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Camp tonight</h2><p class="msg"><span class="spinner"></span>Finding you and the best camps nearby</p></div>`);
+    const go = async (pt) => {
+      await campDB.ready();
+      const bb = [pt.lat - 0.8, pt.lon - 0.8, pt.lat + 0.8, pt.lon + 0.8];
+      const res = campDB.inArea(bb, 0.1);
+      const local = userCampsIn(bb);
+      let list = mergeSources(res.camps, local, res.ramps, res.dumps)
+        .filter((c) => !c.closed && rigOK(c, prefs.rig) && (!settings.dog || (c.a.dogs !== false && !c.park)));
+      const onTrip = journey && plan ? project(plan.line, pt).along : null;
+      list.forEach((c) => {
+        c._d = hav([pt.lat, pt.lon], [c.lat, c.lon]);
+        c._ahead = onTrip != null ? (() => { const pr = project(plan.line, c); return pr.off < 15000 && pr.along > onTrip - 2000; })() : true;
+      });
+      list = list.filter((c) => c._d <= 80000);
+      const rank = (c) => score(c, prefs.wants || [], "cheap") + (ratingCache.get(c.id)?.avg || 0) * 6 - c._d / 2500 + (c._ahead ? 12 : 0) + (c.source === "rest" ? -10 : 0);
+      list.sort((a, b) => rank(b) - rank(a));
+      const top = list.slice(0, 6);
+      const sun = sunTimes(pt.lat, pt.lon);
+      const left = (sun - Date.now()) / 60000;
+      const sunTxt = left > 0 ? `Sunset ${sun.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })}, about ${left >= 60 ? `${Math.floor(left / 60)} h ${Math.round(left % 60)} min` : `${Math.round(left)} min`} of daylight left` : "It's after sunset. Take it easy on the road and watch for wildlife.";
+      showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Camp tonight</h2><p class="d-kind">🌅 ${esc(sunTxt)}</p>
+        ${top.length ? `<ul class="tonight-list">${top.map((c, k) => `<li data-id="${esc(c.id)}">
+            <div class="tl-ph" id="tlPh${k}"></div>
+            <div class="tl-body"><b>${esc(c.name)}</b><small>${km(c._d)} away · about ${hrs(c._d * 1.3 / 80 * 3.6)} drive${c._ahead && onTrip != null ? " · on your route" : ""}</small>
+              <div class="tl-tags">${priceTag(c)}${amenIcons(c)}</div>
+              <div class="stop-actions"><a class="cta" href="${navUrl(c, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a><button class="btn" type="button" data-tl="${esc(c.id)}">Details</button></div>
+            </div></li>`).join("")}</ul>`
+          : `<p class="msg">No camps found within 80 km that suit a ${esc((RIGS.find((r) => r.id === prefs.rig)?.label || "").replace("&shy;", ""))}. Caravan parks in the next town are your best bet.</p>`}
+        <p class="caveat">Straight-line distance; drive times are rough. Check signs when you arrive.</p></div>`);
+      $$("[data-tl]").forEach((b) => b.addEventListener("click", () => openDetail(top.find((c) => c.id === b.dataset.tl))));
+      top.slice(0, 4).forEach(async (c, k) => {
+        let src = c.photo || "";
+        if (!src) { try { src = (await soon(googlePhotos(c, 1), 8000, []))[0]?.src || ""; } catch {} }
+        const el = $(`#tlPh${k}`); if (el && src) el.innerHTML = `<img src="${esc(src)}" alt="">`;
+      });
+    };
+    if (me) go(me); else locate(go);
+  }
+  $("#tonightBtn").addEventListener("click", campTonight);
+
+  // ================================================================ voice search
+  const nativeSpeech = window.webkit?.messageHandlers?.speech;
+  const WebSR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let webRec = null;
+  if (!nativeSpeech && !WebSR) $("#micBtn").hidden = true;
+  function voiceUI(on) { $("#voice").hidden = !on; if (on) { $("#vcText").textContent = ""; $("#vcHint").hidden = false; } }
+  async function useVoice(text) {
+    const t = text.trim().replace(/[.?!]$/, "");
+    if (!t) return;
+    if (/camp(site)? (tonight|near (me|here))|where can i (camp|stay)|somewhere to (camp|stay)/i.test(t)) { setView("plan"); return campTonight(); }
+    if (/^(need|find|where'?s?( is)?( the)?( nearest)?)\s.*(water|tap)/i.test(t) || /\bwater\b/i.test(t) && t.split(" ").length <= 3) return showNeeds("water");
+    if (/dump/i.test(t)) return showNeeds("dump");
+    if (/\b(fuel|petrol|diesel|servo)\b/i.test(t)) return showNeeds("fuel");
+    let m = /^(?:(?:take me|drive|go|i'?m going|we'?re going|plan(?: a trip)?)\s+)?(?:from\s+)?(.+?)\s+to\s+(.+)$/i.exec(t);
+    let fromQ = m ? m[1] : "", toQ = m ? m[2] : t.replace(/^(take me|drive|go|i'?m going|we'?re going|plan a trip|plan)\s+(to\s+)?/i, "");
+    if (/^(here|my location|where i am)$/i.test(fromQ)) fromQ = "";
+    setView("plan"); if (!$("#results").hidden) { $("#results").hidden = true; $("#planForm").hidden = false; }
+    const fill = async (input, q) => {
+      const r = await searchPlaces(q).catch(() => []);
+      if (!r.length) { toast(`Couldn't find "${q}"`); return false; }
+      input.value = r[0].area ? `${r[0].name}, ${r[0].area.split(", ").pop()}` : r[0].name;
+      input.dataset.lat = r[0].lat; input.dataset.lon = r[0].lon; return true;
+    };
+    const okTo = await fill($("#to"), toQ);
+    let okFrom = true;
+    if (fromQ) okFrom = await fill($("#from"), fromQ);
+    else if (!$("#from").dataset.lat) { $("#useHere").click(); }
+    if (okTo && okFrom) toast(`Heading to ${short($("#to").value)}. Tap Find camps when ready.`);
+  }
+  window.__cfSpeech = (r) => {
+    if (r.error) { voiceUI(false); return toast(r.error, 4500); }
+    $("#vcHint").hidden = !!r.text; $("#vcText").textContent = r.text || "";
+    if (r.final) { setTimeout(() => voiceUI(false), 350); useVoice(r.text || ""); }
+  };
+  function startVoice() {
+    voiceUI(true);
+    if (nativeSpeech) return nativeSpeech.postMessage({ cmd: "start" });
+    try {
+      webRec = new WebSR(); webRec.lang = "en-AU"; webRec.interimResults = true;
+      webRec.onresult = (e) => { const r = e.results[e.results.length - 1]; window.__cfSpeech({ text: [...e.results].map((x) => x[0].transcript).join(" "), final: r.isFinal }); };
+      webRec.onerror = () => window.__cfSpeech({ text: "", final: true, error: "Didn't catch that. Try again." });
+      webRec.start();
+    } catch { voiceUI(false); toast("Voice search isn't available on this device"); }
+  }
+  $("#micBtn").addEventListener("click", startVoice);
+  $("#vcCancel").addEventListener("click", () => { voiceUI(false); nativeSpeech?.postMessage({ cmd: "stop" }); try { webRec?.abort(); } catch {} });
+
+  // ================================================================ Discover: ready-made trips
+  let viaStops = [];
+  function renderVia() {
+    const row = $("#viaRow");
+    row.hidden = !viaStops.length;
+    row.innerHTML = viaStops.length ? `<span class="help">Via</span>${viaStops.map((v, k) => `<span class="via-chip">${esc(v.name)}</span>`).join("")}<button type="button" class="via-clear" id="viaClear" aria-label="Remove stops">✕</button>` : "";
+    $("#viaClear")?.addEventListener("click", () => { viaStops = []; renderVia(); });
+  }
+  function renderDiscover() {
+    const T = window.CF_TRIPS || [];
+    $("#tripGrid").innerHTML = T.map((t) => `<button type="button" class="trip-card" data-trip="${t.id}" style="--a:${t.art[0]};--b:${t.art[1]}">
+        <span class="tc-art"><span class="tc-emoji">${t.emoji}</span><span class="tc-km">${t.km.toLocaleString("en-AU")} km</span></span>
+        <span class="tc-body"><b>${esc(t.name)}</b><small>${esc(t.tagline)}</small><span class="tc-meta">${t.nights} night${t.nights > 1 ? "s" : ""} · ${esc(t.road)}</span></span>
+      </button>`).join("");
+  }
+  $("#tripGrid").addEventListener("click", (e) => { const b = e.target.closest("[data-trip]"); if (b) openTrip(b.dataset.trip); });
+  function openTrip(id) {
+    const t = (window.CF_TRIPS || []).find((x) => x.id === id); if (!t) return;
+    tripLayer.clearLayers(); legLayer.clearLayers();
+    const pts = t.stops.map((s) => [s.lat, s.lon]);
+    const pl = L.polyline(pts, { color: "#D9A400", weight: 5, dashArray: "6 8" }).addTo(legLayer);
+    t.stops.forEach((s) => L.circleMarker([s.lat, s.lon], { radius: 6, color: "#fff", weight: 2.5, fillColor: "#0E5A3E", fillOpacity: 1 }).addTo(legLayer));
+    map.fitBounds(pl.getBounds(), fitPad());
+    showDetail(`<div class="trip-hero" style="--a:${t.art[0]};--b:${t.art[1]}"><span>${t.emoji}</span></div><div class="d-pad">
+      <h2 class="d-title">${esc(t.name)}</h2><p class="d-kind">${esc(t.tagline)}</p>
+      <div class="dir-sum"><div><b>${t.km.toLocaleString("en-AU")} km</b><span>roughly</span></div><div><b>${t.nights}</b><span>nights suggested</span></div></div>
+      <button class="cta" type="button" id="planTrip" style="width:100%;margin:12px 0">${icon("route")}Plan this trip</button>
+      <dl class="facts"><div><dt>Best time</dt><dd>${esc(t.season)}</dd></div><div><dt>Roads</dt><dd>${esc(t.road)}</dd></div><div><dt>Route</dt><dd>${t.stops.map((s) => esc(s.name)).join(" → ")}</dd></div></dl>
+      <h3 class="h2">Highlights</h3><ul class="trip-hl">${t.highlights.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>
+      <div class="notice"><b>Good to know</b><span>${esc(t.tips)}</span></div>
+      ${t.guide ? `<button class="btn line" type="button" id="tripGuide">Open the ${esc(t.name)} guide</button>` : ""}
+    </div>`);
+    $("#tripGuide")?.addEventListener("click", () => openGuide(guideById(t.guide)));
+    $("#planTrip").addEventListener("click", () => {
+      const a = t.stops[0], z = t.stops.at(-1);
+      const set = (el, s) => { el.value = s.name; el.dataset.lat = s.lat; el.dataset.lon = s.lon; };
+      set($("#from"), a); set($("#to"), z);
+      viaStops = t.stops.slice(1, -1); renderVia();
+      setNights(t.nights);
+      closeDetail(); setView("plan");
+      $("#results").hidden = true; $("#planForm").hidden = false;
+      $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
+    });
+  }
+  renderDiscover();
+  ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { if (viaStops.length) { viaStops = []; renderVia(); } }));
 
   function openHelp() {
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">How to use Camp Finder</h2><p class="d-kind">Four easy steps</p>
