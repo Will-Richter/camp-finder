@@ -456,21 +456,31 @@
 
       <!-- SAVED -->
       <div id="view-saved" class="view" hidden>
-        <h1 class="title">Saved</h1>
-        <h2 class="h2" style="margin-top:4px">Your badges</h2>
-        <div id="badgeBox" class="badge-box"></div>
-        <div id="accountBox" style="margin-top:18px"></div>
-        <h2 class="h2">Travel journal</h2>
-        <ul class="list" id="journalList"></ul>
-        <h2 class="h2">Trips</h2>
-        <ul class="list" id="savedTrips"></ul>
-        <h2 class="h2">Camps</h2>
-        <ul class="list" id="savedCamps"></ul>
-        <h2 class="h2">Camps you've added</h2>
-        <ul class="list" id="mineCamps"></ul>
-        <button class="btn" type="button" id="addFromSaved"><svg class="ic"><use href="#i-plus"/></svg>Add a camp</button>
-        <h2 class="h2">Offline downloads</h2>
-        <ul class="list" id="offlinePacks"></ul>
+        <h1 class="title">My stuff</h1>
+        <div class="seg-tabs" role="tablist" aria-label="My stuff">
+          <button type="button" role="tab" data-seg="saved" aria-selected="true">🔖 Saved</button>
+          <button type="button" role="tab" data-seg="badges" aria-selected="false">🏅 Badges</button>
+          <button type="button" role="tab" data-seg="journal" aria-selected="false">📔 Journal</button>
+        </div>
+        <section class="seg-pane" data-pane="saved">
+          <h2 class="h2">Trips</h2>
+          <ul class="list" id="savedTrips"></ul>
+          <h2 class="h2">Camps</h2>
+          <ul class="list" id="savedCamps"></ul>
+          <h2 class="h2">Camps you've added</h2>
+          <ul class="list" id="mineCamps"></ul>
+          <button class="btn" type="button" id="addFromSaved"><svg class="ic"><use href="#i-plus"/></svg>Add a camp</button>
+          <h2 class="h2">Offline downloads</h2>
+          <ul class="list" id="offlinePacks"></ul>
+          <div id="accountBox" style="margin-top:22px"></div>
+        </section>
+        <section class="seg-pane" data-pane="badges" hidden>
+          <div id="badgeBox" class="badge-box"></div>
+        </section>
+        <section class="seg-pane" data-pane="journal" hidden>
+          <p class="help" style="margin-top:4px">Every journey you start is recorded here with your notes and photos. Open one to make a trip video.</p>
+          <ul class="list" id="journalList"></ul>
+        </section>
       </div>
 
       <!-- SETTINGS -->
@@ -578,7 +588,7 @@
     <button class="tabbtn is-on" data-view="plan" id="tab-plan" aria-current="page"><svg class="ic"><use href="#i-route"/></svg><span>Trip</span></button>
     <button class="tabbtn" data-view="explore" id="tab-explore"><svg class="ic"><use href="#i-compass"/></svg><span>Explore</span></button>
     <button class="tabbtn" data-view="discover" id="tab-discover"><svg class="ic"><use href="#i-star"/></svg><span>Discover</span></button>
-    <button class="tabbtn" data-view="saved" id="tab-saved"><svg class="ic"><use href="#i-bookmark"/></svg><span>Saved</span></button>
+    <button class="tabbtn" data-view="saved" id="tab-saved"><svg class="ic"><use href="#i-bookmark"/></svg><span>My stuff</span></button>
     <button class="tabbtn" data-view="settings" id="tab-settings"><svg class="ic"><use href="#i-gear"/></svg><span>Settings</span></button>
     <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
   </nav>

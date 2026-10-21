@@ -3119,6 +3119,18 @@
     });
   }
 
+  // ---- My stuff: Saved / Badges / Journal
+  function setSeg(name) {
+    $$("#view-saved [data-seg]").forEach((b) => b.setAttribute("aria-selected", b.dataset.seg === name));
+    $$("#view-saved [data-pane]").forEach((p) => (p.hidden = p.dataset.pane !== name));
+    store.set("cf-seg", name);
+    if (name === "badges") renderBadges();
+    if (name === "journal") renderJournal();
+    $("#sheetScroll").scrollTop = 0;
+  }
+  $("#view-saved .seg-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-seg]"); if (b) setSeg(b.dataset.seg); });
+  setTimeout(() => setSeg(store.get("cf-seg", "saved")), 0);
+
   // ================================================================ badges
   const STATE_COL = { QLD: "#7A1F3D", NSW: "#4FA3D9", VIC: "#1F3B7A", TAS: "#2E6B43", SA: "#C8372D", WA: "#E3A21A", NT: "#B5582C", ACT: "#2F6FD6" };
   const TIER_COL = { bronze: "#C98A4B", silver: "#A9B4BA", gold: "#E3B23C", platinum: "#7FD1CF", special: "#2FA36B" };
@@ -3157,7 +3169,7 @@
   }
   function closeBadgePop(thenAll) {
     const pop = $("#badgePop"); pop.classList.add("out");
-    setTimeout(() => { pop.hidden = true; if (thenAll) { badgeQueue.length = 0; setView("saved"); setTimeout(() => $("#badgeBox").scrollIntoView({ block: "start", behavior: "smooth" }), 200); } else nextBadge(); }, 260);
+    setTimeout(() => { pop.hidden = true; if (thenAll) { badgeQueue.length = 0; setView("saved"); setSeg("badges"); } else nextBadge(); }, 260);
   }
   $("#bpOk").addEventListener("click", () => closeBadgePop(false));
   $("#bpAll").addEventListener("click", () => closeBadgePop(true));
@@ -3166,8 +3178,14 @@
     const { list, stats } = badgeState;
     if (!stats) { box.innerHTML = `<p class="help">Loading…</p>`; updateBadges(); return; }
     const earned = list.filter((b) => b.earned).length;
+    const LEVELS = [[0, "New on the Road"], [3, "Weekender"], [8, "Explorer"], [15, "Road Tripper"], [25, "Grey Nomad"], [40, "Big Lapper"], [55, "Outback Legend"]];
+    let li = 0; LEVELS.forEach((l, i) => { if (earned >= l[0]) li = i; });
+    const next = LEVELS[li + 1], from = LEVELS[li][0];
+    const pct = next ? Math.round(((earned - from) / (next[0] - from)) * 100) : 100;
+    const hero = `<div class="bx-hero"><div class="bx-lvl"><span>Level ${li + 1}</span><b>${LEVELS[li][1]}</b></div>
+      <div class="bx-bar"><i style="width:${pct}%"></i></div><p>${next ? `${next[0] - earned} more badge${next[0] - earned === 1 ? "" : "s"} to <b>${next[1]}</b>` : "You've reached the top level. Legend!"}</p></div>`;
     const groups = [["km", "Distance"], ["hours", "Time behind the wheel"], ["nights", "Nights on the road"], ["states", "States and territories"], ["places", "Special places"], ["journeys", "Journeys"]];
-    box.innerHTML = `<div class="bx-stats"><div><b>${Math.round(stats.km).toLocaleString("en-AU")}</b><span>km driven</span></div><div><b>${Math.round(stats.hours)}</b><span>hours</span></div><div><b>${stats.states.length}</b><span>of 8 states</span></div><div><b>${earned}</b><span>badges</span></div></div>
+    box.innerHTML = hero + `<div class="bx-stats"><div><b>${Math.round(stats.km).toLocaleString("en-AU")}</b><span>km driven</span></div><div><b>${Math.round(stats.hours)}</b><span>hours</span></div><div><b>${stats.states.length}</b><span>of 8 states</span></div><div><b>${earned}</b><span>badges</span></div></div>
       ${groups.map(([g, title]) => { const items = list.filter((b) => b.group === g); if (!items.length) return ""; return `<h3 class="bx-h">${title} <small>${items.filter((b) => b.earned).length}/${items.length}</small></h3><div class="bx-grid">${items.map((b) => `<button type="button" class="bx-item${b.earned ? " got" : ""}" data-badge="${esc(b.id)}">${medalHtml(b)}<span>${esc(b.name)}</span></button>`).join("")}</div>`; }).join("")}
       ${stats.journeys ? "" : `<p class="help bx-empty">Start a journey from any trip and your kilometres, hours and states count towards badges automatically.</p>`}`;
   }

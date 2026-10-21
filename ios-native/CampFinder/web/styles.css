@@ -1101,3 +1101,18 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .must { font-style: normal; font: 800 10.5px/1 var(--text); letter-spacing: .06em; text-transform: uppercase; background: var(--gold); color: #1A1608; border-radius: 6px; padding: 3px 6px; vertical-align: 2px; margin-left: 4px; }
 .poi-bar { position: sticky; bottom: 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, var(--sheet) 28%); }
 .poi-bar .cta { width: 100%; }
+
+/* ---------- My stuff: Saved / Badges / Journal switcher ---------- */
+.seg-tabs { position: sticky; top: -2px; z-index: 4; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; margin: 0 0 12px; border-radius: 14px; background: var(--well); }
+.seg-tabs button { border: 0; background: none; min-height: 44px; border-radius: 11px; font: 800 15px var(--text); color: var(--sub); }
+.seg-tabs button[aria-selected="true"] { background: var(--sheet); color: var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+.motion .seg-pane:not([hidden]) { animation: rise .3s var(--spring) both; }
+.bx-hero { position: relative; overflow: hidden; border-radius: 20px; padding: 18px 18px 16px; margin: 0 0 12px; color: #fff;
+  background: radial-gradient(circle at 85% 0%, rgba(245,197,24,.45), transparent 55%), linear-gradient(150deg, #0E5A3E, #14402E); }
+.bx-hero::after { content: "🏅"; position: absolute; right: 14px; top: 10px; font-size: 54px; opacity: .9; }
+.bx-lvl span { display: block; font: 800 12px/1 var(--text); letter-spacing: .18em; text-transform: uppercase; color: #F5C518; }
+.bx-lvl b { display: block; font: 900 26px/1.15 var(--display); margin-top: 6px; padding-right: 64px; }
+.bx-bar { height: 10px; border-radius: 6px; background: rgba(255,255,255,.18); margin: 14px 0 8px; overflow: hidden; }
+.bx-bar i { display: block; height: 100%; background: #F5C518; border-radius: 6px; }
+.bx-hero p { margin: 0; font-size: 14px; color: rgba(255,255,255,.88); }
+.bx-hero p b { color: #fff; }
