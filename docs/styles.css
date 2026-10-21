@@ -977,3 +977,19 @@ img, a, svg { -webkit-user-drag: none; -webkit-touch-callout: none; }
 
 /* the screen itself never zooms or slides: no double-tap zoom, no rubber-banding */
 html, body { overscroll-behavior: none; touch-action: manipulation; position: fixed; inset: 0; overflow: hidden; }
+
+/* ---------- your own car ---------- */
+.pl-car { width: var(--cw, 92px); left: calc(var(--p, 0) * (100% - var(--cw, 92px))); }
+.car-preview { display: grid; place-items: center; height: 92px; margin: 6px 0 2px; background: linear-gradient(transparent 72%, color-mix(in srgb, var(--hair) 60%, transparent) 72% 74%, transparent 74%); }
+.car-preview svg { height: 80px; max-width: 100%; filter: drop-shadow(0 5px 5px rgba(0,0,0,.16)); }
+.car-preview.wl { height: 78px; margin: 12px 0 6px; background: none; }
+.car-preview.wl svg { height: 66px; filter: drop-shadow(0 6px 8px rgba(0,0,0,.3)); }
+.motion .car-preview svg .wheel { transform-box: fill-box; transform-origin: center; animation: wheelSpin 1.2s linear infinite; }
+.car-cap { text-align: center; font: 700 14px var(--text); color: var(--sub); margin: 0 0 10px; }
+.sw-l { font: 700 15px var(--display); display: block; margin-bottom: 8px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatches .sw { width: 38px; height: 38px; border-radius: 50%; border: 2px solid rgba(0,0,0,.18); background: var(--sw); box-shadow: inset 0 -6px 10px rgba(0,0,0,.18); padding: 0; }
+.swatches .sw[aria-checked="true"] { outline: 3px solid var(--sign); outline-offset: 3px; }
+.swatches.wl { justify-content: center; gap: 8px; }
+.swatches.wl .sw { width: 32px; height: 32px; border-color: rgba(255,255,255,.6); }
+.swatches.wl .sw[aria-checked="true"] { outline-color: #fff; }

@@ -939,7 +939,7 @@
     if (c.heading != null && c.heading >= 0 && (c.speed == null || c.speed > 1)) heading = c.heading;
     else if (lastPos && hav([lastPos.lat, lastPos.lon], [me.lat, me.lon]) > 15) heading = bearing(lastPos, me);
     if (!lastPos || hav([lastPos.lat, lastPos.lon], [me.lat, me.lon]) > 15) lastPos = me;
-    const html = `<div class="me-car" style="--rot:${Math.round(heading)}deg"><span class="halo"></span>${CAR_SVG}</div>`;
+    const html = `<div class="me-car" style="--rot:${Math.round(heading)}deg"><span class="halo"></span>${myCarTop()}</div>`;
     if (!meMarker) {
       meMarker = L.marker([me.lat, me.lon], { icon: L.divIcon({ className: "me-icon", html, iconSize: [44, 44], iconAnchor: [22, 22] }), keyboard: false, zIndexOffset: 2000, interactive: false }).addTo(map);
     } else {
@@ -1054,8 +1054,9 @@
   const wantsOf = (el) => $$("input[value]:checked", el).map((i) => i.value).filter((v) => AMENITIES.some((a) => a.id === v));
   function savePrefs() {
     Object.assign(prefs, { wants: wantsOf($("#planWants")), exWants: wantsOf($("#explorePills")), rig: radio("rig"), exFree: $("#exFree").checked });
-    store.set("cf-prefs", prefs);
+    store.set("cf-prefs", prefs); paintCars();
   }
+  $("#rigs").addEventListener("change", () => { prefs.rig = radio("rig") || prefs.rig; store.set("cf-prefs", prefs); paintCars(); });
 
   const nightsIn = $("#nights");
   function setNights(n) {
@@ -2271,6 +2272,35 @@
   applyMode();
   const money = (v) => !v ? "$0" : "$" + (v >= 100 ? Math.round(v).toLocaleString("en-AU") : v.toFixed(v >= 10 ? 0 : 2));
   const towing = (rig) => rig === "caravan" || rig === "camper";
+
+  // ---------------------------------------------------------------- your own car, everywhere a car is drawn
+  const myCar = () => ({ make: settings.make, model: settings.model, color: settings.color || "gold", rig: (typeof prefs !== "undefined" && prefs.rig) || "camper" });
+  const myCarTop = () => window.CFCar ? window.CFCar.top(myCar()).svg : CAR_SVG;
+  function paintCars() {
+    if (!window.CFCar) return;
+    const car = myCar();
+    // loading screen: your car (towing your caravan or camper if you have one)
+    const pl = document.querySelector(".pl-car");
+    if (pl) { const sv = CFCar.side(car); pl.setAttribute("viewBox", sv.viewBox); pl.innerHTML = sv.inner; pl.style.setProperty("--cw", `${Math.round(92 * sv.width / 132)}px`); }
+    // splash: the little car driving around Australia
+    const sp = document.getElementById("spCarBody");
+    if (sp) { sp.setAttribute("transform", "rotate(90) scale(1)"); sp.innerHTML = CFCar.top(car).inner; }
+    // your car on the map
+    const el = typeof meMarker !== "undefined" && meMarker?.getElement?.()?.querySelector(".me-car");
+    if (el) { el.querySelector("svg")?.remove(); el.insertAdjacentHTML("beforeend", CFCar.top(car).svg); }
+    // previews in Settings and the welcome screens
+    ["#stCarPrev", "#wlCarPrev"].forEach((sel) => { const box = document.querySelector(sel); if (box) box.innerHTML = CFCar.side(car).svg; });
+    const cap = document.getElementById("stCarCap");
+    if (cap) { const b = CFCar.bodyFor(car.make, car.model, car.rig); const rigName = { caravan: "towing a caravan", camper: "towing a camper trailer", rooftop: "with a rooftop tent", motorhome: "" }[car.rig] || ""; cap.textContent = `${car.model ? car.model : CFCar.LABEL[b]}${rigName && b !== "motorhome" ? ", " + rigName : ""}`; }
+    ["#stColors", "#wlColors"].forEach((sel) => {
+      const box = document.querySelector(sel); if (!box) return;
+      if (!box.childElementCount) {
+        box.innerHTML = Object.entries(CFCar.COLORS).map(([k, v]) => `<button type="button" role="radio" class="sw" data-c="${k}" style="--sw:${v}" aria-label="${CFCar.NAMES[k]}"></button>`).join("");
+        box.addEventListener("click", (e) => { const b = e.target.closest(".sw"); if (!b) return; settings.color = b.dataset.c; saveSettings(); paintCars(); });
+      }
+      box.querySelectorAll(".sw").forEach((b) => b.setAttribute("aria-checked", b.dataset.c === car.color));
+    });
+  }
   function fuelFor(meters, rig = plan?.opts?.rig || prefs.rig) {
     if (!settings.use) return null;
     const k = meters / 1000;
@@ -3139,6 +3169,7 @@
     });
   }
   renderDiscover();
+  paintCars();
   ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { if (viaStops.length) { viaStops = []; renderVia(); } }));
 
   // ================================================================ first-time sign in
@@ -3257,7 +3288,7 @@
     const v = (VEH[make] || []).find((x) => x[0] === model) || (VEH[make] || [])[0];
     settings.make = make; settings.model = v ? v[0] : "";
     if (v) { settings.fuel = v[1]; settings.use = v[2]; settings.tank = v[3]; }
-    saveSettings();
+    saveSettings(); paintCars();
   }
   function renderSettings() {
     fillMakes($("#stMake"), settings.make); fillModels($("#stModel"), settings.make, settings.model);
@@ -3344,7 +3375,7 @@
     w.classList.remove("out"); w.hidden = false; track.scrollLeft = 0;
     $("#wlRigs").innerHTML = RIGS.map((r) => `<label><input type="radio" name="wlRig" value="${r.id}" ${r.id === prefs.rig ? "checked" : ""}><span>${icon(r.id)}${r.label.replace("&shy;", "")}</span></label>`).join("");
     $("#wlRigs").onchange = (e) => {
-      prefs.rig = e.target.value; store.set("cf-prefs", prefs);
+      prefs.rig = e.target.value; store.set("cf-prefs", prefs); paintCars();
       const f = $(`input[name=rig][value="${prefs.rig}"]`); if (f) f.checked = true;
       $(".ar-rig use").setAttribute("href", `#i-${prefs.rig}`);
     };
