@@ -834,20 +834,33 @@
   }
 
   // ---------------------------------------------------------------- map
-  const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([-25.5, 134], 4);
-  const street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(map);
-  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
-  });
+  // Smooth map: no tile fade, keep plenty of tiles around, and a low-detail copy underneath so zooming
+  // never flashes grey while the sharp tiles load.
+  const map = L.map("map", {
+    zoomControl: false, attributionControl: true, preferCanvas: true, renderer: L.canvas({ padding: 0.8 }),
+    fadeAnimation: false, bounceAtZoomLimits: false, minZoom: 3, worldCopyJump: false,
+    maxBounds: [[-62, 70], [20, 200]], maxBoundsViscosity: 0.85,
+  }).setView([-25.5, 134], 4);
+  const tileOpts = { maxZoom: 19, keepBuffer: 8, updateWhenZooming: false, updateWhenIdle: true };
+  const backdropOpts = { maxZoom: 19, maxNativeZoom: 7, keepBuffer: 24, updateWhenZooming: false, attribution: "" };
+  const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+  const streetBase = L.tileLayer(OSM, { ...backdropOpts, className: "tiles-backdrop" });
+  const street = L.tileLayer(OSM, { ...tileOpts, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+  const satBase = L.tileLayer(ESRI, { ...backdropOpts, maxNativeZoom: 8, className: "tiles-backdrop" });
+  const sat = L.tileLayer(ESRI, { ...tileOpts, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" });
+  streetBase.addTo(map); street.addTo(map);
   let onSat = false;
   $("#layerBtn").addEventListener("click", (e) => {
     onSat = !onSat;
     e.currentTarget.setAttribute("aria-pressed", onSat);
     e.currentTarget.setAttribute("aria-label", onSat ? "Switch to map view" : "Switch to satellite view");
-    if (onSat) { map.removeLayer(street); sat.addTo(map); } else { map.removeLayer(sat); street.addTo(map); }
+    if (onSat) { map.removeLayer(street); map.removeLayer(streetBase); satBase.addTo(map); sat.addTo(map); }
+    else { map.removeLayer(sat); map.removeLayer(satBase); streetBase.addTo(map); street.addTo(map); }
   });
+  // markers shouldn't slide around while you pinch
+  map.on("zoomstart", () => map.getContainer().classList.add("is-zooming"));
+  map.on("zoomend", () => setTimeout(() => map.getContainer().classList.remove("is-zooming"), 60));
 
   // The web view can report its size late on first launch: re-measure so Australia is centred.
   let userMovedMap = false;
@@ -938,32 +951,76 @@
   function setSheet(state) {
     sheet.classList.toggle("is-peek", state === "peek");
     sheet.classList.toggle("is-full", state === "full");
-    setTimeout(() => map.invalidateSize(), 320);
+    if (state === "peek") updatePeek();
+    setTimeout(() => map.invalidateSize({ pan: false }), 320);
   }
-  $("#sheetHandle").addEventListener("click", () => {
-    setSheet(sheet.classList.contains("is-peek") ? "half" : sheet.classList.contains("is-full") ? "peek" : "full");
-  });
-  // drag the grabber to resize
+  const sheetState = () => (sheet.classList.contains("is-peek") ? "peek" : sheet.classList.contains("is-full") ? "full" : "half");
+  // what the slim bar says when the panel is swiped down
+  function updatePeek() {
+    const t = $("#peekText"); if (!t) return;
+    const from = $("#from")?.value, to = $("#to")?.value;
+    const names = { explore: "Explore camps near you", discover: "Ready-made trips", saved: "Your saved camps", settings: "Settings" };
+    if (typeof view !== "undefined" && view !== "plan") t.textContent = names[view] || "Open panel";
+    else if (!$("#results")?.hidden && to) t.textContent = `${from ? short(from) : "You"} → ${short(to)}`;
+    else t.textContent = "Where are you headed?";
+  }
+  $("#sheetHandle").addEventListener("click", () => setSheet(sheetState() === "peek" ? "half" : sheetState() === "full" ? "peek" : "full"));
+  $("#peekBar").addEventListener("click", () => setSheet("half"));
+
+  // Drag the panel up and down: from the grabber, the slim bar, or the content when it's scrolled to the top
   (() => {
-    let y0 = null, h0 = 0;
-    const g = $("#sheetHandle");
-    g.addEventListener("pointerdown", (e) => { y0 = e.clientY; h0 = sheet.getBoundingClientRect().height; sheet.style.transition = "none"; g.setPointerCapture(e.pointerId); });
-    g.addEventListener("pointermove", (e) => { if (y0 == null) return; sheet.style.height = Math.max(140, h0 + (y0 - e.clientY)) + "px"; });
-    g.addEventListener("pointerup", (e) => {
+    const scroller = $("#sheetScroll");
+    let y0 = null, h0 = 0, lastY = 0, lastT = 0, vel = 0, raf = 0, nextH = 0, fromContent = false, dragged = false;
+    const minH = () => 74, maxH = () => sheet.parentElement.getBoundingClientRect().height - 120;
+    const begin = (y) => { y0 = lastY = y; lastT = performance.now(); vel = 0; h0 = sheet.getBoundingClientRect().height; dragged = false; };
+    const move = (y) => {
+      if (y0 == null) return false;
+      const dy = y0 - y;
+      if (!dragged && Math.abs(dy) < 6) return false;
+      if (!dragged) { dragged = true; sheet.style.transition = "none"; sheet.classList.add("is-dragging"); }
+      const now = performance.now(); vel = (lastY - y) / Math.max(1, now - lastT); lastY = y; lastT = now; // px per ms, + = up
+      nextH = Math.min(maxH(), Math.max(minH(), h0 + dy));
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; sheet.style.height = nextH + "px"; });
+      return true;
+    };
+    const end = () => {
       if (y0 == null) return;
-      const dy = y0 - e.clientY; y0 = null; sheet.style.transition = ""; sheet.style.height = "";
-      if (Math.abs(dy) < 8) return; // treated as a tap by the click handler
-      const h = h0 + dy, vh = window.innerHeight;
-      setSheet(h < vh * 0.35 ? "peek" : h > vh * 0.72 ? "full" : "half");
-      g.dataset.dragged = "1"; setTimeout(() => delete g.dataset.dragged, 50);
+      y0 = null;
+      if (!dragged) return;
+      cancelAnimationFrame(raf); raf = 0;
+      const h = nextH, vh = sheet.parentElement.getBoundingClientRect().height;
+      sheet.classList.remove("is-dragging"); sheet.style.transition = ""; 
+      // flick = go one step in that direction; otherwise snap to the nearest
+      let state;
+      const order = ["peek", "half", "full"], cur = order.indexOf(sheetState());
+      if (vel > 0.55) state = order[Math.min(2, Math.max(cur, h < vh * 0.4 ? 0 : 1) + 1)];
+      else if (vel < -0.55) state = order[Math.max(0, Math.min(cur, h > vh * 0.75 ? 2 : 1) - 1)];
+      else state = h < vh * 0.3 ? "peek" : h > vh * 0.72 ? "full" : "half";
+      requestAnimationFrame(() => { sheet.style.height = ""; setSheet(state); });
+    };
+    // grabber + slim bar: pointer events
+    [$("#sheetHandle"), $("#peekBar")].forEach((g) => {
+      g.addEventListener("pointerdown", (e) => { begin(e.clientY); g.setPointerCapture(e.pointerId); });
+      g.addEventListener("pointermove", (e) => move(e.clientY));
+      g.addEventListener("pointerup", end); g.addEventListener("pointercancel", end);
+      g.addEventListener("click", (e) => { if (dragged) { e.stopImmediatePropagation(); e.preventDefault(); dragged = false; } }, true);
     });
-    g.addEventListener("click", (e) => { if (g.dataset.dragged) e.stopImmediatePropagation(); }, true);
+    // content: pull down when already at the top to shrink the panel
+    scroller.addEventListener("touchstart", (e) => { fromContent = scroller.scrollTop <= 0 && e.touches.length === 1; if (fromContent) begin(e.touches[0].clientY); }, { passive: true });
+    scroller.addEventListener("touchmove", (e) => {
+      if (!fromContent || y0 == null) return;
+      const y = e.touches[0].clientY;
+      if (!dragged && y < y0) { fromContent = false; y0 = null; return; } // scrolling up through the list: leave it alone
+      if (move(y)) e.preventDefault();
+    }, { passive: false });
+    scroller.addEventListener("touchend", () => { if (fromContent) end(); fromContent = false; });
+    scroller.addEventListener("touchcancel", () => { if (fromContent) end(); fromContent = false; });
   })();
 
   let view = "plan";
   $$(".tabbtn").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
   function setView(v) {
-    view = v;
+    view = v; setTimeout(updatePeek, 0);
     $$(".tabbtn").forEach((b) => { const on = b.dataset.view === v; b.classList.toggle("is-on", on); on ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"); });
     $$(".view").forEach((el) => (el.hidden = el.id !== `view-${v}`));
     closeDetail();
@@ -2860,11 +2917,16 @@
   const WebSR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let webRec = null;
   if (!nativeSpeech && !WebSR) $("#micBtn").hidden = true;
+  let listening = false, safety = null;
   function voiceUI(on) {
     const box = $("#voiceInline");
-    box.hidden = !on; box.classList.remove("done"); $("#vcActions").hidden = true; $("#micBtn").classList.toggle("is-on", on);
-    if (on) $("#vcHint").innerHTML = 'Listening… say <b>"Bundaberg to Cairns"</b> or <b>"Camp tonight"</b>';
+    listening = on; clearTimeout(safety);
+    box.hidden = !on; box.classList.remove("done"); box.classList.toggle("is-listening", on); box.style.setProperty("--lvl", 0);
+    $("#micBtn").classList.toggle("is-on", on);
+    // while listening: a big Search button you can tap as soon as you've finished talking
+    $("#vcActions").hidden = !on; $("#vcSearch").hidden = !on; $("#vcGo").hidden = true; $("#vcAgain").hidden = true;
     if (on) {
+      $("#vcHint").innerHTML = 'Listening… say <b>"Bundaberg to Cairns"</b>, then tap <b>Search</b>';
       setView("plan");
       if (!$("#results").hidden) { $("#results").hidden = true; $("#planForm").hidden = false; }
       if (sheet.classList.contains("is-peek")) setSheet("half");
@@ -2901,34 +2963,62 @@
     } else voiceResult("I couldn't find that place. Try again, or type it in.", false);
   }
   function voiceResult(html, canGo) {
-    const box = $("#voiceInline"); box.hidden = false; box.classList.add("done");
+    listening = false; clearTimeout(safety); clearTimeout(voiceTimer);
+    const box = $("#voiceInline"); box.hidden = false; box.classList.add("done"); box.classList.remove("is-listening");
     $("#vcHint").hidden = false; $("#vcHint").innerHTML = canGo ? "Got it:" : "Hmm…";
     $("#vcText").innerHTML = html;
-    $("#vcActions").hidden = false; $("#vcGo").hidden = !canGo;
+    $("#vcActions").hidden = false; $("#vcSearch").hidden = true; $("#vcGo").hidden = !canGo; $("#vcAgain").hidden = false;
     $("#micBtn").classList.remove("is-on");
   }
-  let voiceTimer;
-  window.__cfSpeech = (r) => {
+  let voiceTimer, heard = "";
+  // Stop listening and search with whatever has been heard so far
+  function finishVoice() {
+    if (!listening) return;
     clearTimeout(voiceTimer);
-    if (r.error) { voiceResult(esc(r.error), false); return; }
-    $("#vcHint").hidden = !!r.text; $("#vcText").textContent = r.text || "";
+    if (nativeSpeech) {
+      nativeSpeech.postMessage({ cmd: "finish" });
+      // if the phone doesn't answer quickly, use what we've already shown
+      safety = setTimeout(() => window.__cfSpeech({ text: heard, final: true }), 1500);
+    } else { try { webRec?.stop(); } catch {} window.__cfSpeech({ text: heard, final: true }); }
+  }
+  window.__cfSpeechLevel = (v) => { if (listening) $("#voiceInline").style.setProperty("--lvl", v); };
+  window.__cfSpeech = (r) => {
+    if (!listening) return;
+    clearTimeout(voiceTimer);
+    if (r.text) heard = r.text;
     if (r.final) {
-      if (!r.text) return voiceResult("Didn't catch that. Tap Try again and speak after the beep.", false);
-      $("#vcText").innerHTML = `${esc(r.text)} <span class="spinner"></span>`;
-      useVoice(r.text).catch(() => voiceResult("Something went wrong. Try again, or type it in.", false));
-    } else voiceTimer = setTimeout(() => { nativeSpeech?.postMessage({ cmd: "stop" }); window.__cfSpeech({ text: $("#vcText").textContent, final: true }); }, 4000);
+      listening = false; clearTimeout(safety);
+      const text = r.text || heard;
+      if (!text) return voiceResult(esc(r.error || "I didn't hear anything. Tap Try again, or type it in."), false);
+      $("#voiceInline").classList.remove("is-listening");
+      $("#vcActions").hidden = true;
+      $("#vcHint").hidden = false; $("#vcHint").textContent = "Searching…";
+      $("#vcText").innerHTML = `${esc(text)} <span class="spinner"></span>`;
+      useVoice(text).catch(() => voiceResult("Something went wrong. Try again, or type it in.", false));
+      return;
+    }
+    if (r.error && !heard) return voiceResult(esc(r.error), false);
+    $("#vcHint").textContent = "I heard:";
+    $("#vcText").textContent = heard;
+    // finished talking? search automatically after a short pause
+    if (heard) voiceTimer = setTimeout(finishVoice, 2200);
   };
   function startVoice() {
+    heard = ""; try { webRec?.abort(); } catch {}
     voiceUI(true);
+    // never leave someone staring at "Listening…" forever
+    safety = setTimeout(() => { if (listening && !heard) { nativeSpeech?.postMessage({ cmd: "stop" }); voiceResult("I didn't hear anything. Check the microphone is allowed, then tap Try again, or type it in.", false); } }, 12000);
     if (nativeSpeech) return nativeSpeech.postMessage({ cmd: "start" });
     try {
       webRec = new WebSR(); webRec.lang = "en-AU"; webRec.interimResults = true;
       webRec.onresult = (e) => { const r = e.results[e.results.length - 1]; window.__cfSpeech({ text: [...e.results].map((x) => x[0].transcript).join(" "), final: r.isFinal }); };
-      webRec.onerror = () => window.__cfSpeech({ text: "", final: true, error: "Didn't catch that. Try again." });
+      webRec.onerror = () => window.__cfSpeech({ text: "", final: true, error: "Didn't catch that. Try again, or type it in." });
+      webRec.onend = () => { if (listening) window.__cfSpeech({ text: heard, final: true }); };
       webRec.start();
     } catch { voiceUI(false); toast("Voice search isn't available on this device"); }
   }
-  $("#micBtn").addEventListener("click", startVoice);
+  $("#micBtn").addEventListener("click", () => (listening ? finishVoice() : startVoice()));
+  $("#vcSearch").addEventListener("click", finishVoice);
   $("#vcGo").addEventListener("click", () => { voiceUI(false); $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click(); });
   $("#vcAgain").addEventListener("click", startVoice);
   $("#vcCancel").addEventListener("click", () => { voiceUI(false); nativeSpeech?.postMessage({ cmd: "stop" }); try { webRec?.abort(); } catch {} });
@@ -2959,6 +3049,17 @@
     showDetail(`<div class="trip-hero" style="--a:${t.art[0]};--b:${t.art[1]}"><span>${t.emoji}</span></div><div class="d-pad">
       <h2 class="d-title">${esc(t.name)}</h2><p class="d-kind">${esc(t.tagline)}</p>
       <div class="dir-sum"><div><b>${t.km.toLocaleString("en-AU")} km</b><span>roughly</span></div><div><b>${t.nights}</b><span>nights suggested</span></div></div>
+      <div class="trip-start">
+        <h3 class="h2">Where are you starting from?</h3>
+        <div class="ts-seg" role="radiogroup" aria-label="Starting point">
+          <button type="button" role="radio" data-start="me">📍 My location</button>
+          <button type="button" role="radio" data-start="town">🏠 A town</button>
+          <button type="button" role="radio" data-start="trip">Start in ${esc(t.stops[0].name)}</button>
+        </div>
+        <input class="ts-town" id="tsTown" type="text" placeholder="Type your town, e.g. Bundaberg" autocomplete="off" hidden>
+        <label class="ts-home"><input type="checkbox" id="tsHome"> Drive back home at the end</label>
+        <p class="help" id="tsNote"></p>
+      </div>
       <button class="cta" type="button" id="planTrip" style="width:100%;margin:12px 0">${icon("route")}Plan this trip</button>
       <dl class="facts"><div><dt>Best time</dt><dd>${esc(t.season)}</dd></div><div><dt>Roads</dt><dd>${esc(t.road)}</dd></div><div><dt>Route</dt><dd>${t.stops.map((s) => esc(s.name)).join(" → ")}</dd></div></dl>
       <h3 class="h2">Highlights</h3><ul class="trip-hl">${t.highlights.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>
@@ -2966,12 +3067,63 @@
       ${t.guide ? `<button class="btn line" type="button" id="tripGuide">Open the ${esc(t.name)} guide</button>` : ""}
     </div>`);
     $("#tripGuide")?.addEventListener("click", () => openGuide(guideById(t.guide)));
-    $("#planTrip").addEventListener("click", () => {
-      const a = t.stops[0], z = t.stops.at(-1);
+    // Starting point: your location, your home town, or the trip's own start
+    const first = t.stops[0], last = t.stops.at(-1);
+    const loop = hav([first.lat, first.lon], [last.lat, last.lon]) < 30000;
+    let startMode = store.get("cf-trip-start", null) || (me ? "me" : "town");
+    const town = $("#tsTown"); town.value = store.get("cf-home-town", "");
+    const pick = (mode) => {
+      startMode = mode;
+      $$(".ts-seg [data-start]").forEach((b) => b.setAttribute("aria-checked", b.dataset.start === mode));
+      town.hidden = mode !== "town";
+      $(".ts-home").hidden = mode === "trip" || loop;
+      $("#tsNote").textContent = mode === "trip" ? `The plan starts in ${first.name}.` : loop ? `It's a round trip, so the plan starts and finishes at ${mode === "me" ? "where you are" : "your town"}.` : `The plan includes the drive from ${mode === "me" ? "where you are" : "your town"} to ${first.name}.`;
+      if (mode === "town" && !town.value) setTimeout(() => town.focus(), 50);
+    };
+    $$(".ts-seg [data-start]").forEach((b) => b.addEventListener("click", () => pick(b.dataset.start)));
+    pick(startMode);
+    $("#planTrip").addEventListener("click", async () => {
+      const btn = $("#planTrip");
       const set = (el, s) => { el.value = s.name; el.dataset.lat = s.lat; el.dataset.lon = s.lon; };
-      set($("#from"), a); set($("#to"), z);
-      viaStops = t.stops.slice(1, -1); renderVia();
-      setNights(t.nights);
+      let start = null; // where the person actually sets off from
+      if (startMode === "me") {
+        btn.disabled = true; btn.textContent = "Finding you…";
+        start = me ? { name: "My location", lat: me.lat, lon: me.lon } : await new Promise((res) => { locate((p) => res({ name: "My location", lat: p.lat, lon: p.lon })); setTimeout(() => res(null), 13000); });
+        btn.disabled = false; btn.innerHTML = `${icon("route")}Plan this trip`;
+        if (!start) { toast("Couldn't find your location. Pick “A town” instead."); return; }
+      } else if (startMode === "town") {
+        const q = town.value.trim();
+        if (!q) { town.focus(); toast("Type the town you're leaving from"); return; }
+        btn.disabled = true; btn.textContent = "Finding your town…";
+        const r = await searchPlaces(q).catch(() => []);
+        btn.disabled = false; btn.innerHTML = `${icon("route")}Plan this trip`;
+        if (!r.length) { toast(`Couldn't find "${q}"`); return; }
+        start = { name: r[0].area ? `${r[0].name}, ${r[0].area.split(", ").pop()}` : r[0].name, lat: r[0].lat, lon: r[0].lon };
+        store.set("cf-home-town", q);
+      }
+      store.set("cf-trip-start", startMode);
+      let stops = t.stops.slice();
+      let extraKm = 0;
+      if (start) {
+        const d = (a, b) => hav([a.lat, a.lon], [b.lat, b.lon]);
+        const near = d(start, first) < 30000;
+        if (loop) {
+          // a round trip: join the loop at the point nearest home and go all the way round back home
+          const L = t.stops.slice(0, -1), n = L.length;
+          let best = 0, cost = Infinity;
+          for (let i = 0; i < n; i++) { const a = L[i], b = L[(i + 1) % n], c = d(a, start) + d(start, b) - d(a, b); if (c < cost) { cost = c; best = i; } }
+          const ring = [...L.slice(best + 1), ...L.slice(0, best + 1)].filter((s) => d(s, start) >= 30000);
+          stops = [start, ...ring, start];
+          extraKm = cost / 1000 * 1.25;
+        } else {
+          extraKm = near ? 0 : d(start, first) / 1000 * 1.25;
+          stops = near ? [start, ...stops.slice(1)] : [start, ...stops];
+          if ($("#tsHome").checked) { stops.push(start); extraKm += d(last, start) / 1000 * 1.25; }
+        }
+      }
+      set($("#from"), stops[0]); set($("#to"), stops.at(-1));
+      viaStops = stops.slice(1, -1); renderVia();
+      setNights(t.nights + Math.round(extraKm / 450));
       closeDetail(); setView("plan");
       $("#results").hidden = true; $("#planForm").hidden = false;
       $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();

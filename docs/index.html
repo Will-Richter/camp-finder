@@ -225,6 +225,11 @@
 
   <section id="sheet" class="sheet" aria-label="Camp finder">
     <button id="sheetHandle" class="grabber" type="button" aria-label="Resize panel"><span></span></button>
+    <button id="peekBar" class="peek-bar" type="button" aria-label="Open panel">
+      <svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+      <span id="peekText">Where are you headed?</span>
+      <svg viewBox="0 0 24 24" class="ic sm pk-up" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+    </button>
     <div class="sheet-scroll" id="sheetScroll">
 
       <!-- PLAN: form -->
@@ -291,6 +296,7 @@
             </div>
             <button type="button" class="vc-cancel" id="vcCancel" aria-label="Stop listening">✕</button>
             <div class="vc-actions" id="vcActions" hidden>
+              <button type="button" class="cta" id="vcSearch"><svg viewBox="0 0 24 24" class="ic sm" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg> Search</button>
               <button type="button" class="cta" id="vcGo">Go: find camps</button>
               <button type="button" class="btn" id="vcAgain">Try again</button>
             </div>

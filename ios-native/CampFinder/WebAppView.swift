@@ -33,6 +33,7 @@ struct WebAppView: UIViewRepresentable {
         webView.uiDelegate = context.coordinator
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
+        webView.allowsLinkPreview = false          // no long-press link previews
         webView.isOpaque = false
         webView.backgroundColor = UIColor(red: 0.055, green: 0.353, blue: 0.243, alpha: 1)
         #if DEBUG
@@ -199,7 +200,12 @@ struct WebAppView: UIViewRepresentable {
                         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
                         DispatchQueue.main.async { self?.webView?.evaluateJavaScript("window.__cfSpeech && window.__cfSpeech(\(String(decoding: data, as: UTF8.self)))") }
                     }
+                    SpeechListener.shared.level = { [weak self] v in
+                        self?.webView?.evaluateJavaScript("window.__cfSpeechLevel && window.__cfSpeechLevel(\(String(format: "%.2f", v)))")
+                    }
                     SpeechListener.shared.start()
+                } else if (d["cmd"] as? String) == "finish" {
+                    SpeechListener.shared.finish()   // Search tapped: use what's been heard so far
                 } else { SpeechListener.shared.stop() }
             case "journey":
                 guard let d = message.body as? [String: Any] else { return }

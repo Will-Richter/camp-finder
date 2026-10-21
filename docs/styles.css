@@ -931,3 +931,46 @@ a { color: inherit; }
 .vc-actions { flex: 1 1 100%; display: flex; gap: 8px; margin-top: 4px; }
 .vc-actions .cta { flex: 1; min-height: 52px; font-size: 17px; }
 .vc-actions .btn { flex: none; min-height: 52px; }
+
+/* voice: orb grows with your voice so you can see it's hearing you; Search button while listening */
+.voice-inline .vc-orb { transform: scale(calc(1 + var(--lvl, 0) * .22)); transition: transform .09s linear; }
+.voice-inline .vc-orb::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; background: var(--gold); opacity: calc(var(--lvl, 0) * .35); }
+.voice-inline .vc-hint small { color: var(--sub); font-weight: 600; font-size: 12.5px; }
+#vcSearch { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+#vcSearch[hidden], #vcGo[hidden], #vcAgain[hidden] { display: none; }
+
+/* no copy / look up popups when holding on the app; typing boxes still work normally */
+html, body, #app { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img, a, svg { -webkit-user-drag: none; -webkit-touch-callout: none; }
+
+/* map: steady while pinching */
+.is-zooming .leaflet-marker-icon.me-icon { transition: none; }
+.leaflet-tile-container img.leaflet-tile { image-rendering: auto; }
+.tiles-backdrop { filter: saturate(.95); }
+.leaflet-container { background: #DCE4DA; -webkit-user-select: none; user-select: none; touch-action: none; }
+
+/* ready-made trips: where are you starting from */
+.trip-start { margin: 14px 0 0; }
+.trip-start .h2 { margin-top: 6px; }
+.ts-seg { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 10px; }
+.ts-seg button { flex: 1 1 auto; min-height: 46px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--hair); background: var(--sheet); color: var(--ink); font: 700 15px/1 var(--text); }
+.ts-seg button[aria-checked="true"] { border-color: var(--sign); background: color-mix(in srgb, var(--sign) 10%, var(--sheet)); color: var(--sign); }
+.ts-town { width: 100%; min-height: 50px; padding: 0 14px; border-radius: 12px; border: 2px solid var(--hair); background: var(--well); font: 600 17px var(--text); color: var(--ink); margin-bottom: 10px; }
+.ts-home { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 2px 0 6px; }
+.ts-home[hidden], .ts-town[hidden] { display: none; }
+.ts-home input { width: 22px; height: 22px; accent-color: var(--sign); }
+
+/* ---------- panel: swipe down to a slim bar so you can see the map ---------- */
+.peek-bar { display: none; }
+@media (max-width: 899px) { .sheet.is-peek { height: 80px; } .sheet.is-peek .sheet-scroll { display: none; } }
+.sheet.is-peek .peek-bar { display: flex; align-items: center; gap: 10px; margin: 0 14px 10px; min-height: 48px; padding: 0 16px; border: 0; border-radius: 14px;
+  background: var(--well); color: var(--ink); font: 700 16.5px/1.2 var(--display); text-align: left; touch-action: none; }
+.peek-bar #peekText { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.peek-bar .ic { color: var(--sign); }
+.peek-bar .pk-up { color: var(--sub); }
+.motion .sheet.is-peek .peek-bar { animation: rise .3s var(--spring) both; }
+.grabber { height: 26px; cursor: grab; }
+.sheet.is-dragging { will-change: height; }
+.sheet.is-dragging .sheet-scroll { pointer-events: none; }
+@media (min-width: 900px) { .sheet.is-peek .sheet-scroll { display: block; } .sheet.is-peek .peek-bar { display: none; } }
