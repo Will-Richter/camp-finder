@@ -37,14 +37,21 @@
   // ---------------------------------------------------------------- side view: 132 x 64, facing right, ground at y = 58
   // body outline, glass band (blacked-out pillars), windows, panel lines, wheel positions and tyre size
   const S = {
+    // modern dual-cab ute, drawn to Ford Ranger measurements (5.37 m long, 1.88 m high, 3.27 m wheelbase):
+    // tall flat bonnet, blunt upright nose, shallow side windows, squared-off wheel arches and a sports bar
     ute: {
-      body: "M5.5 45.5 L5.5 30 Q5.5 27.6 8 27.6 L43.6 27.6 L45 25.8 L48.4 14.6 Q49.2 12.6 51.5 12.6 L90.6 12.6 Q93.2 12.6 94.7 14.4 L104.8 26.6 L118.5 28.6 Q123.8 29.4 125 32.8 L126.2 40.5 Q126.4 46 122.4 46 L8.5 46 Q5.5 46 5.5 45.5 Z",
-      band: "M49.8 15.2 L93.6 15.2 L102.6 26.2 L48.4 26.2 Z",
-      glass: ["M51 16.2 L69.4 16.2 L69.4 25.4 L49.2 25.4 Z", "M72.6 16.2 L92.7 16.2 L100.6 25.4 L72.6 25.4 Z"],
-      lines: "M71 14 L71 42.5 M48.6 27 L48.6 42.5 M103.4 27.6 L101.4 42.5 M8 31.4 L43 31.4",
-      handles: [[52.4, 29.6], [74, 29.6]], mirror: [100.8, 23.6], wheels: [27.5, 104], r: 10.2,
-      extra: () => `<path d="M26.4 27.6 L29 19.4 Q29.6 18 31.2 18 L44.4 18" fill="none" stroke="#1E2224" stroke-width="2.3" stroke-linecap="round"/><path d="M36 18 L36 27.6" stroke="#1E2224" stroke-width="1.6"/>` +
-        `<rect x="49" y="43.6" width="54" height="2" rx="1" fill="#1E2224"/>`,
+      body: "M5 46 L5 30.4 Q5 28.4 7 28.4 L45 28.4 L46.2 26.6 L50.8 13.6 Q51.6 11.6 54 11.6 L91.6 11.6 Q94 11.6 95.4 13.2 L106.2 26.2 L122.6 27.6 Q125.6 27.9 126 30.4 L127.4 40.8 Q127.8 46.4 124 46.4 L8 46.4 Q5 46.4 5 46 Z",
+      band: "M52.2 14.2 L94.6 14.2 L104.2 25.6 L50.2 25.6 Z",
+      glass: ["M53.2 15.1 L72.4 15.1 L72.4 24.9 L51 24.9 Z", "M75.2 15.1 L93.6 15.1 L102.2 24.9 L75.2 24.9 Z"],
+      lines: "M73.8 13 L73.8 43 M50.6 27 L50.6 43 M105 27.4 L104 43 M7 31.6 L44.6 31.6 M48 27.2 L122 28.6",
+      handles: [[55.2, 29.4], [77, 29.4]], mirror: [101.8, 22.8], wheels: [34.5, 113.5], r: 10.2, square: true,
+      extra: () => `<path d="M24.6 28.4 L28.2 18.4 Q28.8 17.2 30.4 17.2 L46.6 17.2" fill="none" stroke="#1E2224" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M37 17.2 L37 28.4" stroke="#1E2224" stroke-width="1.6"/>` +
+        // C-clamp headlight, big upright grille with a bar, skid plate, tall tail light, side step
+        `<path d="M119.4 28.4 L126.2 29 L126.6 32.4 L120.2 32 Z" fill="#FFF7D1" stroke="#15191A" stroke-width=".5"/><path d="M120 28.8 L120.4 37.6" stroke="#FFF7D1" stroke-width="1.1"/>` +
+        `<path d="M121.6 33.4 L127 33.6 L127.5 39.6 L122 39.4 Z" fill="#15191A"/><path d="M122 36.4 L127.3 36.5" stroke="#3B4246" stroke-width="1"/>` +
+        `<path d="M118 42 L127.8 42 L127.6 45.2 Q127.4 46.6 125 46.6 L118 46.6 Z" fill="#2A2F31"/><path d="M120 46.4 L127 46.4" stroke="#8A949A" stroke-width="1"/>` +
+        `<rect x="5" y="29.2" width="2.6" height="9.4" rx=".8" fill="#D63A2E"/><rect x="51" y="44" width="52" height="2" rx="1" fill="#1E2224"/>`,
+      noLights: true,
     },
     classic: {
       body: "M5.5 45.5 L5.5 30 Q5.5 27.6 8 27.6 L56.5 27.6 L57.5 26 L58.2 11 Q58.4 9 60.5 9 L94.4 9 Q96.3 9 96.8 10.9 L99.4 25.9 L120.8 26.9 Q124.4 27.3 124.8 30.4 L125.6 41 Q125.6 46 122 46 L8.5 46 Q5.5 46 5.5 45.5 Z",
@@ -109,12 +116,12 @@
   };
 
   function wheel(x, r = 10, y = 48.2, alloy = true) {
-    const rim = r * 0.6, spokes = [];
+    const rim = r * (alloy ? 0.6 : 0.7), spokes = [];
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; spokes.push(`M${(x + Math.cos(a) * rim * 0.28).toFixed(1)} ${(y + Math.sin(a) * rim * 0.28).toFixed(1)} L${(x + Math.cos(a) * rim * 0.92).toFixed(1)} ${(y + Math.sin(a) * rim * 0.92).toFixed(1)}`); }
     return `<g class="wheel"><circle cx="${x}" cy="${y}" r="${r}" fill="#1B1E1D"/>` +
-      `<circle cx="${x}" cy="${y}" r="${(r - 1.1).toFixed(1)}" fill="none" stroke="#33383A" stroke-width="1.6" stroke-dasharray="1.6 1.4"/>` +
+      (alloy ? `<circle cx="${x}" cy="${y}" r="${(r - 1.1).toFixed(1)}" fill="none" stroke="#33383A" stroke-width="1.6" stroke-dasharray="1.6 1.4"/>` : "") +
       `<circle cx="${x}" cy="${y}" r="${rim.toFixed(1)}" fill="url(#cr{u})"/>` +
-      `<path d="${spokes.join(" ")}" stroke="${alloy ? "#5E686E" : "#3E4448"}" stroke-width="${(rim * 0.26).toFixed(1)}" stroke-linecap="round"/>` +
+      `<path d="${spokes.join(" ")}" stroke="#5E686E" stroke-width="${(rim * 0.26).toFixed(1)}" stroke-linecap="round"/>` +
       `<circle cx="${x}" cy="${y}" r="${(rim * 0.3).toFixed(1)}" fill="#3A4044"/></g>`;
   }
 
@@ -124,8 +131,8 @@
     const [w1, w2] = d.wheels, r = d.r;
     let s = `<ellipse cx="66" cy="59" rx="58" ry="3" fill="#000" opacity=".22"/>`;
     // roof: rooftop tent, or a rack with gear on 4WDs
-    const roofY = { ute: 12.6, classic: 9, wagon: 12, boxy: 9.6, suv: 14.5, car: 16.6, van: 6, motorhome: 2 }[body];
-    const roofX = { ute: [50, 92], classic: [60, 94], wagon: [14, 90], boxy: [10, 93], suv: [22, 86], car: [50, 84], van: [10, 94], motorhome: [10, 100] }[body];
+    const roofY = { ute: 11.6, classic: 9, wagon: 12, boxy: 9.6, suv: 14.5, car: 16.6, van: 6, motorhome: 2 }[body];
+    const roofX = { ute: [53, 93], classic: [60, 94], wagon: [14, 90], boxy: [10, 93], suv: [22, 86], car: [50, 84], van: [10, 94], motorhome: [10, 100] }[body];
     if (rig === "rooftop" && body !== "van" && body !== "motorhome") {
       const [a, b] = roofX;
       s += `<rect x="${a}" y="${roofY - 2.4}" width="${b - a}" height="2" rx="1" fill="#1E2224"/><rect x="${a - 1}" y="${roofY - 10.4}" width="${b - a + 2}" height="8.2" rx="3" fill="#3B4045"/><rect x="${a + 1}" y="${roofY - 8.8}" width="${b - a - 2}" height="1.6" rx=".8" fill="#59616A"/>`;
@@ -133,7 +140,7 @@
       s += `<rect x="${roofX[0] + 6}" y="${roofY - 4.8}" width="${roofX[1] - roofX[0] - 12}" height="2" rx="1" fill="#1E2224"/>` +
         `<rect x="${roofX[0] + 10}" y="${roofY - 9.4}" width="18" height="4.8" rx="2" fill="#3E6B4E"/><rect x="${roofX[0] + 31}" y="${roofY - 8.6}" width="9" height="4" rx="1" fill="#B8322A"/><rect x="${roofX[0] + 43}" y="${roofY - 9}" width="15" height="4.4" rx="2.2" fill="#6B4E35"/>`;
     }
-    if (body === "ute") s += `<rect x="9" y="21" width="12" height="6.6" rx="1.6" fill="#6B4E35"/><rect x="38" y="22.4" width="5" height="5.2" rx="1" fill="#3E6B4E"/>`;
+    if (body === "ute") s += `<rect x="9" y="22" width="12" height="6.4" rx="1.6" fill="#6B4E35"/>`;
     if (body === "classic") s += `<rect x="12" y="20.6" width="14" height="7" rx="1.6" fill="#6B4E35"/><rect x="28" y="22.4" width="8" height="5.2" rx="1" fill="#3E6B4E"/>`;
     // body with a subtle lower darker sill
     s += `<path d="${d.body}" fill="url(#cb{u})" stroke="#15191A" stroke-width="1.3" stroke-linejoin="round"/>`;
@@ -149,19 +156,170 @@
     s += `<path d="M${mx} ${my} L${mx + 4.6} ${my - 1.6} L${mx + 5.4} ${my + 1.8} L${mx + .8} ${my + 2.6} Z" fill="#1E2224"/>`;
     s += d.extra(c);
     // lights, grille and bumpers
+    if (!d.noLights) {
     const fx = body === "classic" || body === "boxy" ? 124.4 : 125.4;
     s += `<path d="M${fx - 6.4} ${body === "classic" || body === "boxy" ? 28.6 : 30.2} L${fx} ${body === "classic" || body === "boxy" ? 28.8 : 31.8} L${fx} ${body === "classic" || body === "boxy" ? 33 : 34.8} L${fx - 5.6} ${body === "classic" || body === "boxy" ? 32.8 : 34.2} Z" fill="#FFF7D1" stroke="#15191A" stroke-width=".5"/>`;
     s += `<rect x="${fx - 2.6}" y="35.4" width="3.2" height="5" rx=".8" fill="#15191A"/>`;
     s += `<rect x="${body === "motorhome" ? 4.4 : body === "van" ? 6.4 : 5.9}" y="30.4" width="2.8" height="${body === "van" || body === "motorhome" ? 8 : 5.6}" rx=".8" fill="#D63A2E"/>`;
     s += `<rect x="113" y="41.6" width="13.4" height="4.4" rx="1.4" fill="#2A2F31"/><rect x="${body === "motorhome" ? 3.6 : 5}" y="41.8" width="11" height="4.2" rx="1.4" fill="#2A2F31"/>`;
+    }
     if (offroad) s += `<rect x="1.6" y="42.8" width="4.4" height="2.2" rx=".8" fill="#2A2F31"/><circle cx="1.8" cy="42.4" r="1.4" fill="#2A2F31"/>`;
     if (body === "wagon" || body === "classic" || body === "boxy") s += `<path d="M105.6 40.6 L105.6 19 Q105.4 15.6 102.6 13.6" stroke="#15191A" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
-    // wheel arches with flares
+    // wheel arches with flares (squared-off on a modern ute, round on everything else)
     const arch = r + 2.6;
-    s += `<path d="M${w1 - arch} 46 A${arch} ${arch} 0 0 1 ${w1 + arch} 46 Z M${w2 - arch} 46 A${arch} ${arch} 0 0 1 ${w2 + arch} 46 Z" fill="#101314"/>`;
-    if (offroad) s += `<path d="M${w1 - arch - .8} 46 A${arch + .8} ${arch + .8} 0 0 1 ${w1 + arch + .8} 46 M${w2 - arch - .8} 46 A${arch + .8} ${arch + .8} 0 0 1 ${w2 + arch + .8} 46" fill="none" stroke="#2A2F31" stroke-width="2.2"/>`;
+    if (d.square) {
+      const sq = (w, k) => `M${w - arch - k} 46.4 L${w - arch + 1 - k} 40 Q${w - arch + 3.2 - k} ${36 - k} ${w - 6} ${35.6 - k} L${w + 6} ${35.6 - k} Q${w + arch - 3.2 + k} ${36 - k} ${w + arch - 1 + k} 40 L${w + arch + k} 46.4`;
+      s += `<path d="${sq(w1, 0)} Z ${sq(w2, 0)} Z" fill="#101314"/>`;
+      s += `<path d="${sq(w1, 1.2)} ${sq(w2, 1.2)}" fill="none" stroke="#25292B" stroke-width="2.4" stroke-linejoin="round"/>`;
+    } else {
+      s += `<path d="M${w1 - arch} 46 A${arch} ${arch} 0 0 1 ${w1 + arch} 46 Z M${w2 - arch} 46 A${arch} ${arch} 0 0 1 ${w2 + arch} 46 Z" fill="#101314"/>`;
+      if (offroad) s += `<path d="M${w1 - arch - .8} 46 A${arch + .8} ${arch + .8} 0 0 1 ${w1 + arch + .8} 46 M${w2 - arch - .8} 46 A${arch + .8} ${arch + .8} 0 0 1 ${w2 + arch + .8} 46" fill="none" stroke="#2A2F31" stroke-width="2.2"/>`;
+    }
     s += wheel(w1, r) + wheel(w2, r);
     return s;
+  }
+
+  // ---------------------------------------------------------------- vehicles drawn from real measurements
+  // Each model's side profile is built from its published size (metres): length L, height H, wheelbase WB,
+  // front overhang FO, wheel radius R, window line BL, bonnet height at the nose NH and at the windscreen BH,
+  // windscreen run WR (how far back it leans), tray length, rear slope, and styling cues.
+  const BASE = {
+    ute:   { kind: "ute", L: 5.33, H: 1.82, WB: 3.10, FO: 0.93, R: 0.385, BL: 1.26, NH: 1.04, BH: 1.22, WR: 0.66, tray: 1.56, cab: "dual", kick: 0.06, arch: "round", clad: true, light: "wedge", step: true, bar: false },
+    wagon: { kind: "wagon", L: 4.85, H: 1.84, WB: 2.80, FO: 0.90, R: 0.385, BL: 1.24, NH: 1.04, BH: 1.20, WR: 0.66, rake: 0.22, arch: "round", clad: true, light: "wedge", step: true, rails: true },
+    boxy:  { kind: "boxy", L: 4.76, H: 1.97, WB: 3.02, FO: 0.80, R: 0.40, BL: 1.30, NH: 1.12, BH: 1.24, WR: 0.32, rake: 0.03, arch: "square", clad: true, light: "round", step: true, rails: true, spare: true },
+    suv:   { kind: "suv", L: 4.62, H: 1.69, WB: 2.69, FO: 0.92, R: 0.36, BL: 1.10, NH: 0.92, BH: 1.06, WR: 0.86, rake: 0.42, arch: "round", clad: true, light: "slim" },
+    van:   { kind: "van", L: 5.27, H: 1.99, WB: 3.21, FO: 0.93, R: 0.34, BL: 1.18, NH: 1.00, BH: 1.16, WR: 0.86, rake: 0.04, arch: "round", clad: false, light: "slim", wsFwd: 0.42 },
+    sedan: { kind: "sedan", L: 4.63, H: 1.44, WB: 2.70, FO: 0.92, R: 0.33, BL: 0.98, NH: 0.74, BH: 0.92, WR: 1.02, arch: "round", clad: false, light: "slim" },
+    hatch: { kind: "suv", L: 4.37, H: 1.46, WB: 2.64, FO: 0.86, R: 0.32, BL: 0.98, NH: 0.74, BH: 0.92, WR: 1.0, rake: 0.55, arch: "round", clad: false, light: "slim" },
+  };
+  // [pattern, base, overrides]: the shapes people drive most around Australia
+  const MODELS = [
+    [/ranger raptor/, "ute", { L: 5.38, H: 1.92, WB: 3.27, FO: 0.90, R: 0.42, NH: 1.16, BH: 1.30, WR: 0.56, BL: 1.33, arch: "square", light: "cclamp", tray: 1.56, kick: 0.02 }],
+    [/ranger|amarok/, "ute", { L: 5.37, H: 1.88, WB: 3.27, FO: 0.92, R: 0.40, NH: 1.13, BH: 1.28, WR: 0.56, BL: 1.31, arch: "square", light: "cclamp", tray: 1.56, kick: 0.02, bar: true }],
+    [/hilux/, "ute", { L: 5.33, H: 1.82, WB: 3.085, FO: 0.93, NH: 1.02, BH: 1.22, WR: 0.70, BL: 1.25, kick: 0.07, light: "wedge" }],
+    [/d-?max/, "ute", { L: 5.33, H: 1.79, WB: 3.125, FO: 0.95, NH: 1.02, BH: 1.20, WR: 0.72, BL: 1.24, kick: 0.09, light: "wedge" }],
+    [/triton/, "ute", { L: 5.32, H: 1.80, WB: 3.13, FO: 0.93, NH: 1.10, BH: 1.25, WR: 0.62, BL: 1.28, arch: "square", light: "split", kick: 0.03 }],
+    [/navara/, "ute", { L: 5.26, H: 1.84, WB: 3.15, FO: 0.89, NH: 1.06, BH: 1.23, WR: 0.66, BL: 1.26, kick: 0.10, light: "wedge" }],
+    [/bt-?50/, "ute", { L: 5.28, H: 1.79, WB: 3.125, FO: 0.95, NH: 1.00, BH: 1.20, WR: 0.74, BL: 1.24, kick: 0.09, light: "slim" }],
+    [/cannon|tunland|musso|t60|shark/, "ute", { L: 5.41, H: 1.92, WB: 3.23, NH: 1.10, BH: 1.26, WR: 0.62, BL: 1.30, arch: "square", light: "wedge", kick: 0.04 }],
+    [/gladiator/, "ute", { L: 5.59, H: 1.90, WB: 3.49, FO: 0.80, R: 0.42, NH: 1.10, BH: 1.24, WR: 0.32, BL: 1.30, arch: "square", light: "round", kick: 0 }],
+    [/silverado|ram\b|f-?150/, "ute", { L: 5.90, H: 1.98, WB: 3.70, FO: 0.95, R: 0.42, NH: 1.25, BH: 1.36, WR: 0.66, BL: 1.40, arch: "square", light: "square", tray: 1.75, kick: 0 }],
+    [/landcruiser 7\d|troop/, "ute", { L: 5.23, H: 1.95, WB: 3.18, FO: 0.86, R: 0.40, NH: 1.20, BH: 1.28, WR: 0.24, BL: 1.36, arch: "flat", light: "round", cab: "single", tray: 2.45, kick: 0, snorkel: true, step: false, boxy: true }],
+    [/landcruiser 300|lc ?300/, "wagon", { L: 4.98, H: 1.945, WB: 2.85, FO: 0.88, R: 0.40, NH: 1.12, BH: 1.25, WR: 0.58, BL: 1.31, rake: 0.10, light: "wedge" }],
+    [/prado/, "wagon", { L: 4.92, H: 1.87, WB: 2.85, FO: 0.86, R: 0.39, NH: 1.12, BH: 1.24, WR: 0.44, BL: 1.30, rake: 0.05, arch: "square", light: "square", boxy: true }],
+    [/patrol/, "wagon", { L: 5.17, H: 1.94, WB: 3.075, FO: 0.90, R: 0.40, NH: 1.10, BH: 1.25, WR: 0.66, BL: 1.30, rake: 0.18, light: "wedge" }],
+    [/everest/, "wagon", { L: 4.91, H: 1.84, WB: 2.90, FO: 0.92, R: 0.39, NH: 1.12, BH: 1.26, WR: 0.56, BL: 1.29, rake: 0.16, arch: "square", light: "cclamp" }],
+    [/fortuner/, "wagon", { L: 4.80, H: 1.84, WB: 2.745, NH: 1.02, BH: 1.20, WR: 0.70, BL: 1.24, rake: 0.30, light: "wedge" }],
+    [/mu-?x/, "wagon", { L: 4.85, H: 1.82, WB: 2.855, NH: 1.02, BH: 1.20, WR: 0.72, BL: 1.24, rake: 0.30, light: "wedge" }],
+    [/pajero sport/, "wagon", { L: 4.83, H: 1.83, WB: 2.80, NH: 1.05, BH: 1.21, WR: 0.66, BL: 1.25, rake: 0.36, light: "split" }],
+    [/pajero/, "wagon", { L: 4.90, H: 1.87, WB: 2.78, NH: 1.04, BH: 1.20, WR: 0.56, BL: 1.26, rake: 0.08, spare: true, light: "square" }],
+    [/discovery/, "wagon", { L: 4.96, H: 1.89, WB: 2.92, NH: 1.08, BH: 1.22, WR: 0.70, BL: 1.26, rake: 0.12, light: "slim", clad: false }],
+    [/tank 300/, "boxy", { L: 4.76, H: 1.90, WB: 2.75, FO: 0.85, NH: 1.08, BH: 1.20, WR: 0.40 }],
+    [/defender/, "boxy", { L: 4.76, H: 1.97, WB: 3.02, FO: 0.80, NH: 1.10, BH: 1.22, WR: 0.36, light: "round" }],
+    [/jimny/, "boxy", { L: 3.48, H: 1.72, WB: 2.25, FO: 0.60, R: 0.35, NH: 1.00, BH: 1.10, WR: 0.32, BL: 1.18, light: "round" }],
+    [/wrangler|bronco|4runner|grenadier|g-?class/, "boxy", { L: 4.88, H: 1.84, WB: 3.01, FO: 0.75, NH: 1.08, BH: 1.18, WR: 0.30, light: "round" }],
+    [/rav4/, "suv", { L: 4.60, H: 1.69, WB: 2.69, NH: 0.95, BH: 1.07, WR: 0.84, BL: 1.12, rake: 0.40, arch: "square" }],
+    [/kluger|cx-?9|pathfinder|santa fe|sorento/, "suv", { L: 4.97, H: 1.73, WB: 2.85, NH: 0.96, BH: 1.10, WR: 0.86, BL: 1.12, rake: 0.32 }],
+    [/x-?trail|cx-?5|outlander|tucson|sportage|cr-?v|forester|outback|tiguan|haval|captiva/, "suv", { L: 4.68, H: 1.72, WB: 2.71, NH: 0.94, BH: 1.07, WR: 0.86, BL: 1.12, rake: 0.38 }],
+    [/hiace/, "van", { L: 5.27, H: 1.99, WB: 3.21, FO: 0.93, NH: 1.02, BH: 1.18, WR: 0.86 }],
+    [/transit|crafter|sprinter|master|ducato/, "van", { L: 5.53, H: 2.50, WB: 3.75, FO: 0.95, NH: 1.06, BH: 1.24, WR: 0.82, BL: 1.24, wsFwd: 0.55 }],
+    [/transporter|trafic|vito|staria|carnival|express/, "van", { L: 4.90, H: 1.97, WB: 3.00, FO: 0.95, NH: 0.98, BH: 1.14, WR: 0.90, wsFwd: 0.30 }],
+    [/corolla hatch|i30|golf|yaris|swift|mazda ?3 hatch|polo|hatch/, "hatch", {}],
+    [/corolla|camry|mazda ?3|civic|model 3|cerato|commodore|falcon|accord|sedan|seal\b/, "sedan", {}],
+  ];
+  function specFor(make = "", model = "", body = "wagon") {
+    const m = `${make} ${model}`.toLowerCase();
+    for (const [re, base, o] of MODELS) if (re.test(m)) return { ...BASE[base], ...o };
+    return { ...BASE[{ ute: "ute", classic: "ute", wagon: "wagon", boxy: "boxy", suv: "suv", van: "van", car: "sedan" }[body] || "wagon"] };
+  }
+
+  const U = 22.2;                       // drawing units per metre (a 5.4 m ute fills the frame)
+  function specSide(sp, c, rig, x0) {
+    const X = (m) => +(x0 + m * U).toFixed(2), Y = (m) => +(58 - m * U).toFixed(2), P = (x, y) => `${X(x)} ${Y(y)}`;
+    const { L, H, WB, FO, R, BL, NH, BH, WR } = sp;
+    const fw = L - FO, rw = fw - WB;
+    const xws = fw + (sp.wsFwd || 0) - (sp.kind === "sedan" ? 0.1 : 0);      // windscreen base
+    const xrf = xws - WR;                                                       // roof front
+    const dark = shade(c, -.32), deep = "#15191A";
+    const isUte = sp.kind === "ute", single = sp.cab === "single";
+    const xcb = isUte ? (single ? xws - 1.30 : sp.tray + 0.06) : 0;             // back of the cab
+    const xcr = isUte ? xcb + (sp.boxy ? 0.04 : 0.12) : 0;
+    const rail = BL + 0.02;
+    const rake = sp.rake || 0;
+    // ---- outline (rear bottom, round the top, down the nose, along the bottom)
+    let d = `M${P(0, 0.56)} `;
+    if (isUte) d += `L${P(0, rail - 0.04)} Q${P(0, rail)} ${P(0.05, rail)} L${P(xcb - 0.03, rail)} L${P(xcb, rail + 0.06)} L${P(xcr, H - 0.06)} Q${P(xcr + 0.02, H)} ${P(xcr + 0.1, H)} `;
+    else if (sp.kind === "sedan") d += `L${P(0, 0.94)} Q${P(0, 1.0)} ${P(0.08, 1.0)} L${P(0.62, 1.02)} L${P(1.26, H - 0.03)} Q${P(1.3, H)} ${P(1.4, H)} `;
+    else d += `L${P(0, BL)} L${P(rake, H - 0.07)} Q${P(rake + 0.02, H)} ${P(rake + 0.12, H)} `;
+    d += `L${P(xrf - 0.08, H)} Q${P(xrf, H)} ${P(xrf + 0.05, H - 0.04)} L${P(xws, BH)} `;
+    d += sp.kind === "van" ? `Q${P(L - 0.25, BH - 0.04)} ${P(L - 0.06, NH)} ` : `L${P(L - 0.14, NH)} Q${P(L - 0.03, NH - 0.01)} ${P(L - 0.01, NH - 0.12)} `;
+    d += `L${P(L + (sp.boxy || sp.kind === "boxy" ? 0 : 0.01), 0.62)} Q${P(L, 0.47)} ${P(L - 0.12, 0.47)} L${P(0.12, 0.47)} Q${P(0, 0.47)} ${P(0, 0.56)} Z`;
+    // ---- windows (dark band with the glass panes set in it)
+    const top = H - 0.075, bot = BL;
+    const fEdge = (y) => xws - 0.07 - (y - bot) / (top - bot) * (WR - 0.05);  // follows the windscreen pillar
+    let rEdgeTop, rEdgeBot;
+    if (isUte) { rEdgeTop = xcr + 0.08; rEdgeBot = xcb + 0.1; }
+    else if (sp.kind === "sedan") { rEdgeTop = 1.42; rEdgeBot = 1.06; }
+    else { rEdgeTop = rake + 0.16 + (sp.kind === "van" ? 0 : 0.08); rEdgeBot = (rake * (bot - BL)) + 0.18 + (sp.kind === "van" ? 0 : 0.1); }
+    const xb = isUte && single ? xcb + 0.1 : xws - (isUte ? 1.06 : sp.kind === "van" ? 0.90 : 1.10);   // B-pillar
+    const xc = sp.kind === "wagon" || sp.kind === "boxy" || sp.kind === "suv" ? xb - 0.98 : sp.kind === "van" ? xb - 1.45 : null; // C-pillar
+    const pane = (x1t, x2t, x1b, x2b, kickRear = 0) => `<path d="M${P(x1t, top)} L${P(x2t, top)} L${P(x2b, bot)} L${P(x1b, bot + kickRear)} Z" fill="url(#cw{u})"/>`;
+    let glass = `<path d="M${P(rEdgeTop - 0.04, top + 0.035)} L${P(fEdge(top) + 0.045, top + 0.035)} L${P(fEdge(bot) + 0.05, bot - 0.03)} L${P(rEdgeBot - 0.04, bot - 0.03)} Z" fill="#11181C"/>`;
+    const fwin = pane(xb + 0.04, fEdge(top), xb + 0.04, fEdge(bot));
+    if (isUte && single) glass += fwin;
+    else if (isUte) glass += fwin + pane(rEdgeTop, xb - 0.04, rEdgeBot, xb - 0.04, sp.kick || 0);
+    else if (xc != null) glass += fwin + pane(xc + 0.04, xb - 0.04, xc + 0.04, xb - 0.04) + pane(rEdgeTop, xc - 0.04, rEdgeBot, xc - 0.04, sp.kick || 0);
+    else glass += fwin + pane(rEdgeTop, xb - 0.04, rEdgeBot, xb - 0.04);
+    if (sp.kind === "sedan") glass += `<path d="M${P(0.7, 1.04)} L${P(1.25, H - 0.06)} L${P(1.36, H - 0.075)} L${P(0.98, 1.02)} Z" fill="url(#cw{u})"/>`;
+    // ---- panel lines, handles, mirror
+    let lines = `M${P(xb, top + 0.02)} L${P(xb, 0.5)} M${P(xws + 0.03, BH - 0.03)} L${P(xws - 0.04, 0.5)}`;
+    if (isUte && !single) lines += ` M${P(xcb + 0.08, rail)} L${P(xcb + 0.08, 0.5)}`;
+    if (xc != null && sp.kind !== "van") lines += ` M${P(xc - 0.02, top + 0.02)} L${P(xc - 0.02, 0.5)}`;
+    if (sp.kind === "van") lines += ` M${P(xb - 1.5, top + 0.02)} L${P(xb - 1.5, 0.5)} M${P(xb - 1.5, 0.9)} L${P(xb - 0.04, 0.9)}`;
+    if (isUte) lines += ` M${P(0.06, rail - 0.13)} L${P(xcb - 0.05, rail - 0.13)}`;
+    lines += ` M${P(0.05, BL - 0.1)} L${P(L - 0.2, NH - 0.06)}`;                 // shoulder crease
+    const handles = [xb + 0.1, (xc != null ? xc : (isUte && !single ? xcb + 0.14 : null))].filter((x) => x != null).map((x) => `<rect x="${X(x)}" y="${Y(BL - 0.1)}" width="${(0.22 * U).toFixed(1)}" height="1.3" rx=".6" fill="${deep}" opacity=".7"/>`).join("");
+    const mirror = `<path d="M${P(xws - 0.16, BL + 0.12)} L${P(xws + 0.03, BL + 0.16)} L${P(xws + 0.05, BL + 0.02)} L${P(xws - 0.13, BL - 0.01)} Z" fill="#1E2224"/>`;
+    // ---- lights, grille, bumpers
+    let front = "";
+    const hl = sp.light;
+    const lx = L - (hl === "round" ? 0.08 : 0.3);
+    if (hl === "round") front += `<ellipse cx="${X(L - 0.04)}" cy="${Y(NH - 0.12)}" rx="1.2" ry="2.6" fill="#FFF7D1" stroke="${deep}" stroke-width=".4"/>`;
+    else front += `<path d="M${P(lx, NH - 0.02)} L${P(L - 0.02, NH - 0.06)} L${P(L, NH - (hl === "slim" ? 0.13 : 0.18))} L${P(lx + 0.04, NH - (hl === "slim" ? 0.1 : 0.15))} Z" fill="#FFF7D1" stroke="${deep}" stroke-width=".4"/>`;
+    if (hl === "cclamp") front += `<path d="M${P(lx + 0.02, NH - 0.03)} L${P(lx + 0.04, NH - 0.36)}" stroke="#FFF7D1" stroke-width="1.1"/>`;
+    if (hl === "split") front += `<path d="M${P(L - 0.2, NH - 0.34)} L${P(L, NH - 0.36)}" stroke="#FFF7D1" stroke-width="1.2"/>`;
+    front += `<path d="M${P(L - 0.07, NH - 0.2)} L${P(L + 0.01, NH - 0.21)} L${P(L + 0.012, 0.74)} L${P(L - 0.08, 0.74)} Z" fill="${deep}"/>`;   // grille
+    front += sp.clad ? `<path d="M${P(L - 0.42, 0.66)} L${P(L + 0.012, 0.66)} L${P(L, 0.5)} Q${P(L - 0.02, 0.46)} ${P(L - 0.12, 0.46)} L${P(L - 0.42, 0.46)} Z" fill="#2A2F31"/><path d="M${P(L - 0.3, 0.48)} L${P(L - 0.02, 0.48)}" stroke="#8A949A" stroke-width="1"/>` : `<path d="M${P(L - 0.38, 0.62)} L${P(L + 0.01, 0.62)}" stroke="${dark}" stroke-width="1.2"/>`;
+    const tl = isUte ? `<rect x="${X(0)}" y="${Y(rail - 0.04)}" width="${(0.07 * U).toFixed(1)}" height="${(0.4 * U).toFixed(1)}" rx=".7" fill="#D63A2E"/>`
+      : sp.kind === "sedan" ? `<rect x="${X(0)}" y="${Y(0.98)}" width="${(0.08 * U).toFixed(1)}" height="${(0.18 * U).toFixed(1)}" rx=".7" fill="#D63A2E"/>`
+      : `<rect x="${X(rake * 0.4)}" y="${Y(BL + 0.05)}" width="${(0.07 * U).toFixed(1)}" height="${(0.34 * U).toFixed(1)}" rx=".7" fill="#D63A2E"/>`;
+    const rearBumper = sp.clad ? `<rect x="${X(-0.02)}" y="${Y(0.66)}" width="${(0.42 * U).toFixed(1)}" height="${(0.2 * U).toFixed(1)}" rx="1.2" fill="#2A2F31"/><rect x="${X(-0.16)}" y="${Y(0.55)}" width="${(0.18 * U).toFixed(1)}" height="1.8" rx=".6" fill="#2A2F31"/>` : "";
+    // ---- arches and wheels
+    const ar = R + 0.07, ax = [rw, fw];
+    const archPath = (w, k) => {
+      if (sp.arch === "round") return `M${P(w - ar - k, 0.47)} A${((ar + k) * U).toFixed(1)} ${((ar + k) * U).toFixed(1)} 0 0 1 ${P(w + ar + k, 0.47)}`;
+      const t = sp.arch === "flat" ? ar + 0.02 : ar * 0.9, inset = sp.arch === "flat" ? 0.02 : 0.16;
+      return `M${P(w - ar - k, 0.47)} L${P(w - ar - k + inset * 0.4, R + t * 0.55)} Q${P(w - ar - k + inset, R + t + k)} ${P(w - ar * 0.55, R + t + k)} L${P(w + ar * 0.55, R + t + k)} Q${P(w + ar + k - inset, R + t + k)} ${P(w + ar + k - inset * 0.4, R + t * 0.55)} L${P(w + ar + k, 0.47)}`;
+    };
+    let arches = `<path d="${ax.map((w) => archPath(w, 0) + " Z").join(" ")}" fill="#101314"/>`;
+    if (sp.clad) arches += `<path d="${ax.map((w) => archPath(w, 0.035)).join(" ")}" fill="none" stroke="#25292B" stroke-width="${(0.07 * U).toFixed(1)}" stroke-linejoin="round"/>`;
+    const sill = sp.clad ? `<path d="M${P(rw + ar, 0.62)} L${P(fw - ar, 0.62)} L${P(fw - ar, 0.47)} L${P(rw + ar, 0.47)} Z" fill="#2A2F31" opacity=".9"/>` : `<path d="M${P(rw + ar, 0.56)} L${P(fw - ar, 0.56)}" stroke="${dark}" stroke-width="1.6"/>`;
+    const step = sp.step ? `<rect x="${X(xcb + (isUte ? 0.12 : rw + ar + 0.05))}" y="${Y(0.47)}" width="${((fw - ar - 0.06 - (isUte ? xcb + 0.12 : rw + ar + 0.05)) * U).toFixed(1)}" height="1.8" rx=".9" fill="#1E2224"/>` : "";
+    // ---- extras: sports bar, roof rails, spare wheel, snorkel, rooftop tent
+    let extras = "";
+    if (sp.bar) extras += `<path d="M${P(xcb - 0.95, rail)} L${P(xcb - 0.8, H - 0.3)} Q${P(xcb - 0.78, H - 0.24)} ${P(xcb - 0.7, H - 0.24)} L${P(xcb + 0.02, H - 0.24)}" fill="none" stroke="#1E2224" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if (sp.rails && rig !== "rooftop") extras += `<path d="M${P(rake + 0.25, H + 0.05)} L${P(xrf - 0.15, H + 0.05)}" stroke="#1E2224" stroke-width="1.6" stroke-linecap="round"/><path d="M${P(rake + 0.3, H)} L${P(rake + 0.3, H + 0.05)} M${P(xrf - 0.2, H)} L${P(xrf - 0.2, H + 0.05)}" stroke="#1E2224" stroke-width="1.2"/>`;
+    if (sp.spare) extras += `<circle cx="${X(-0.13)}" cy="${Y(1.0)}" r="${(0.36 * U).toFixed(1)}" fill="#1B1E1D"/><circle cx="${X(-0.13)}" cy="${Y(1.0)}" r="${(0.2 * U).toFixed(1)}" fill="${shade(c, -.08)}"/>`;
+    if (sp.snorkel) extras += `<path d="M${P(fw - 0.2, 0.92)} L${P(xws - 0.02, BH + 0.06)} L${P(xrf + 0.06, H - 0.06)}" fill="none" stroke="${deep}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if (rig === "rooftop" && sp.kind !== "van") {
+      const a = isUte ? xcr + 0.15 : rake + 0.25, b = xrf - 0.1;
+      extras += `<rect x="${X(a)}" y="${Y(H + 0.1)}" width="${((b - a) * U).toFixed(1)}" height="1.6" rx=".8" fill="#1E2224"/><rect x="${X(a - 0.04)}" y="${Y(H + 0.46)}" width="${((b - a + 0.08) * U).toFixed(1)}" height="${(0.36 * U).toFixed(1)}" rx="2.6" fill="#3B4045"/><rect x="${X(a)}" y="${Y(H + 0.4)}" width="${((b - a) * U).toFixed(1)}" height="1.4" rx=".7" fill="#59616A"/>`;
+    }
+    const tyres = ax.map((w) => wheel(X(w), +(R * U).toFixed(1), Y(R), sp.clad)).join("");
+    return `<ellipse cx="${X(L / 2)}" cy="59" rx="${((L / 2 + 0.1) * U).toFixed(1)}" ry="3" fill="#000" opacity=".2"/>` +
+      `<path d="${d}" fill="url(#cb{u})" stroke="${deep}" stroke-width=".7" stroke-linejoin="round"/>` +
+      `<path d="M${P(0.04, BL - 0.03)} L${P(L - 0.25, NH - 0.02)}" stroke="#fff" stroke-width="1.1" opacity=".35"/>` +
+      sill + glass + `<path d="${lines}" stroke="${deep}" stroke-width=".7" opacity=".45" fill="none"/>` + handles + mirror + front + tl + rearBumper + step + extras + arches + tyres;
   }
 
   // things you tow, drawn in their own 0..120 space (hitch at x = 120)
@@ -200,10 +358,11 @@
     const u = ++uid, color = colorOf(opts.color), body = bodyFor(opts.make, opts.model, opts.rig);
     const tows = body !== "motorhome" && (opts.rig === "caravan" || opts.rig === "camper");
     let inner = defs(u, color), w = 132;
+    const draw = (x0) => (body === "motorhome" ? carSide(body, color, opts.rig) : (() => { const sp = specFor(opts.make, opts.model, body); return specSide(sp, color, opts.rig, x0 ?? (66 - (sp.L * U) / 2)); })());
     if (tows) {
-      inner += `<g>${opts.rig === "caravan" ? caravanSide(color) : camperSide(color)}</g><g transform="translate(118 0)">${carSide(body, color, opts.rig)}</g>`;
+      inner += `<g>${opts.rig === "caravan" ? caravanSide(color) : camperSide(color)}</g><g transform="translate(118 0)">${draw(6)}</g>`;
       w = 252;
-    } else inner += carSide(body, color, opts.rig);
+    } else inner += draw();
     inner = inner.replace(/\{u\}/g, u);
     const viewBox = `0 0 ${w} 64`;
     return { inner, viewBox, width: w, height: 64, body, tows, svg: `<svg viewBox="${viewBox}" aria-hidden="true">${inner}</svg>` };

@@ -849,7 +849,7 @@
     zoomControl: false, attributionControl: true, preferCanvas: true, renderer: L.canvas({ padding: 0.8 }),
     fadeAnimation: false, bounceAtZoomLimits: false, minZoom: 3, worldCopyJump: false,
     zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
-    maxBounds: [[-47, 106], [-5, 161]], maxBoundsViscosity: 1, // stay on Australia
+    maxBounds: [[-85, 70], [45, 200]], maxBoundsViscosity: 1, // stay around Australia (room below for the panel)
   }).setView([-26.5, 134], 4);
   const AU = [[-43.7, 113.1], [-10.6, 153.7]];
   const tileOpts = { maxZoom: 19, keepBuffer: 8, updateWhenZooming: false, updateWhenIdle: true };
@@ -881,7 +881,7 @@
     if (el && (el.clientWidth < 100 || el.clientHeight < 100)) return; // not laid out yet
     map.invalidateSize();
     // you can zoom out to see all of Australia, but not much further
-    if (map.getBoundsZoom && map.setMinZoom) map.setMinZoom(Math.max(2.5, map.getBoundsZoom(AU, false) - 0.75));
+    if (map.getBoundsZoom && map.setMinZoom) { const fp = fitPad(); const pad = L.point(fp.paddingTopLeft).add(fp.paddingBottomRight); map.setMinZoom(Math.max(1.5, map.getBoundsZoom(AU, false, pad) - 0.5)); }
     if (!plan && !userMovedMap && view === "plan" && window.innerHeight > 200) map.fitBounds(AU, fitPad());
   };
   [60, 400, 1200, 2500].forEach((ms) => setTimeout(fixMapSize, ms));
@@ -905,8 +905,10 @@
   // safe-area aware padding for fitting the map around the panel
   function fitPad() {
     const wide = window.innerWidth >= 900;
-    const sheetH = $("#sheet").getBoundingClientRect().height || window.innerHeight * 0.6;
-    return wide ? { paddingTopLeft: [450, 40], paddingBottomRight: [70, 40] } : { paddingTopLeft: [24, 70], paddingBottomRight: [70, sheetH + 70] };
+    // everything from the top of the panel down is covered, so fit things into the space above it
+    const top = $("#sheet").getBoundingClientRect().top || window.innerHeight * 0.4;
+    const covered = Math.max(0, window.innerHeight - top);
+    return wide ? { paddingTopLeft: [450, 40], paddingBottomRight: [70, 40] } : { paddingTopLeft: [16, 66], paddingBottomRight: [62, covered + 12] };
   }
 
   let me = null;
