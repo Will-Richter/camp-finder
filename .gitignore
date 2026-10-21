@@ -2,3 +2,4 @@ node_modules/
 ios/
 android/
 .DS_Store
+_site/

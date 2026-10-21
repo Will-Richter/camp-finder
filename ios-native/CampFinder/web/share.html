@@ -34,7 +34,10 @@
   const id = location.hash.slice(1);
   const $ = (s) => document.querySelector(s);
   const map = L.map("map", { zoomControl: false }).setView([-25.5, 134], 4);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(map);
+  // On gonelappin.au the map comes from Stadia Maps (the domain is registered with them); anywhere else, OpenStreetMap
+  const stadia = /(^|\.)gonelappin\.au$/.test(location.hostname);
+  L.tileLayer(stadia ? "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png" : "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 18, attribution: stadia ? "© Stadia Maps © OpenMapTiles © OpenStreetMap" : "© OpenStreetMap contributors" }).addTo(map);
   const CAR = '<svg viewBox="-20 -20 40 40"><rect x="-9" y="-15" width="18" height="30" rx="6" fill="#F5C518" stroke="#1A1608" stroke-width="2.4"/><rect x="-6.5" y="-9" width="13" height="7" rx="2" fill="#2B2F2D"/><rect x="-6.5" y="5" width="13" height="5" rx="1.5" fill="#2B2F2D"/></svg>';
   let marker = null, routeDrawn = false, first = true;
   const ago = (t) => { const m = Math.round((Date.now() - Date.parse(t)) / 60000); return m < 2 ? "just now" : m < 60 ? `${m} minutes ago` : m < 1440 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`; };

@@ -25,6 +25,7 @@
     campDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/camps-au.json",
     // Google Places photos: paste an iOS-restricted Places API key here to switch them on (see GOOGLE_PHOTOS.md)
     googleKey: "AIzaSyAmDLzNnWpVNQTEFOCiarRRCJCfkdl1EJs", // restricted to the Camp Finder iPhone app and the Places API
+    stadiaKey: "", // Stadia Maps key for the map background (free while testing). Empty = OpenStreetMap's own tiles
     priceData: "data/prices.json",
     priceDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/prices.json",
     googleReviews: true, // also show the Google star rating and up to 5 Google reviews (needs googleKey)
@@ -854,10 +855,12 @@
   const AU = [[-43.7, 113.1], [-10.6, 153.7]];
   const tileOpts = { maxZoom: 19, keepBuffer: 8, updateWhenZooming: false, updateWhenIdle: true };
   const backdropOpts = { maxZoom: 19, maxNativeZoom: 7, keepBuffer: 24, updateWhenZooming: false, attribution: "" };
-  const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  // Map background: Stadia Maps "Outdoors" (shows tracks, terrain and national parks) when the key is set
+  const OSM = CFG.stadiaKey ? `https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png?api_key=${CFG.stadiaKey}` : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const OSM_ATTR = CFG.stadiaKey ? '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
   const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
   const streetBase = L.tileLayer(OSM, { ...backdropOpts, className: "tiles-backdrop" });
-  const street = L.tileLayer(OSM, { ...tileOpts, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+  const street = L.tileLayer(OSM, { ...tileOpts, attribution: OSM_ATTR });
   const satBase = L.tileLayer(ESRI, { ...backdropOpts, maxNativeZoom: 8, className: "tiles-backdrop" });
   const sat = L.tileLayer(ESRI, { ...tileOpts, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" });
   streetBase.addTo(map); street.addTo(map);
@@ -3029,7 +3032,7 @@
   if (journey) { showJourneyBar(); startTracking(); jcall("status").then((s) => { if (s && !s.active) jcall("start", { id: journey.id, notify: !!settings.campAlerts, camps: [] }); }); syncJourney(); }
 
   // Live sharing with family
-  const SHARE_PAGE = "https://will-richter.github.io/camp-finder/share.html";
+  const SHARE_PAGE = "https://gonelappin.au/share.html";
   async function shareJourney() {
     if (!journey) return;
     const C = window.CFCloud;

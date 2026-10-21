@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Camp Finder: free camps around Australia</title>
+<meta name="description" content="Plan any road trip in Australia with free and cheap camps every night, fuel checks for your rig, sights along the way and a journal of every kilometre.">
+<meta name="theme-color" content="#0E5A3E">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta property="og:title" content="Camp Finder by Gone Lappin'">
+<meta property="og:description" content="Free and cheap camps every night of your trip, fuel checks for your rig and the sights worth stopping for.">
+<meta property="og:image" content="https://gonelappin.au/icons/icon-512.png">
+<meta property="og:url" content="https://gonelappin.au/">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script>document.documentElement.classList.toggle("motion", !matchMedia("(prefers-reduced-motion: reduce)").matches);</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Gone Lappin' Camp Finder home"><small>GONE LAPPIN'</small><b>CAMP FINDER</b></a>
+    <nav aria-label="Main"><a href="#how">How it works</a><a href="#beta">Get the app</a><a href="support.html">Help</a></nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap">
+      <div class="guide">
+        <h1>Every free camp from here to anywhere</h1>
+        <p>Tell it where you're headed. Camp Finder plans a camp for every night, checks your fuel range, and shows you what's worth stopping for along the way.</p>
+        <span class="arrow" aria-hidden="true"><svg width="34" height="20" viewBox="0 0 34 20"><path d="M2 10h26M20 2l8 8-8 8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Bundaberg 0 km · Exmouth 4,100 km</span>
+      </div>
+      <div class="cta-row">
+        <a class="btn gold" href="#beta">Join the free beta</a>
+        <a class="btn ghost" href="#how">See how it works</a>
+      </div>
+    </div>
+    <div class="road" aria-hidden="true">
+      <span class="spinifex a"></span><span class="spinifex b"></span><span class="spinifex c"></span>
+      <span class="post a"></span><span class="post b"></span>
+      <div class="rig" id="rig"></div>
+    </div>
+  </section>
+
+  <div class="board" aria-label="Built into the app">
+    <div class="wrap">
+      <div><b>10,000+</b><span>camps and rest areas</span></div>
+      <div><b>2,300+</b><span>water taps</span></div>
+      <div><b>1,900+</b><span>fuel stations</span></div>
+      <div><b>650+</b><span>dump points</span></div>
+    </div>
+  </div>
+
+  <section class="block" id="how">
+    <div class="wrap">
+      <div class="lead">
+        <h2>One trip, start to finish</h2>
+        <p>Camp Finder follows the way you actually travel: plan it, pick the sights, drive it, then keep it.</p>
+      </div>
+
+      <div class="trip">
+        <div class="stop">
+          <div class="km" aria-hidden="true"><b>0</b><span>km</span></div>
+          <div class="copy">
+            <h3>Plan where you'll sleep</h3>
+            <p>Type where you're going, or just say it. You get a free or cheap camp for every night, picked for your rig, whether that's a swag, a camper trailer or a 22-foot van. Want a motel on night four? Tick "Need a refresh" and it finds one.</p>
+            <p>Each day shows the sunset at camp and the time to leave so you pull in before dark, when the roos come out.</p>
+          </div>
+          <div class="demo" aria-label="Example trip days">
+            <div class="day"><b>Day 1 · 412 km</b><small>Wooroolin Rest Area · Free · Toilets, water</small><small>🌅 Sunset 6:12 pm · leave by 12:40 pm</small></div>
+            <div class="day"><b>Day 2 · 386 km</b><small>Lake Nuga Nuga · Free · Dogs OK</small><small>🌅 Sunset 6:19 pm · leave by 1:05 pm</small></div>
+            <div class="day"><b>Day 3 · 455 km</b><small>Longreach Apex Park · $5 donation</small><small>🌅 Sunset 6:41 pm · leave by 12:55 pm</small></div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="km" aria-hidden="true"><b>250</b><span>km</span></div>
+          <div class="copy">
+            <h3>Know you'll make the next servo</h3>
+            <p>Pick your car and it knows your fuel use, tank size and the extra it burns towing. Before you leave, it checks every stretch of the route and tells you if one is longer than your range, and how many jerry cans to carry.</p>
+            <p>On the road it tells you when you're at the last fuel before a long stretch.</p>
+          </div>
+          <div class="demo" aria-label="Example fuel checks">
+            <div class="fc"><span aria-hidden="true">⛽</span><div><b>Fuel check: you're fine</b><p>Longest stretch without fuel is 284 km. Your range towing is about 590 km.</p></div></div>
+            <div class="fc bad"><span aria-hidden="true">⛽</span><div><b>Last fuel for 372 km</b><p>Nullarbor Roadhouse is the last fuel before Border Village. Top up here.</p></div></div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="km" aria-hidden="true"><b>860</b><span>km</span></div>
+          <div class="copy">
+            <h3>Pick the sights worth the detour</h3>
+            <p>It lists the places people actually stop for along your route, from Coral Bay and the Pinnacles to Carnarvon Gorge and the Big Banana, with how far off the road each one is. Tick the ones you want and the trip routes you past them.</p>
+          </div>
+          <div class="demo picks" aria-label="Example sights along the way">
+            <label><input type="checkbox" checked disabled><span><b>Coral Bay</b> 🐠<small>Snorkel Ningaloo Reef straight off the beach · Day 6</small></span></label>
+            <label><input type="checkbox" checked disabled><span><b>Kalbarri Skywalk</b> 🌄<small>Walk out over the gorge · 38 km off route · Day 4</small></span></label>
+            <label><input type="checkbox" disabled><span><b>Shell Beach</b> 🐚<small>A beach made of tiny white shells · Day 5</small></span></label>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="km" aria-hidden="true"><b>4,100</b><span>km</span></div>
+          <div class="copy">
+            <h3>Keep every kilometre</h3>
+            <p>Start a journey and it records your route quietly in the background. Add notes and photos as you go, earn badges for kilometres, states and famous roads like the Gibb, and finish with a short video of your trip to share with family.</p>
+          </div>
+          <div class="demo" aria-label="Example badges">
+            <div class="medals"><span class="medal" style="--c:#E3B23C">🛣️</span><span class="medal" style="--c:#7A1F3D"><b>QLD</b></span><span class="medal" style="--c:#2FA36B">🐪</span></div>
+            <div class="medal-names"><span>1,000 km</span><span>Queensland</span><span>Crossed the Nullarbor</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block extras">
+    <div class="wrap">
+      <div class="lead"><h2>Made for the long way round</h2></div>
+      <div class="cols">
+        <div><span class="ic" aria-hidden="true">📶</span><h3>Works with no signal</h3><p>Every camp in Australia is built into the app, and you can download maps for the trip before you lose coverage.</p></div>
+        <div><span class="ic" aria-hidden="true">🔥</span><h3>Weather, fires and roads</h3><p>Bushfire warnings, heavy rain, extreme heat, steep climbs and low bridges for your rig's height, all on your route.</p></div>
+        <div><span class="ic" aria-hidden="true">💧</span><h3>Water and dump points</h3><p>One tap finds the next water tap, dump point or servo ahead of you on the road.</p></div>
+        <div><span class="ic" aria-hidden="true">👨‍👩‍👧</span><h3>Family can follow along</h3><p>Send a link and the family can see where you are and where you're camping tonight.</p></div>
+        <div><span class="ic" aria-hidden="true">🐕</span><h3>Bringing the dog?</h3><p>Turn on dog mode and you'll only see camps where dogs are allowed, with national parks left out.</p></div>
+        <div><span class="ic" aria-hidden="true">🅰️</span><h3>Big, clear and simple</h3><p>Simple mode gives bigger text and just the essentials. Ask it by voice: "Bundaberg to Cairns".</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap split">
+      <p class="quote">Built in Bundaberg by someone who'd rather be camping.</p>
+      <ul>
+        <li>Grey nomads doing the Big Lap</li>
+        <li>Families squeezing a trip into the school holidays</li>
+        <li>4WDers heading up the Gibb or the Cape</li>
+        <li>Weekenders who just want somewhere free and close</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="block beta" id="beta">
+    <div class="wrap">
+      <div>
+        <h2>Help us test it</h2>
+        <p>Camp Finder is free and coming to the App Store soon. We're looking for travellers to try the iPhone beta and tell us what's missing.</p>
+      </div>
+      <div>
+        <a class="btn" id="betaBtn" href="mailto:hello@gonelappin.au?subject=Camp%20Finder%20beta&body=G'day%2C%20I'd%20like%20to%20test%20Camp%20Finder.%20My%20rig%20is%3A%20">Join the iPhone beta</a>
+        <p class="fine">We'll email you an invite. Android is on the way.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="faq">
+    <div class="wrap">
+      <h2>Questions</h2>
+      <details><summary>Is it free?</summary><p>Yes. Finding camps, planning trips and recording journeys are free. You don't need an account unless you want to add camps, rate them or share your trip live.</p></details>
+      <details><summary>Where does the camp information come from?</summary><p>From OpenStreetMap, Australian government open data and other travellers, updated every week. Camps close and rules change, so always check the signs and local rules when you arrive.</p></details>
+      <details><summary>Does it work without phone signal?</summary><p>Yes. The camp list is stored on your phone, and you can download a trip's maps and camps before you go. Live fuel prices, photos and weather need signal.</p></details>
+      <details><summary>What happens to my location?</summary><p>Your location stays on your phone. Journeys are recorded on your phone too, and only leave it if you turn on live sharing for your family. Read the <a href="privacy.html">privacy policy</a>.</p></details>
+      <details><summary>Which phones does it work on?</summary><p>iPhone first, with Android to follow.</p></details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="./" aria-label="Gone Lappin' Camp Finder home"><small>GONE LAPPIN'</small><b>CAMP FINDER</b></a>
+      <small>Camp information is a guide only. Always check local rules, fire bans and road conditions. Map data © OpenStreetMap contributors.</small>
+    </div>
+    <nav aria-label="Footer"><a href="support.html">Help and support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="mailto:hello@gonelappin.au">hello@gonelappin.au</a></nav>
+  </div>
+</footer>
+
+<script src="cars.js"></script>
+<script>
+  // your car, towing a van, rolling along the road
+  if (window.CFCar) document.getElementById("rig").innerHTML = CFCar.side({ make: "Ford", model: "Ranger", color: "white", rig: "caravan" }).svg;
+</script>
+</body>
+</html>

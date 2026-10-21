@@ -1,7 +1,7 @@
 /* Terms and conditions and privacy policy shown in Settings. Plain-English drafts: have them checked before launch. */
 window.CF_LEGAL = {
-  updated: "20 October 2026",
-  contact: "will@sunwisesolarcleaning.com",
+  updated: "21 October 2026",
+  contact: "hello@gonelappin.au",
   terms: `
 <h3>About these terms</h3>
 <p>Camp Finder ("the app") is made by Will Richter, trading as Gone Lappin' Co., in Queensland, Australia ("we", "us"). By using the app you agree to these terms. If you don't agree, please don't use the app.</p>
@@ -36,26 +36,32 @@ window.CF_LEGAL = {
 <p>We collect as little as we can, we don't sell your information, and we don't show ads. We handle personal information in line with the Australian Privacy Principles.</p>
 
 <h3>What stays on your phone</h3>
-<p>Your trips, saved camps, vehicle and budget settings, offline downloads, and camps you add without an account are stored on your phone. Your location is used on your phone to show where you are, follow you on the map and plan from your current position. We don't store your location history.</p>
+<p>Your trips, saved camps, vehicle and budget settings, offline downloads, travel journal, badges and camps you add without an account are stored on your phone. Your location is used on your phone to show where you are, follow you on the map and plan from your current position.</p>
+<p><b>Journeys.</b> When you tap Start journey, the app records your route (including in the background, while the journey is running) so it can build your travel journal, badges and trip video, and warn you about the last fuel before a long stretch. This route is kept on your phone and is never sent to us unless you turn on live sharing. Recording stops when you end the journey.</p>
+<p><b>Voice search.</b> When you tap the microphone, what you say is turned into text by Apple's speech recognition, which may send the audio to Apple. We don't receive or keep any recordings.</p>
+<p><b>Trip videos</b> are made on your phone and only leave it if you choose to share or save them.</p>
 
 <h3>What we collect if you create an account</h3>
 <ul>
 <li>Your email address, used only to sign you in.</li>
-<li>Things you choose to share: camps you add, photos, ratings, reviews, check-ins, and trip bookings you record. Ratings and reviews show your setup (for example "Caravan traveller"), not your name or email.</li>
+<li>Things you choose to share: camps you add, photos, ratings, reviews, check-ins (such as "still free" or how busy a camp is right now), phone signal reports, and trip bookings you record. Ratings and reviews show your setup (for example "Caravan traveller"), not your name or email.</li>
+<li><b>Live trip sharing</b>, only if you turn it on for a journey: your current location, speed, heading and tonight's stop are updated about every 5 minutes so anyone you send the link to can follow your trip. Sharing stops when you end the journey.</li>
 </ul>
+<p>Sign-in emails are sent for us by Resend.</p>
 <p>This information is stored by Supabase, our database provider, on servers in Sydney, Australia.</p>
 
 <h3>Other services the app uses</h3>
 <ul>
 <li><b>Apple Maps</b> for place search and driving directions. Search text and the start and end of a route are sent to Apple.</li>
 <li><b>Google Maps (Places)</b> for camp photos, reviews, fuel prices and places to stay. The places you look at and points along your route are sent to Google.</li>
-<li><b>OpenStreetMap and map tile providers</b> for the map background, and Wikimedia Commons for some photos.</li>
+<li><b>Stadia Maps and Esri</b> for the map and satellite background (map data © OpenStreetMap contributors), and Wikimedia Commons for some photos. The map area you're looking at is requested from them.</li>
+<li><b>Open-Meteo</b> for weather forecasts and <b>state fire and emergency services</b> for bushfire warnings, using points along your route.</li>
 <li><b>GitHub</b>, which hosts the weekly camp list update. No personal information is sent.</li>
 </ul>
 <p>Each provider handles that information under its own privacy policy.</p>
 
 <h3>Your choices</h3>
-<p>You can use the app without an account, turn off location access in your phone's settings, and remove anything you've shared. You can delete your account at any time in the app (Saved, then Delete account); this permanently removes your account and everything linked to it.</p>
+<p>You can use the app without an account, turn off location access in your phone's settings, and remove anything you've shared. You can delete your account at any time in the app (My stuff, then Saved, then Delete account) or by emailing us; this permanently removes your account and everything linked to it.</p>
 
 <h3>Access, correction and complaints</h3>
 <p>To ask for a copy of your information, correct it, or make a privacy complaint, email <a href="mailto:{contact}">{contact}</a>. If you're not happy with our response you can contact the Office of the Australian Information Commissioner (oaic.gov.au).</p>`,
