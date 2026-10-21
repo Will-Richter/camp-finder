@@ -924,3 +924,10 @@ a { color: inherit; }
 .off-actions .cta, .off-actions .btn { width: 100%; justify-content: center; min-height: 54px; }
 @media (min-width: 900px) { .offline-pill { left: 440px; } }
 .detail-open .offline-pill { display: none; }
+
+.voice-inline { flex-wrap: wrap; }
+.voice-inline.done .vc-orb span { animation: none; opacity: 0; }
+.voice-inline.done .vc-orb { background: var(--free); color: #fff; }
+.vc-actions { flex: 1 1 100%; display: flex; gap: 8px; margin-top: 4px; }
+.vc-actions .cta { flex: 1; min-height: 52px; font-size: 17px; }
+.vc-actions .btn { flex: none; min-height: 52px; }

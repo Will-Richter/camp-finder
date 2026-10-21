@@ -2862,7 +2862,8 @@
   if (!nativeSpeech && !WebSR) $("#micBtn").hidden = true;
   function voiceUI(on) {
     const box = $("#voiceInline");
-    box.hidden = !on; $("#micBtn").classList.toggle("is-on", on);
+    box.hidden = !on; box.classList.remove("done"); $("#vcActions").hidden = true; $("#micBtn").classList.toggle("is-on", on);
+    if (on) $("#vcHint").innerHTML = 'Listening… say <b>"Bundaberg to Cairns"</b> or <b>"Camp tonight"</b>';
     if (on) {
       setView("plan");
       if (!$("#results").hidden) { $("#results").hidden = true; $("#planForm").hidden = false; }
@@ -2874,6 +2875,7 @@
   async function useVoice(text) {
     const t = text.trim().replace(/[.?!]$/, "");
     if (!t) return;
+    voiceUI(false);
     if (/camp(site)? (tonight|near (me|here))|where can i (camp|stay)|somewhere to (camp|stay)/i.test(t)) { setView("plan"); return campTonight(); }
     if (/^(need|find|where'?s?( is)?( the)?( nearest)?)\s.*(water|tap)/i.test(t) || /\bwater\b/i.test(t) && t.split(" ").length <= 3) return showNeeds("water");
     if (/dump/i.test(t)) return showNeeds("dump");
@@ -2892,12 +2894,29 @@
     let okFrom = true;
     if (fromQ) okFrom = await fill($("#from"), fromQ);
     else if (!$("#from").dataset.lat) { $("#useHere").click(); }
-    if (okTo && okFrom) toast(`Heading to ${short($("#to").value)}. Tap Find camps when ready.`);
+    if (okTo && okFrom) {
+      // show what we heard with a big Go button
+      const fromName = $("#from").dataset.lat ? short($("#from").value) : "your location";
+      voiceResult(`${esc(fromName)} → ${esc(short($("#to").value))}`, true);
+    } else voiceResult("I couldn't find that place. Try again, or type it in.", false);
   }
+  function voiceResult(html, canGo) {
+    const box = $("#voiceInline"); box.hidden = false; box.classList.add("done");
+    $("#vcHint").hidden = false; $("#vcHint").innerHTML = canGo ? "Got it:" : "Hmm…";
+    $("#vcText").innerHTML = html;
+    $("#vcActions").hidden = false; $("#vcGo").hidden = !canGo;
+    $("#micBtn").classList.remove("is-on");
+  }
+  let voiceTimer;
   window.__cfSpeech = (r) => {
-    if (r.error) { voiceUI(false); return toast(r.error, 4500); }
+    clearTimeout(voiceTimer);
+    if (r.error) { voiceResult(esc(r.error), false); return; }
     $("#vcHint").hidden = !!r.text; $("#vcText").textContent = r.text || "";
-    if (r.final) { setTimeout(() => voiceUI(false), 350); useVoice(r.text || ""); }
+    if (r.final) {
+      if (!r.text) return voiceResult("Didn't catch that. Tap Try again and speak after the beep.", false);
+      $("#vcText").innerHTML = `${esc(r.text)} <span class="spinner"></span>`;
+      useVoice(r.text).catch(() => voiceResult("Something went wrong. Try again, or type it in.", false));
+    } else voiceTimer = setTimeout(() => { nativeSpeech?.postMessage({ cmd: "stop" }); window.__cfSpeech({ text: $("#vcText").textContent, final: true }); }, 4000);
   };
   function startVoice() {
     voiceUI(true);
@@ -2910,6 +2929,8 @@
     } catch { voiceUI(false); toast("Voice search isn't available on this device"); }
   }
   $("#micBtn").addEventListener("click", startVoice);
+  $("#vcGo").addEventListener("click", () => { voiceUI(false); $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click(); });
+  $("#vcAgain").addEventListener("click", startVoice);
   $("#vcCancel").addEventListener("click", () => { voiceUI(false); nativeSpeech?.postMessage({ cmd: "stop" }); try { webRec?.abort(); } catch {} });
 
   // ================================================================ Discover: ready-made trips
