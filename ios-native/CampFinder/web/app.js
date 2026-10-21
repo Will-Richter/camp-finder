@@ -888,7 +888,7 @@
     navigator.geolocation.getCurrentPosition(
       (pos) => { onPosition(pos); store.set("cf-loc-ok", true); startTracking(); then(me); },
       () => toast("Turn on location for Camp Finder in your phone's settings"),
-      { enableHighAccuracy: true, timeout: 12000 }
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
     );
   }
   $("#locateBtn").addEventListener("click", () => {
@@ -1021,8 +1021,11 @@
 
   $("#useHere").addEventListener("click", () => {
     const f = $("#from");
-    f.value = "Finding you…";
-    locate((p) => { f.value = "My location"; f.dataset.lat = p.lat; f.dataset.lon = p.lon; });
+    const set = (p) => { f.value = "My location"; f.dataset.lat = p.lat; f.dataset.lon = p.lon; $("#useHere").hidden = true; };
+    if (me) return set(me); // already know where you are
+    f.value = ""; f.placeholder = "Finding you…"; $("#useHere").textContent = "Finding you…";
+    locate((p) => { set(p); f.placeholder = "Starting from"; $("#useHere").textContent = "Use my location"; });
+    setTimeout(() => { if (!f.dataset.lat) { f.placeholder = "Starting from"; $("#useHere").textContent = "Use my location"; } }, 15000);
   });
   $("#from").addEventListener("input", () => ($("#useHere").hidden = !!$("#from").value));
   attachSuggest($("#from"), () => ($("#useHere").hidden = true));
@@ -1125,6 +1128,7 @@
         <div class="stop-actions">
           <button class="btn" data-act="leg" data-i="${i}" type="button">${icon("route")}Directions</button>
           <a class="btn line" href="${navUrl(pk.camp, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
+          <a class="btn line learn" href="${esc(learnUrl(pk.camp))}" target="_blank" rel="noopener" data-learn="${esc(pk.camp.id)}">${icon("search")}Learn more</a>
         </div>
         ${pk.alts.length ? `<details class="alt-wrap"><summary>${pk.alts.length} other camp${pk.alts.length > 1 ? "s" : ""} near here ${icon("chev", "ic sm")}</summary>
           ${pk.alts.map((c) => `<div class="alt">${campCard(c)}<button class="btn" data-act="swap" data-i="${i}" data-id="${esc(c.id)}" type="button">${icon("swap")}Stay here instead</button></div>`).join("")}
@@ -1280,6 +1284,7 @@
         <div class="d-actions">
           <a class="cta" href="${navUrl(c, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
           <button class="btn" id="dirBtn" type="button">${icon("route")}Directions</button>
+          <a class="icon-btn" style="width:48px;height:48px" id="learnMore" href="${esc(learnUrl(c))}" target="_blank" rel="noopener" aria-label="Learn more on Google">${icon("search")}</a>
           <button class="icon-btn ${saved ? "is-on" : ""}" style="width:48px;height:48px" id="saveCamp" type="button" aria-label="${saved ? "Saved" : "Save camp"}" aria-pressed="${saved}">${icon("bookmark")}</button>
         </div>
         <section class="rate" id="rateBox" aria-label="Ratings and reviews">
@@ -1464,6 +1469,17 @@
     gCache.set(c.id, out);
     return out.slice(0, limit);
   }
+  // "Learn more": the camp's Google Maps page when we know it, otherwise a Google search for it
+  function learnUrl(c) {
+    const g = gPlace.get(c.id);
+    if (g?.uri) return g.uri;
+    if (c.named) return `https://www.google.com/search?q=${encodeURIComponent(`${c.name} ${c.kind === "Roadside rest area" ? "rest area" : "camping"} ${stateOf(c.lat, c.lon)}`)}`;
+    return `https://www.google.com/maps/search/?api=1&query=${c.lat.toFixed(5)},${c.lon.toFixed(5)}`;
+  }
+  function googleChip(c) {
+    const g = gPlace.get(c.id);
+    return g?.rating ? `<span class="g-chip">★ ${g.rating.toFixed(1)} <small>Google (${g.count.toLocaleString("en-AU")})</small></span>` : "";
+  }
   // A photo on each night's camp card in a trip (one Google photo each)
   async function cardPhotos() {
     const cards = $$("#nightList .camp-card[data-id]:not([data-ph])");
@@ -1474,6 +1490,8 @@
       if (!src && window.CFCloud?.enabled) { try { src = (await window.CFCloud.photosFor(c.id))[0]?.url || ""; } catch {} }
       if (!src) { try { src = (await soon(googlePhotos(c, 1), 8000, []))[0]?.src || ""; } catch {} }
       if (src && el.isConnected && !el.querySelector(".cc-photo")) el.insertAdjacentHTML("afterbegin", `<img class="cc-photo" src="${esc(src)}" alt="" loading="lazy">`);
+      if (el.isConnected && !el.querySelector(".g-chip") && gPlace.get(c.id)?.rating) el.querySelector(".cc-meta")?.insertAdjacentHTML("beforeend", googleChip(c));
+      const lm = el.closest(".stop-body")?.querySelector(`[data-learn="${CSS.escape(c.id)}"]`); if (lm) lm.href = learnUrl(c);
     }));
   }
 
@@ -2278,7 +2296,7 @@
       <p class="caveat">Prices marked ~ are estimates from Camp Finder's price guide (updated ${esc(PRICES.updated || "regularly")}), used when a place doesn't list its price. Fuel uses live Google Maps prices where available. Always check the price when you book.</p>
       <button class="btn" type="button" id="brSettings">${icon("gear")}Change vehicle, fuel price or budget</button>
     </div>`);
-    $("#brSettings").addEventListener("click", () => setView("settings"));
+    $("#brSettings").addEventListener("click", () => { setView("settings"); $$(".set-fold").slice(0, 1).forEach((d) => (d.open = true)); });
   }
 
   // ================================================================ price guide (reviewed monthly), fuel stops, refresh nights
@@ -2841,7 +2859,17 @@
   const WebSR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let webRec = null;
   if (!nativeSpeech && !WebSR) $("#micBtn").hidden = true;
-  function voiceUI(on) { $("#voice").hidden = !on; if (on) { $("#vcText").textContent = ""; $("#vcHint").hidden = false; } }
+  function voiceUI(on) {
+    const box = $("#voiceInline");
+    box.hidden = !on; $("#micBtn").classList.toggle("is-on", on);
+    if (on) {
+      setView("plan");
+      if (!$("#results").hidden) { $("#results").hidden = true; $("#planForm").hidden = false; }
+      if (sheet.classList.contains("is-peek")) setSheet("half");
+      $("#sheetScroll").scrollTop = 0;
+      $("#vcText").textContent = ""; $("#vcHint").hidden = false;
+    }
+  }
   async function useVoice(text) {
     const t = text.trim().replace(/[.?!]$/, "");
     if (!t) return;
@@ -3085,6 +3113,7 @@
 
   // ---- Google rating and reviews (shown with photos when the Google key is switched on)
   function renderGoogleRating(c, place) {
+    if (place?.uri && $("#learnMore")) $("#learnMore").href = place.uri;
     const box = $("#rateBox"); if (!box || !place || !place.rating || $("#gRate")) return;
     const revs = (place.reviews || []).filter((r) => r.text?.text).slice(0, 5);
     box.insertAdjacentHTML("beforeend", `<div class="g-rate" id="gRate">

@@ -255,6 +255,14 @@
             <button type="button" class="tonight-btn" id="tonightBtn"><span class="tb-ic">🏕️</span><span><b>Camp tonight</b><small>Good camps near you, right now</small></span></button>
             <button type="button" class="mic-btn" id="micBtn" aria-label="Search by voice"><svg viewBox="0 0 24 24" class="ic"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg><span>Say it</span></button>
           </div>
+          <div class="voice-inline" id="voiceInline" hidden aria-live="polite">
+            <div class="vc-orb"><span></span><span></span><svg viewBox="0 0 24 24" class="ic"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></div>
+            <div class="vc-body">
+              <p class="vc-hint" id="vcHint">Listening… say <b>"Bundaberg to Cairns"</b> or <b>"Camp tonight"</b></p>
+              <p class="vc-text" id="vcText"></p>
+            </div>
+            <button type="button" class="vc-cancel" id="vcCancel" aria-label="Stop listening">✕</button>
+          </div>
           <div class="journey">
             <div class="journey-rail" aria-hidden="true"><span class="dot a"></span><span class="rail"></span><span class="dot b"></span></div>
             <div class="journey-fields">
@@ -433,8 +441,9 @@
           </div>
         </section>
 
-        <section class="set-card">
-          <h2 class="set-h">Your vehicle</h2>
+        <details class="set-card set-fold">
+          <summary class="set-h"><span class="sf-ic">🚙</span>Your vehicle<svg class="ic sm sf-chev"><use href="#i-chev"/></svg></summary>
+          <div class="sf-body">
           <div class="set-row two"><label>Make<select id="stMake"></select></label><label>Model<select id="stModel"></select></label></div>
           <div class="set-row two" data-adv>
             <label>Fuel<select id="stFuel"><option value="diesel">Diesel</option><option value="petrol">Petrol</option><option value="lpg">LPG</option></select></label>
@@ -449,10 +458,11 @@
             <label class="slide-l">Extra fuel when towing <b id="stTowOut">+30%</b><input id="stTow" type="range" min="0" max="80" step="5"></label>
           </div>
           <div class="set-sum" id="stSummary"></div>
-        </section>
+        </div></details>
 
-        <section class="set-card" data-adv>
-          <h2 class="set-h">Your rig</h2>
+        <details class="set-card set-fold" data-adv>
+          <summary class="set-h"><span class="sf-ic">🚐</span>Your rig<svg class="ic sm sf-chev"><use href="#i-chev"/></svg></summary>
+          <div class="sf-body">
           <div class="set-row two">
             <label>Total height (m)<input id="stHeight" type="number" inputmode="decimal" min="1.5" max="4.6" step="0.05"></label>
             <label>Total length (m)<input id="stLength" type="number" inputmode="decimal" min="3" max="30" step="0.1"></label>
@@ -460,10 +470,11 @@
           <p class="help">Height includes roof racks, tents and the caravan or camper. Used to warn about low bridges and steep climbs on your route.</p>
           <label class="switch"><span><b>🐕 Travelling with a dog</b><small>Only pick dog-friendly camps and skip national parks</small></span><input type="checkbox" id="stDog"><i></i></label>
           <label class="switch"><span><b>🔔 Free camp alerts</b><small>A nudge in the afternoon when a good free camp is close, during a journey</small></span><input type="checkbox" id="stCampAlerts"><i></i></label>
-        </section>
+        </div></details>
 
-        <section class="set-card" data-adv>
-          <h2 class="set-h">Trip budget</h2>
+        <details class="set-card set-fold" data-adv>
+          <summary class="set-h"><span class="sf-ic">💰</span>Trip budget<svg class="ic sm sf-chev"><use href="#i-chev"/></svg></summary>
+          <div class="sf-body">
           <div class="set-row two">
             <label>Paid camp, price unknown ($/night)<input id="stCamp" type="number" inputmode="decimal" min="0" max="300" step="1"></label>
             <label>Daily spending money ($/day)<input id="stDaily" type="number" inputmode="decimal" min="0" max="2000" step="5"></label>
@@ -472,30 +483,33 @@
             <label>Most I want to drive in a day (km)<input id="stMaxKm" type="number" inputmode="numeric" min="100" max="1500" step="10"></label>
           </div>
           <p class="help">Used to estimate camp fees and food money on each trip, and to warn you about long driving days.</p>
-        </section>
+        </div></details>
 
-        <section class="set-card">
-          <h2 class="set-h">App</h2>
+        <details class="set-card set-fold">
+          <summary class="set-h"><span class="sf-ic">📱</span>App<svg class="ic sm sf-chev"><use href="#i-chev"/></svg></summary>
+          <div class="sf-body">
           <label class="switch"><span><b>Welcome screens when the app opens</b><small>Show the intro every time</small></span><input type="checkbox" id="stWelcomeEvery"><i></i></label>
           <label class="switch"><span><b>Animations</b><small>Turn off for a calmer, faster feel</small></span><input type="checkbox" id="stAnim"><i></i></label>
           <label class="switch"><span><b>Follow me on the map</b><small>Keep the car in view while you drive</small></span><input type="checkbox" id="stFollow"><i></i></label>
           <label class="switch"><span><b>Satellite map</b><small>Start on satellite view</small></span><input type="checkbox" id="stSat"><i></i></label>
           <button class="btn line" type="button" id="stWelcome">Show the welcome again</button>
-        </section>
+        </div></details>
 
-        <section class="set-card">
-          <h2 class="set-h">Legal</h2>
+        <details class="set-card set-fold">
+          <summary class="set-h"><span class="sf-ic">📄</span>Legal<svg class="ic sm sf-chev"><use href="#i-chev"/></svg></summary>
+          <div class="sf-body">
           <button class="btn line" type="button" id="stTerms">Terms and conditions</button>
           <button class="btn line" type="button" id="stPrivacy">Privacy policy</button>
           <p class="help" id="stPrices"></p>
-        </section>
+        </div></details>
 
-        <section class="set-card">
-          <h2 class="set-h">Account and data</h2>
+        <details class="set-card set-fold">
+          <summary class="set-h"><span class="sf-ic">👤</span>Account and data<svg class="ic sm sf-chev"><use href="#i-chev"/></svg></summary>
+          <div class="sf-body">
           <p class="help" id="stAccount"></p>
           <button class="btn" type="button" id="stGoAccount">Account and sign in</button>
           <p class="help" id="stData"></p>
-        </section>
+        </div></details>
         <p class="fine">Gone Lappin' Camp Finder. Camp details from OpenStreetMap contributors and Australian government open data. Fuel figures are estimates.</p>
       </div>
 
@@ -517,15 +531,6 @@
     <button class="tabbtn" data-view="settings" id="tab-settings"><svg class="ic"><use href="#i-gear"/></svg><span>Settings</span></button>
     <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
   </nav>
-
-  <div id="voice" class="voice" hidden aria-live="polite">
-    <div class="vc-card">
-      <div class="vc-orb"><span></span><span></span><span></span><svg viewBox="0 0 24 24" class="ic"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></div>
-      <p class="vc-hint" id="vcHint">Say where you're going, like<br><b>"Bundaberg to Cairns"</b> or <b>"Camp tonight"</b></p>
-      <p class="vc-text" id="vcText"></p>
-      <button type="button" class="btn" id="vcCancel">Cancel</button>
-    </div>
-  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>

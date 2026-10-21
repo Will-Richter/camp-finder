@@ -62,7 +62,7 @@ struct WebAppView: UIViewRepresentable {
         override init() {
             super.init()
             manager.delegate = self
-            manager.desiredAccuracy = kCLLocationAccuracyBest
+            manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
             manager.distanceFilter = 8
         }
 
@@ -213,11 +213,15 @@ struct WebAppView: UIViewRepresentable {
                     return
                 }
                 guard let id = message.body as? Int else { return }
+                // A recent fix answers straight away (no waiting for GPS)
+                if let l = manager.location, -l.timestamp.timeIntervalSinceNow < 120, l.horizontalAccuracy > 0, l.horizontalAccuracy < 1500 {
+                    send(l, to: [id]); return
+                }
                 pending.append(id)
                 switch manager.authorizationStatus {
                 case .notDetermined: manager.requestWhenInUseAuthorization()
                 case .denied, .restricted: finishAll(error: "Location permission is off")
-                default: manager.requestLocation()
+                default: quickFix()
                 }
             default: break
             }
@@ -228,18 +232,37 @@ struct WebAppView: UIViewRepresentable {
             if !watchers.isEmpty, [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) { manager.startUpdatingLocation() }
             guard !pending.isEmpty else { return }
             switch manager.authorizationStatus {
-            case .authorizedWhenInUse, .authorizedAlways: manager.requestLocation()
+            case .authorizedWhenInUse, .authorizedAlways: quickFix()
             case .denied, .restricted: finishAll(error: "Location permission is off")
             default: break
             }
         }
-        func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-            guard let loc = locations.last else { return }
-            let ids = pending; pending.removeAll()
-            let args = "\(loc.coordinate.latitude), \(loc.coordinate.longitude), \(loc.horizontalAccuracy), '', \(loc.course), \(loc.speed)"
-            for id in Set(ids).union(watchers) {
-                webView?.evaluateJavaScript("window.__cfLocation(\(id), true, \(args))")
+        // Start updates and answer with the first reasonable fix, or the best one after 4 seconds
+        private var bestFix: CLLocation?
+        private var fixTimer: Timer?
+        private func quickFix() {
+            manager.startUpdatingLocation()
+            fixTimer?.invalidate()
+            fixTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                if let b = self.bestFix ?? self.manager.location { let ids = self.pending; self.pending.removeAll(); self.send(b, to: ids) }
+                else { Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { [weak self] _ in self?.finishAll(error: "Couldn't get your location") } }
+                if self.watchers.isEmpty && self.pending.isEmpty { self.manager.stopUpdatingLocation() }
             }
+        }
+        private func send(_ loc: CLLocation, to ids: [Int]) {
+            let args = "\(loc.coordinate.latitude), \(loc.coordinate.longitude), \(loc.horizontalAccuracy), '', \(loc.course), \(loc.speed)"
+            for id in ids { webView?.evaluateJavaScript("window.__cfLocation(\(id), true, \(args))") }
+        }
+        func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+            guard let loc = locations.last, loc.horizontalAccuracy > 0 else { return }
+            if bestFix == nil || loc.horizontalAccuracy < bestFix!.horizontalAccuracy || -bestFix!.timestamp.timeIntervalSinceNow > 30 { bestFix = loc }
+            if !pending.isEmpty && loc.horizontalAccuracy <= 300 {
+                let ids = pending; pending.removeAll(); fixTimer?.invalidate()
+                send(loc, to: ids)
+                if watchers.isEmpty { manager.stopUpdatingLocation() }
+            }
+            if !watchers.isEmpty { send(loc, to: Array(watchers)) }
         }
         func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { finishAll(error: "Couldn't get your location") }
         private func finishAll(error: String) {
