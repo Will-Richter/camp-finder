@@ -33,6 +33,12 @@ struct WebAppView: UIViewRepresentable {
         webView.uiDelegate = context.coordinator
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
+        // the app screen itself never zooms or slides around; only the map and lists move
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
+        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        webView.scrollView.delegate = context.coordinator
         webView.allowsLinkPreview = false          // no long-press link previews
         webView.isOpaque = false
         webView.backgroundColor = UIColor(red: 0.055, green: 0.353, blue: 0.243, alpha: 1)
@@ -47,7 +53,9 @@ struct WebAppView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, CLLocationManagerDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, CLLocationManagerDelegate, UIScrollViewDelegate {
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { nil }   // no page zoom
+        func scrollViewDidScroll(_ scrollView: UIScrollView) { if scrollView.contentOffset != .zero { scrollView.contentOffset = .zero } }
         weak var webView: WKWebView?
         private let manager = CLLocationManager()
         private var pending: [Int] = []

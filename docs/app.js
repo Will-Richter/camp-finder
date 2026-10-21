@@ -833,6 +833,15 @@
     </button>`;
   }
 
+  // ---------------------------------------------------------------- lock the screen
+  // Pinching anywhere except the map does nothing (stops the whole app zooming); the map handles its own pinch.
+  ["gesturestart", "gesturechange", "gestureend"].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 && !e.target.closest?.("#map")) e.preventDefault(); }, { passive: false });
+  let lastTouchEnd = 0;
+  document.addEventListener("touchend", (e) => { const now = Date.now(); if (now - lastTouchEnd < 300 && !e.target.closest?.("#map, input, textarea, button, a, select, label")) e.preventDefault(); lastTouchEnd = now; }, { passive: false });
+  window.addEventListener("wheel", (e) => { if (e.ctrlKey && !e.target.closest?.("#map")) e.preventDefault(); }, { passive: false });
+  window.addEventListener("scroll", () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); });
+
   // ---------------------------------------------------------------- map
   // Smooth map: no tile fade, keep plenty of tiles around, and a low-detail copy underneath so zooming
   // never flashes grey while the sharp tiles load.
