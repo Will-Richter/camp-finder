@@ -57,6 +57,7 @@ struct WebAppView: UIViewRepresentable {
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { nil }   // no page zoom
         func scrollViewDidScroll(_ scrollView: UIScrollView) { if scrollView.contentOffset != .zero { scrollView.contentOffset = .zero } }
         weak var webView: WKWebView?
+        private var shareOut: (id: String, url: URL, handle: FileHandle?, ok: Bool)?
         private let manager = CLLocationManager()
         private var pending: [Int] = []
         private var watchers = Set<Int>()
@@ -217,10 +218,30 @@ struct WebAppView: UIViewRepresentable {
                 } else { SpeechListener.shared.stop() }
             case "shareFile":
                 // the trip video (or picture): save to a temp file and open the iPhone share sheet
-                guard let d = message.body as? [String: Any], let b64 = d["b64"] as? String, let data = Data(base64Encoded: b64) else { return }
-                let name = ((d["name"] as? String) ?? "trip.mp4").replacingOccurrences(of: "/", with: "-")
-                let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-                try? data.write(to: url, options: .atomic)
+                // sent in pieces: begin -> chunk... -> end
+                guard let d = message.body as? [String: Any], let op = d["op"] as? String, let id = d["id"] as? String else { return }
+                switch op {
+                case "begin":
+                    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("share", isDirectory: true)
+                    try? FileManager.default.removeItem(at: dir)          // clear out old videos
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    let name = ((d["name"] as? String) ?? "trip.mp4").replacingOccurrences(of: "/", with: "-")
+                    let url = dir.appendingPathComponent(name)
+                    FileManager.default.createFile(atPath: url.path, contents: nil)
+                    shareOut = (id, url, try? FileHandle(forWritingTo: url), true)
+                    return
+                case "chunk":
+                    guard let s = shareOut, s.id == id, s.ok, let b64 = d["b64"] as? String, let data = Data(base64Encoded: b64), let h = s.handle else { shareOut?.ok = false; return }
+                    do { try h.write(contentsOf: data) } catch { shareOut?.ok = false }
+                    return
+                case "end": break
+                default: return
+                }
+                guard let s = shareOut, s.id == id else { return }
+                shareOut = nil
+                try? s.handle?.close()
+                guard s.ok else { cfLog("share file failed"); return }
+                let url = s.url
                 DispatchQueue.main.async { [weak self] in
                     guard let web = self?.webView, let root = web.window?.rootViewController else { return }
                     var top = root; while let p = top.presentedViewController { top = p }

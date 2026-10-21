@@ -200,6 +200,18 @@
       await sb.rpc("update_share", { p_id: sh.id, p_secret: sh.secret, p_lat: pos?.lat ?? null, p_lon: pos?.lon ?? null, p_speed: pos?.speed ?? null, p_heading: pos?.heading ?? null, p_tonight: tonight || null, p_ended: ended });
     },
 
+    // ---- shared trip plans (anyone with the link can view; no sign-in needed)
+    async createPlan(data) {
+      if (!sb) throw new Error("offline");
+      const { data: id, error } = await sb.rpc("create_plan", { p_data: data }); fail(error);
+      return Array.isArray(id) ? id[0] : id;
+    },
+    // ---- feedback from inside the app
+    async sendFeedback(message, contact, kind, device) {
+      if (!sb) throw new Error("offline");
+      const { error } = await sb.rpc("send_feedback", { p_message: message, p_contact: contact || null, p_kind: kind || null, p_device: device || {} }); fail(error);
+    },
+
     // ---- phone signal at camps
     async signalFor(key) {
       if (!sb) return [];

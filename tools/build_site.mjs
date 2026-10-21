@@ -6,7 +6,7 @@ const out = path.join(root, "_site");
 fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(out, { recursive: true });
 const copy = (from, to = path.basename(from)) => fs.cpSync(path.join(root, from), path.join(out, to), { recursive: true });
 for (const f of fs.readdirSync(path.join(root, "site"))) copy(`site/${f}`, f);
-copy("docs/cars.js"); copy("docs/icons", "icons"); copy("docs/share.html");
+copy("docs/cars.js"); copy("docs/icons", "icons"); copy("docs/share.html"); copy("docs/plan.html");
 fs.mkdirSync(path.join(out, "vendor"), { recursive: true });
 copy("docs/vendor/leaflet.min.js", "vendor/leaflet.min.js"); copy("docs/vendor/leaflet.min.css", "vendor/leaflet.min.css");
 if (fs.existsSync(path.join(root, "docs/maps.js"))) copy("docs/maps.js");

@@ -22,7 +22,7 @@ KEEP = {
     "shower", "showers", "dog", "dogs", "pets", "power_supply", "openfire", "fireplace", "campfire",
     "sanitary_dump_station", "tents", "caravans", "motorhome", "maxstay", "access", "website",
     "contact:website", "url", "phone", "contact:phone", "operator", "description", "note", "image",
-    "wikimedia_commons", "opening_hours", "is_in", "capacity", "reservation",
+    "wikimedia_commons", "opening_hours", "is_in", "capacity", "reservation", "4wd_only", "maxlength",
 }
 # Australia split into tiles (south, west, north, east) small enough for Overpass to answer
 LATS = [-44.0, -38.0, -34.0, -30.0, -26.0, -20.0, -9.0]
@@ -36,6 +36,7 @@ def query(bbox, kind="core", tries=6):
         body = f'nwr["tourism"~"^(camp_site|caravan_site)$"]({b});nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b});'
     else:  # extras: fuel, water and low clearances (kept separate so a slow server can't block the camps)
         body = (f'nwr["amenity"="fuel"]({b});node["amenity"~"^(water_point|drinking_water)$"]({b});'
+                f'node["place"~"^(city|town|village)$"]["name"]({b});'
                 f'way["maxheight"]["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|track)(_link)?$"]({b});node["barrier"="height_restrictor"]({b});')
     q = f'[out:json][timeout:180];({body});out center tags;'
     data = urllib.parse.urlencode({"data": q}).encode()
@@ -102,6 +103,7 @@ def all_elements():
         els += ohsome("amenity=sanitary_dump_station")
         els += ohsome("amenity=fuel")
         els += ohsome("amenity in (water_point, drinking_water)")
+        els += ohsome("place in (city, town, village) and name=* and type:node")
         els += ohsome("maxheight=* and (bridge=yes or tunnel=yes or barrier=height_restrictor or highway in (motorway, trunk, primary, secondary, tertiary, unclassified, residential, motorway_link, trunk_link, primary_link, secondary_link, track))")
         return els
     except Exception as ex:
@@ -148,7 +150,7 @@ def parse_height(v):
 
 
 def main(out_path):
-    camps, ramps, dumps, fuel, water, low, seen = [], [], [], [], [], [], set()
+    camps, ramps, dumps, fuel, water, low, towns, seen = [], [], [], [], [], [], [], set()
     if True:
         for el in all_elements():
             key = f"{el['type']}/{el['id']}"
@@ -172,6 +174,9 @@ def main(out_path):
                 if tags.get("access") in ("private", "no") or tags.get("drinking_water") == "no":
                     continue
                 water.append([*pt, 1 if tags.get("amenity") == "water_point" else 0])
+            elif tags.get("place") in ("city", "town", "village") and tags.get("name"):
+                # towns, so unnamed camps can be called "Free camp near Gin Gin"
+                towns.append([round(lat, 3), round(lon, 3), tags["name"][:40], {"city": 3, "town": 2}.get(tags["place"], 1)])
             elif tags.get("amenity") == "fuel":
                 nm = (tags.get("brand") or tags.get("name") or "Fuel station")[:40]
                 if tags.get("name") and tags.get("brand") and tags["brand"] not in tags["name"]:
@@ -196,7 +201,7 @@ def main(out_path):
     keep("camps", camps, FAILED_CORE, lambda r: (r[1], r[2]))
     keep("ramps", ramps, FAILED_CORE, lambda r: (r[0], r[1]))
     keep("dumps", dumps, FAILED_CORE, lambda r: (r[0], r[1]))
-    for key, rows in (("fuel", fuel), ("water", water), ("low", low)):
+    for key, rows in (("fuel", fuel), ("water", water), ("low", low), ("towns", towns)):
         keep(key, rows, FAILED_EXTRA, lambda r: (r[0], r[1]))
     if FAILED_CORE or FAILED_EXTRA:
         print(f"kept previous data for {len(FAILED_CORE)} camp tiles and {len(FAILED_EXTRA)} extra tiles", file=sys.stderr)
@@ -207,14 +212,14 @@ def main(out_path):
     out = {
         "built": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": "OpenStreetMap contributors (ODbL)",
-        "camps": camps, "ramps": ramps, "dumps": dumps, "fuel": fuel, "water": water, "low": low,
+        "camps": camps, "ramps": ramps, "dumps": dumps, "fuel": fuel, "water": water, "low": low, "towns": towns,
     }
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     tmp = out_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp, out_path)
-    print(f"{len(camps)} camps, {len(ramps)} boat ramps, {len(dumps)} dump points, {len(fuel)} fuel stations, {len(water)} water points, {len(low)} low clearances -> {out_path}", file=sys.stderr)
+    print(f"{len(camps)} camps, {len(ramps)} boat ramps, {len(dumps)} dump points, {len(fuel)} fuel stations, {len(water)} water points, {len(low)} low clearances, {len(towns)} towns -> {out_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":

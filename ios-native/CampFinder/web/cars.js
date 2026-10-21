@@ -115,11 +115,12 @@
     },
   };
 
-  function wheel(x, r = 10, y = 48.2, alloy = true) {
+  function wheel(x, r = 10, y = 48.2, alloy = true, tread = false) {
     const rim = r * (alloy ? 0.6 : 0.7), spokes = [];
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; spokes.push(`M${(x + Math.cos(a) * rim * 0.28).toFixed(1)} ${(y + Math.sin(a) * rim * 0.28).toFixed(1)} L${(x + Math.cos(a) * rim * 0.92).toFixed(1)} ${(y + Math.sin(a) * rim * 0.92).toFixed(1)}`); }
-    return `<g class="wheel"><circle cx="${x}" cy="${y}" r="${r}" fill="#1B1E1D"/>` +
-      (alloy ? `<circle cx="${x}" cy="${y}" r="${(r - 1.1).toFixed(1)}" fill="none" stroke="#33383A" stroke-width="1.6" stroke-dasharray="1.6 1.4"/>` : "") +
+    const lugs = tread ? `<circle cx="${x}" cy="${y}" r="${(r - 0.55).toFixed(1)}" fill="none" stroke="#303536" stroke-width="1.5" stroke-dasharray="1.5 1.1"/><circle cx="${x}" cy="${y}" r="${(r * 0.8).toFixed(1)}" fill="none" stroke="#0E1011" stroke-width=".6"/>` : "";
+    return `<g class="wheel"><circle cx="${x}" cy="${y}" r="${r}" fill="#1B1E1D"/>${lugs}` +
+      (alloy && !tread ? `<circle cx="${x}" cy="${y}" r="${(r - 1.1).toFixed(1)}" fill="none" stroke="#33383A" stroke-width="1.6" stroke-dasharray="1.6 1.4"/>` : "") +
       `<circle cx="${x}" cy="${y}" r="${rim.toFixed(1)}" fill="url(#cr{u})"/>` +
       `<path d="${spokes.join(" ")}" stroke="#5E686E" stroke-width="${(rim * 0.26).toFixed(1)}" stroke-linecap="round"/>` +
       `<circle cx="${x}" cy="${y}" r="${(rim * 0.3).toFixed(1)}" fill="#3A4044"/></g>`;
@@ -234,15 +235,16 @@
   }
 
   const U = 22.2;                       // drawing units per metre (a 5.4 m ute fills the frame)
-  function specSide(sp, c, rig, x0) {
+  function specSide(sp, c, rig, x0, opts = {}) {
     const X = (m) => +(x0 + m * U).toFixed(2), Y = (m) => +(58 - m * U).toFixed(2), P = (x, y) => `${X(x)} ${Y(y)}`;
     const { L, H, WB, FO, R, BL, NH, BH, WR } = sp;
     const fw = L - FO, rw = fw - WB;
-    const xws = fw + (sp.wsFwd || 0) - (sp.kind === "sedan" ? 0.1 : 0);      // windscreen base
+    // windscreen base: behind the front axle on utes and 4WDs (long bonnet), over it on vans
+    const xws = sp.kind === "van" ? fw + (sp.wsFwd || 0) : fw - (sp.wsBack ?? ({ ute: 0.42, wagon: 0.34, boxy: 0.3, suv: 0.22, sedan: 0.1 }[sp.kind] || 0));
     const xrf = xws - WR;                                                       // roof front
     const dark = shade(c, -.32), deep = "#15191A";
     const isUte = sp.kind === "ute", single = sp.cab === "single";
-    const xcb = isUte ? (single ? xws - 1.30 : sp.tray + 0.06) : 0;             // back of the cab
+    const xcb = isUte ? (single ? xws - 1.30 : sp.tray + 0.26) : 0;             // back of the cab (tub + tailgate in front of it)
     const xcr = isUte ? xcb + (sp.boxy ? 0.04 : 0.12) : 0;
     const rail = BL + 0.02;
     const rake = sp.rake || 0;
@@ -293,7 +295,7 @@
     const tl = isUte ? `<rect x="${X(0)}" y="${Y(rail - 0.04)}" width="${(0.07 * U).toFixed(1)}" height="${(0.4 * U).toFixed(1)}" rx=".7" fill="#D63A2E"/>`
       : sp.kind === "sedan" ? `<rect x="${X(0)}" y="${Y(0.98)}" width="${(0.08 * U).toFixed(1)}" height="${(0.18 * U).toFixed(1)}" rx=".7" fill="#D63A2E"/>`
       : `<rect x="${X(rake * 0.4)}" y="${Y(BL + 0.05)}" width="${(0.07 * U).toFixed(1)}" height="${(0.34 * U).toFixed(1)}" rx=".7" fill="#D63A2E"/>`;
-    const rearBumper = sp.clad ? `<rect x="${X(-0.02)}" y="${Y(0.66)}" width="${(0.42 * U).toFixed(1)}" height="${(0.2 * U).toFixed(1)}" rx="1.2" fill="#2A2F31"/><rect x="${X(-0.16)}" y="${Y(0.55)}" width="${(0.18 * U).toFixed(1)}" height="1.8" rx=".6" fill="#2A2F31"/>` : "";
+    const rearBumper = sp.clad && !isUte ? `<rect x="${X(-0.02)}" y="${Y(0.66)}" width="${(0.42 * U).toFixed(1)}" height="${(0.2 * U).toFixed(1)}" rx="1.2" fill="#2A2F31"/><rect x="${X(-0.16)}" y="${Y(0.55)}" width="${(0.18 * U).toFixed(1)}" height="1.8" rx=".6" fill="#2A2F31"/>` : "";
     // ---- arches and wheels
     const ar = R + 0.07, ax = [rw, fw];
     const archPath = (w, k) => {
@@ -315,41 +317,97 @@
       const a = isUte ? xcr + 0.15 : rake + 0.25, b = xrf - 0.1;
       extras += `<rect x="${X(a)}" y="${Y(H + 0.1)}" width="${((b - a) * U).toFixed(1)}" height="1.6" rx=".8" fill="#1E2224"/><rect x="${X(a - 0.04)}" y="${Y(H + 0.46)}" width="${((b - a + 0.08) * U).toFixed(1)}" height="${(0.36 * U).toFixed(1)}" rx="2.6" fill="#3B4045"/><rect x="${X(a)}" y="${Y(H + 0.4)}" width="${((b - a) * U).toFixed(1)}" height="1.4" rx=".7" fill="#59616A"/>`;
     }
-    const tyres = ax.map((w) => wheel(X(w), +(R * U).toFixed(1), Y(R), sp.clad)).join("");
+    if (isUte) {
+      // the tub: capped top rail, gap behind the cab, tailgate seam, tall tail lights and a step bumper
+      extras += `<path d="M${P(0.02, rail - 0.035)} L${P(xcb - 0.04, rail - 0.035)}" stroke="${shade(c, -.45)}" stroke-width="1.1" opacity=".7"/>` +
+        `<path d="M${P(xcb + 0.02, rail + 0.02)} L${P(xcb + 0.02, 0.62)}" stroke="${deep}" stroke-width="1.3" opacity=".8"/>` +
+        `<path d="M${P(0.1, rail - 0.06)} L${P(0.1, 0.62)}" stroke="${deep}" stroke-width=".6" opacity=".5"/>` +
+        `<path d="M${P(0.02, 0.86)} L${P(xcb - 0.12, 0.86)}" stroke="#fff" stroke-width=".8" opacity=".25"/>` +
+        `<path d="M${P(0.42, 0.68)} L${P(-0.06, 0.68)} L${P(-0.06, 0.52)} Q${P(-0.06, 0.48)} ${P(0, 0.48)} L${P(0.42, 0.48)} Z" fill="#2A2F31"/><path d="M${P(-0.05, 0.665)} L${P(0.38, 0.665)}" stroke="#9AA3A8" stroke-width=".9"/>`;
+    }
+    if (opts.towbar) extras += `<path d="M${P(-0.36, 0.5)} L${P(0.15, 0.5)}" stroke="#1E2224" stroke-width="2.6" stroke-linecap="round"/><circle cx="${X(-0.36)}" cy="${Y(0.56)}" r="1.5" fill="#9AA3A8"/>`;
+    const tyres = ax.map((w) => wheel(X(w), +(R * U).toFixed(1), Y(R), sp.clad, !!sp.clad && sp.kind !== "suv")).join("");
     return `<ellipse cx="${X(L / 2)}" cy="59" rx="${((L / 2 + 0.1) * U).toFixed(1)}" ry="3" fill="#000" opacity=".2"/>` +
       `<path d="${d}" fill="url(#cb{u})" stroke="${deep}" stroke-width=".7" stroke-linejoin="round"/>` +
       `<path d="M${P(0.04, BL - 0.03)} L${P(L - 0.25, NH - 0.02)}" stroke="#fff" stroke-width="1.1" opacity=".35"/>` +
       sill + glass + `<path d="${lines}" stroke="${deep}" stroke-width=".7" opacity=".45" fill="none"/>` + handles + mirror + front + tl + rearBumper + step + extras + arches + tyres;
   }
 
-  // things you tow, drawn in their own 0..120 space (hitch at x = 120)
-  function caravanSide(color) {
-    const stripe = color === COLORS.white || color === COLORS.silver ? "#2E6B43" : shade(color, -.1);
-    return `<ellipse cx="58" cy="59" rx="54" ry="3" fill="#000" opacity=".2"/>
-      <path d="M4 42 L4 13 Q4 4.5 13 4.5 L95 4.5 Q104 4.5 104 13 L104 42 Q104 46 100 46 L8 46 Q4 46 4 42 Z" fill="#F6F7F4" stroke="#15191A" stroke-width="1.3"/>
-      <path d="M4 7.5 Q4 4.5 13 4.5 L95 4.5 Q104 4.5 104 7.5 Z" fill="#E4E7E2"/>
-      <path d="M4 31 L104 31" stroke="${stripe}" stroke-width="4"/><path d="M4 36 L104 36" stroke="#F5C518" stroke-width="1.4"/>
-      <rect x="11" y="11" width="25" height="13" rx="3" fill="url(#cw{u})"/><rect x="69" y="11" width="27" height="13" rx="3" fill="url(#cw{u})"/>
-      <rect x="44" y="9.5" width="16" height="34" rx="2" fill="#ECEFEA" stroke="#15191A" stroke-width=".9"/><rect x="47" y="12.5" width="10" height="8.5" rx="1.5" fill="url(#cw{u})"/><circle cx="57" cy="29" r="1" fill="#15191A"/>
-      <rect x="20" y="2" width="16" height="3" rx="1" fill="#C9CEC8"/><rect x="74" y="2.4" width="12" height="2.4" rx="1" fill="#C9CEC8"/>
-      <path d="M104 41 L120 43.4" stroke="#15191A" stroke-width="2.6" stroke-linecap="round"/><rect x="104" y="33" width="7" height="9" rx="1" fill="#3B4045"/>
-      <path d="M66 46 A13.5 13.5 0 0 1 93 46 Z" fill="#101314"/>${wheel(72.5, 9, 48.6)}${wheel(86.5, 9, 48.6)}`;
+  // ---------------------------------------------------------------- things you tow, built from real sizes too
+  // Drawn facing right with the rear at x0; the coupling (where it meets the tow ball) is returned.
+  // An Australian off-road tourer: 20 ft body, about 2.95 m tall, tandem axles, checker plate, front boot, gas and jerry cans.
+  function caravanSide(c, x0) {
+    const X = (m) => +(x0 + m * U).toFixed(2), Y = (m) => +(58 - m * U).toFixed(2), P = (x, y) => `${X(x)} ${Y(y)}`;
+    const deep = "#15191A", Lb = 6.3, top = 2.92, bot = 0.56, hx = 7.75, hy = 0.5, R = 0.37, a1 = 2.85, a2 = 3.68;
+    const accent = c === COLORS.white || c === COLORS.silver ? "#2E3438" : c, accent2 = shade(accent, .25);
+    let s = `<ellipse cx="${X(Lb / 2 + 0.3)}" cy="59" rx="${((Lb / 2 + 0.3) * U).toFixed(1)}" ry="3" fill="#000" opacity=".2"/>`;
+    // chassis rail, A-frame drawbar, jockey wheel
+    s += `<path d="M${P(0.1, 0.5)} L${P(Lb, 0.5)} L${P(hx, hy + 0.02)}" fill="none" stroke="#202426" stroke-width="2.6" stroke-linejoin="round"/>`;
+    s += `<path d="M${P(hx - 0.55, 0.62)} L${P(hx - 0.55, 0.34)}" stroke="#2A2F31" stroke-width="1.6"/><circle cx="${X(hx - 0.55)}" cy="${Y(0.3)}" r="1.9" fill="#1B1E1D"/>`;   // jockey wheel, wound up for the drive
+    s += `<path d="M${P(hx - 0.12, hy + 0.02)} L${P(hx + 0.04, hy + 0.02)}" stroke="#3A4044" stroke-width="3.4" stroke-linecap="round"/>`;
+    // body: square at the back, curved front roof edge, slightly raked lower front
+    s += `<path d="M${P(0, bot + 0.06)} L${P(0, top - 0.12)} Q${P(0, top)} ${P(0.14, top)} L${P(Lb - 0.42, top)} Q${P(Lb - 0.04, top)} ${P(Lb, top - 0.36)} L${P(Lb, 1.3)} L${P(Lb - 0.06, bot)} L${P(0.06, bot)} Q${P(0, bot)} ${P(0, bot + 0.06)} Z" fill="#F7F8F5" stroke="${deep}" stroke-width=".8" stroke-linejoin="round"/>`;
+    s += `<path d="M${P(0.12, top - 0.05)} L${P(Lb - 0.42, top - 0.05)}" stroke="#D9DDD8" stroke-width="1.4"/>`;
+    // checker-plate stone guard along the bottom and up the front
+    s += `<path d="M${P(0.02, bot + 0.38)} L${P(Lb - 0.03, bot + 0.38)} L${P(Lb, 1.3)} L${P(Lb, bot + 0.68)} L${P(Lb - 0.06, bot)} L${P(0.06, bot)} Q${P(0.02, bot)} ${P(0.02, bot + 0.06)} Z" fill="url(#cp{u})" stroke="#5E676C" stroke-width=".5"/>`;
+    s += `<path d="M${P(Lb - 0.02, bot + 0.38)} L${P(Lb - 0.02, 1.3)}" stroke="#5E676C" stroke-width=".5"/>`;
+    // decals in your car's colour: a sweep from the front corner back along the side
+    s += `<path d="M${P(Lb, 2.05)} Q${P(Lb - 1.4, 1.98)} ${P(Lb - 2.6, 1.35)} L${P(0.02, 1.35)} L${P(0.02, 1.19)} L${P(Lb - 2.72, 1.19)} Q${P(Lb - 1.5, 1.8)} ${P(Lb, 1.85)} Z" fill="${accent}"/>`;
+    s += `<path d="M${P(Lb, 2.18)} Q${P(Lb - 1.3, 2.12)} ${P(Lb - 2.45, 1.48)} L${P(0.02, 1.48)}" fill="none" stroke="${accent2}" stroke-width="1"/>`;
+    // windows (dark, framed), entry door with its own window, hatch, awning bag
+    const win = (x1, x2, y1, y2) => `<rect x="${X(x1)}" y="${Y(y2)}" width="${((x2 - x1) * U).toFixed(1)}" height="${((y2 - y1) * U).toFixed(1)}" rx="2.2" fill="url(#cw{u})" stroke="#202426" stroke-width="1.1"/>`;
+    s += win(0.45, 1.75, 1.62, 2.38) + win(4.6, 5.85, 1.62, 2.38) + win(2.3, 2.8, 1.95, 2.38);
+    s += `<rect x="${X(3.2)}" y="${Y(2.5)}" width="${(0.66 * U).toFixed(1)}" height="${(1.88 * U).toFixed(1)}" rx="1.4" fill="#EEF0EC" stroke="#202426" stroke-width=".9"/>` + win(3.3, 3.76, 1.95, 2.38) + `<rect x="${X(3.74)}" y="${Y(1.5)}" width="1.1" height="3.2" rx=".5" fill="${deep}"/>`;
+    s += `<rect x="${X(3.24)}" y="${Y(bot - 0.02)}" width="${(0.58 * U).toFixed(1)}" height="2.6" rx=".6" fill="#3A4044"/>`;   // fold-down step
+    s += `<rect x="${X(0.5)}" y="${Y(2.8)}" width="${(4.6 * U).toFixed(1)}" height="${(0.12 * U).toFixed(1)}" rx="1.3" fill="#7E878C"/><path d="M${P(0.5, 2.74)} L${P(5.1, 2.74)}" stroke="#5E676C" stroke-width=".6"/>`;
+    // roof: air-conditioner, solar panels, hatch
+    s += `<path d="M${P(2.85, top)} L${P(2.95, top + 0.24)} L${P(3.75, top + 0.24)} L${P(3.85, top)} Z" fill="#E4E7E2" stroke="${deep}" stroke-width=".6"/>`;
+    s += `<rect x="${X(4.3)}" y="${Y(top + 0.06)}" width="${(1.3 * U).toFixed(1)}" height="1.3" fill="#24303A"/><rect x="${X(0.6)}" y="${Y(top + 0.06)}" width="${(1.3 * U).toFixed(1)}" height="1.3" fill="#24303A"/>`;
+    // rear: spare wheel edge-on, tail lights
+    s += `<rect x="${X(-0.16)}" y="${Y(1.75)}" width="${(0.16 * U).toFixed(1)}" height="${(0.76 * U).toFixed(1)}" rx="1.2" fill="#1B1E1D"/><rect x="${X(0)}" y="${Y(1.05)}" width="1.6" height="${(0.3 * U).toFixed(1)}" rx=".5" fill="#D63A2E"/>`;
+    // front boot on the A-frame, gas bottles and a jerry can
+    s += `<path d="M${P(Lb + 0.04, 0.55)} L${P(Lb + 0.04, 1.22)} L${P(Lb + 0.66, 1.22)} L${P(Lb + 0.82, 0.55)} Z" fill="url(#cp{u})" stroke="#5E676C" stroke-width=".6"/>`;
+    s += `<rect x="${X(Lb + 0.86)}" y="${Y(1.12)}" width="${(0.3 * U).toFixed(1)}" height="${(0.58 * U).toFixed(1)}" rx="2.4" fill="#E8EBE8" stroke="${deep}" stroke-width=".5"/><rect x="${X(Lb + 0.9)}" y="${Y(1.2)}" width="${(0.22 * U).toFixed(1)}" height="1.4" rx=".5" fill="#9AA3A8"/>`;
+    s += `<rect x="${X(Lb + 1.2)}" y="${Y(0.98)}" width="${(0.18 * U).toFixed(1)}" height="${(0.44 * U).toFixed(1)}" rx=".8" fill="#2E6B43" stroke="${deep}" stroke-width=".5"/>`;
+    // wheel well, mudflap, tandem off-road wheels
+    s += `<path d="M${P(a1 - R - 0.13, bot)} L${P(a1 - R - 0.13, 0.82)} Q${P(a1 - R - 0.13, 0.98)} ${P(a1 - 0.2, 0.98)} L${P(a2 + 0.2, 0.98)} Q${P(a2 + R + 0.13, 0.98)} ${P(a2 + R + 0.13, 0.82)} L${P(a2 + R + 0.13, bot)} Z" fill="#101314"/>`;
+    s += `<path d="M${P(a1 - R - 0.16, bot)} L${P(a1 - R - 0.16, 0.82)} Q${P(a1 - R - 0.16, 1.01)} ${P(a1 - 0.2, 1.01)} L${P(a2 + 0.2, 1.01)} Q${P(a2 + R + 0.16, 1.01)} ${P(a2 + R + 0.16, 0.82)} L${P(a2 + R + 0.16, bot)}" fill="none" stroke="#2A2F31" stroke-width="1.6"/>`;
+    s += wheel(X(a1), +(R * U).toFixed(1), Y(R), true, true) + wheel(X(a2), +(R * U).toFixed(1), Y(R), true, true);
+    return { svg: s, hitch: hx, top: top + 0.24 };
   }
-  function camperSide(color) {
-    return `<ellipse cx="54" cy="59" rx="46" ry="3" fill="#000" opacity=".2"/>
-      <path d="M14 21 Q14 14.5 22 14.5 L88 14.5 Q94 14.5 94 21 L94 24.5 L14 24.5 Z" fill="#5E6B4F" stroke="#15191A" stroke-width="1.2"/>
-      <path d="M22 14.5 L22 24.5 M50 14.5 L50 24.5 M80 14.5 L80 24.5" stroke="#3E4A34" stroke-width="1"/>
-      <path d="M10 24.5 L98 24.5 L98 42 Q98 46 94 46 L14 46 Q10 46 10 42 Z" fill="${shade(color, -.06)}" stroke="#15191A" stroke-width="1.3"/>
-      <path d="M10 38.5 L98 38.5 L98 42 Q98 46 94 46 L14 46 Q10 46 10 42 Z" fill="#2A2F31"/>
-      <rect x="16" y="27.5" width="16" height="9" rx="1.5" fill="#2A2F31" opacity=".85"/><rect x="74" y="27.5" width="10" height="9" rx="1.5" fill="#4E7A3A"/><rect x="86" y="27.5" width="8" height="9" rx="1.5" fill="#B8322A"/>
-      <path d="M98 40.6 L120 43.4" stroke="#15191A" stroke-width="2.6" stroke-linecap="round"/>
-      <path d="M42 46 A14 14 0 0 1 70 46 Z" fill="#101314"/>${wheel(56, 10, 48.4)}`;
+  // An off-road camper trailer: steel box, folded tent under a black cover, toolbox, jerry cans, spare on the drawbar.
+  function camperSide(c, x0) {
+    const X = (m) => +(x0 + m * U).toFixed(2), Y = (m) => +(58 - m * U).toFixed(2), P = (x, y) => `${X(x)} ${Y(y)}`;
+    const deep = "#15191A", Lb = 2.55, bot = 0.55, boxTop = 1.22, hx = 4.25, hy = 0.5, R = 0.38, ax = 1.3;
+    const body = c === COLORS.white ? "#ECEEEA" : shade(c, -.05);
+    let s = `<ellipse cx="${X(2.1)}" cy="59" rx="${(2.15 * U).toFixed(1)}" ry="3" fill="#000" opacity=".2"/>`;
+    s += `<path d="M${P(0.1, 0.5)} L${P(Lb, 0.5)} L${P(hx, hy + 0.02)}" fill="none" stroke="#202426" stroke-width="2.6" stroke-linejoin="round"/>`;
+    s += `<path d="M${P(hx - 0.45, 0.62)} L${P(hx - 0.45, 0.34)}" stroke="#2A2F31" stroke-width="1.6"/><circle cx="${X(hx - 0.45)}" cy="${Y(0.3)}" r="1.9" fill="#1B1E1D"/>`;   // jockey wheel, wound up for the drive
+    s += `<path d="M${P(hx - 0.12, hy + 0.02)} L${P(hx + 0.04, hy + 0.02)}" stroke="#3A4044" stroke-width="3.4" stroke-linecap="round"/>`;
+    // folded tent under its cover, with a roof rack and a kayak-free top
+    s += `<path d="M${P(0.04, boxTop)} L${P(0.04, 1.5)} Q${P(0.04, 1.62)} ${P(0.18, 1.62)} L${P(Lb - 0.14, 1.62)} Q${P(Lb, 1.62)} ${P(Lb, 1.5)} L${P(Lb, boxTop)} Z" fill="#2B2F31" stroke="${deep}" stroke-width=".7"/>`;
+    s += `<path d="M${P(0.2, 1.56)} L${P(Lb - 0.2, 1.56)}" stroke="#4A5155" stroke-width=".8"/><path d="M${P(0.7, 1.24)} L${P(0.7, 1.6)} M${P(1.85, 1.24)} L${P(1.85, 1.6)}" stroke="#1A1D1E" stroke-width=".8"/>`;
+    // the box
+    s += `<path d="M${P(0, bot + 0.05)} L${P(0, boxTop)} L${P(Lb, boxTop)} L${P(Lb, bot + 0.05)} Q${P(Lb, bot)} ${P(Lb - 0.05, bot)} L${P(0.05, bot)} Q${P(0, bot)} ${P(0, bot + 0.05)} Z" fill="${body}" stroke="${deep}" stroke-width=".8"/>`;
+    s += `<path d="M${P(0, bot + 0.26)} L${P(Lb, bot + 0.26)} L${P(Lb, bot)} L${P(0, bot)} Z" fill="url(#cp{u})" stroke="#5E676C" stroke-width=".4"/>`;
+    s += `<rect x="${X(0.18)}" y="${Y(1.1)}" width="${(0.7 * U).toFixed(1)}" height="${(0.26 * U).toFixed(1)}" rx="1" fill="${shade(body, -.25)}"/><rect x="${X(1.95)}" y="${Y(1.1)}" width="${(0.4 * U).toFixed(1)}" height="${(0.26 * U).toFixed(1)}" rx="1" fill="${shade(body, -.25)}"/>`;
+    s += `<rect x="${X(0)}" y="${Y(1.02)}" width="1.6" height="${(0.22 * U).toFixed(1)}" rx=".5" fill="#D63A2E"/>`;
+    // toolbox, jerry cans and the spare wheel on the drawbar
+    s += `<rect x="${X(Lb + 0.06)}" y="${Y(1.1)}" width="${(0.62 * U).toFixed(1)}" height="${(0.52 * U).toFixed(1)}" rx="1" fill="url(#cp{u})" stroke="#5E676C" stroke-width=".6"/>`;
+    s += `<rect x="${X(Lb + 0.72)}" y="${Y(1.04)}" width="${(0.18 * U).toFixed(1)}" height="${(0.44 * U).toFixed(1)}" rx=".8" fill="#2E6B43" stroke="${deep}" stroke-width=".5"/><rect x="${X(Lb + 0.92)}" y="${Y(1.04)}" width="${(0.18 * U).toFixed(1)}" height="${(0.44 * U).toFixed(1)}" rx=".8" fill="#B8322A" stroke="${deep}" stroke-width=".5"/>`;
+    s += `<rect x="${X(-0.17)}" y="${Y(1.2)}" width="${(0.17 * U).toFixed(1)}" height="${(0.74 * U).toFixed(1)}" rx="1.4" fill="#1B1E1D"/>`;   // spare on the back
+    // arch flare and the off-road wheel
+    s += `<path d="M${P(ax - R - 0.1, bot)} A${((R + 0.1) * U).toFixed(1)} ${((R + 0.1) * U).toFixed(1)} 0 0 1 ${P(ax + R + 0.1, bot)} Z" fill="#101314"/>`;
+    s += `<path d="M${P(ax - R - 0.16, bot)} L${P(ax - R - 0.1, 0.86)} Q${P(ax, 1.05)} ${P(ax + R + 0.1, 0.86)} L${P(ax + R + 0.16, bot)}" fill="#25292B"/><path d="M${P(ax - R - 0.06, bot)} A${((R + 0.06) * U).toFixed(1)} ${((R + 0.06) * U).toFixed(1)} 0 0 1 ${P(ax + R + 0.06, bot)} Z" fill="#101314"/>`;
+    s += wheel(X(ax), +(R * U).toFixed(1), Y(R), true, true);
+    return { svg: s, hitch: hx, top: 1.65 };
   }
 
   function defs(u, color) {
     const c = color;
     return `<defs><linearGradient id="cb${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(c, .32)}"/><stop offset=".38" stop-color="${c}"/><stop offset=".72" stop-color="${shade(c, -.08)}"/><stop offset="1" stop-color="${shade(c, -.3)}"/></linearGradient>` +
       `<linearGradient id="cw${u}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6E8C99"/><stop offset=".45" stop-color="#26363E"/><stop offset="1" stop-color="#0F171B"/></linearGradient>` +
+      `<pattern id="cp${u}" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="3" fill="#B9C1C5"/><rect x=".6" y="1.1" width="1.8" height=".8" rx=".4" fill="#E3E7E9"/></pattern>` +
       `<radialGradient id="cr${u}" cx=".45" cy=".4" r=".6"><stop offset="0" stop-color="#EEF1F3"/><stop offset=".7" stop-color="#A3ADB3"/><stop offset="1" stop-color="#5E686E"/></radialGradient></defs>`;
   }
 
@@ -357,15 +415,22 @@
   function side(opts = {}) {
     const u = ++uid, color = colorOf(opts.color), body = bodyFor(opts.make, opts.model, opts.rig);
     const tows = body !== "motorhome" && (opts.rig === "caravan" || opts.rig === "camper");
-    let inner = defs(u, color), w = 132;
-    const draw = (x0) => (body === "motorhome" ? carSide(body, color, opts.rig) : (() => { const sp = specFor(opts.make, opts.model, body); return specSide(sp, color, opts.rig, x0 ?? (66 - (sp.L * U) / 2)); })());
-    if (tows) {
-      inner += `<g>${opts.rig === "caravan" ? caravanSide(color) : camperSide(color)}</g><g transform="translate(118 0)">${draw(6)}</g>`;
-      w = 252;
-    } else inner += draw();
+    let inner = defs(u, color), w = 132, y0 = 0, h = 64;
+    if (body === "motorhome") inner += carSide(body, color, opts.rig);
+    else {
+      const sp = specFor(opts.make, opts.model, body);
+      if (tows) {
+        const t = opts.rig === "caravan" ? caravanSide(color, 6) : camperSide(color, 6);
+        const carX = 6 + (t.hitch + 0.36) * U;           // tow ball sits on the coupling
+        inner += `<g>${t.svg}</g>` + specSide(sp, color, opts.rig, carX, { towbar: true });
+        w = Math.ceil(carX + sp.L * U + 6);
+        const need = Math.max(sp.H + (opts.rig === "rooftop" ? 0.5 : 0.1), t.top) * U + 8;   // headroom over the tallest part
+        if (need > 58) { y0 = -Math.ceil(need - 58); h = 64 - y0; }
+      } else inner += specSide(sp, color, opts.rig, 66 - (sp.L * U) / 2);
+    }
     inner = inner.replace(/\{u\}/g, u);
-    const viewBox = `0 0 ${w} 64`;
-    return { inner, viewBox, width: w, height: 64, body, tows, svg: `<svg viewBox="${viewBox}" aria-hidden="true">${inner}</svg>` };
+    const viewBox = `0 ${y0} ${w} ${h}`;
+    return { inner, viewBox, width: w, height: h, body, tows, svg: `<svg viewBox="${viewBox}" aria-hidden="true">${inner}</svg>` };
   }
 
   // ---------------------------------------------------------------- top view (centred on 0,0, facing up)

@@ -7,6 +7,8 @@
   const R = 6371000, rad = Math.PI / 180;
   const hav = (a, b) => { const dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad; const s = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(s)); };
   const interp = (pts, x) => { for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); } return pts.at(-1)[1]; };
+  // QLD/NSW border: along the rivers past Goondiwindi and Texas, round the Granite Belt, then the ranges to Point Danger
+  const QLD_NSW = [[141, -29.0], [148.9, -29.0], [149.6, -28.8], [150.3, -28.62], [151.0, -28.9], [151.95, -28.98], [152.1, -28.65], [152.7, -28.35], [153.55, -28.17], [154, -28.17]];
   const MURRAY = [[141, -34.0], [142.16, -34.16], [143.55, -35.34], [144.75, -36.13], [146.92, -36.08], [148.2, -36.8], [150.0, -37.5]];
 
   function stateAt(lat, lon) {
@@ -15,7 +17,7 @@
     if (lon < 138) return lat > -26 ? "NT" : "SA";
     if (lon < 141) return lat > -26 ? "QLD" : "SA";
     if (lat > -35.93 && lat < -35.12 && lon > 148.76 && lon < 149.4) return "ACT";
-    const qld = lon <= 148.9 ? -29.0 : -29.0 + (lon - 148.9) * 0.1787;
+    const qld = interp(QLD_NSW, Math.min(154, Math.max(141, lon)));
     if (lat > qld) return "QLD";
     return lat < interp(MURRAY, Math.min(150, lon)) ? "VIC" : "NSW";
   }
@@ -32,15 +34,16 @@
     const startT = Date.UTC(y, 9, firstSunday(y, 9), 2) - base * 36e5;    // 2am local, first Sunday in October
     return t >= startT || t < end ? base + 1 : base;
   }
+  const tzState = (lat, lon) => { const st = stateAt(lat, lon); return st === "NSW" && lon < 142.2 && lat > -33.2 && lat < -31.2 ? "SA" : st; }; // Broken Hill keeps SA time
   function localTime(date, lat, lon) {
-    const st = stateAt(lat, lon), off = utcOffset(st, date);
+    const st = tzState(lat, lon), off = utcOffset(st, date);
     const d = new Date(date.getTime() + off * 36e5);
     let h = d.getUTCHours(); const m = d.getUTCMinutes(), pm = h >= 12;
     h = h % 12 || 12;
     return `${h}:${String(m).padStart(2, "0")} ${pm ? "pm" : "am"}`;
   }
   // minutes past local midnight, for comparing times
-  function localMinutes(date, lat, lon) { const off = utcOffset(stateAt(lat, lon), date); const d = new Date(date.getTime() + off * 36e5); return d.getUTCHours() * 60 + d.getUTCMinutes(); }
+  function localMinutes(date, lat, lon) { const off = utcOffset(tzState(lat, lon), date); const d = new Date(date.getTime() + off * 36e5); return d.getUTCHours() * 60 + d.getUTCMinutes(); }
 
   // ---------------------------------------------------------------- badges
   const KM = [[10, "First 10 km", "Your first 10 km on the road"], [100, "Century", "100 km driven"], [500, "500 Club", "500 km driven"], [1000, "1,000 km", "A thousand km of Aussie road"],

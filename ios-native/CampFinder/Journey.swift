@@ -24,7 +24,9 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
         manager.activityType = .automotiveNavigation
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters  // GPS isn't needed for a trip log
         manager.distanceFilter = 150
-        manager.pausesLocationUpdatesAutomatically = true
+        // Never let iOS pause the log at a long stop (lunch, overnight at camp): it doesn't resume by itself.
+        // The 150 m filter and 100 m accuracy keep battery use low while parked.
+        manager.pausesLocationUpdatesAutomatically = false
         if let id = UserDefaults.standard.string(forKey: "cf.journey.id") {
             journeyId = id
             share = UserDefaults.standard.dictionary(forKey: "cf.journey.share") as? [String: String]
@@ -81,6 +83,7 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
                 return p.count == 3 ? p : nil
             }
         case "status":
+            ensureRunning()
             return ["active": journeyId != nil, "id": journeyId ?? ""]
         default:
             return nil
@@ -96,6 +99,15 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
         manager.allowsBackgroundLocationUpdates = true
         manager.showsBackgroundLocationIndicator = true
         manager.startUpdatingLocation()
+    }
+
+    func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
+        if journeyId != nil { manager.startUpdatingLocation() }
+    }
+
+    /// Called when the app comes back to the front: make sure a running journey is still recording.
+    func ensureRunning() {
+        if journeyId != nil { manager.startUpdatingLocation() }
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trip plan · Camp Finder</title>
+<meta name="description" content="A road trip planned with Camp Finder: a camp for every night, fuel and sights along the way.">
+<meta name="theme-color" content="#0E5A3E">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/leaflet.min.css">
+<style>
+  :root { --sign: #0E5A3E; --gold: #F5C518; --ink: #17201C; --sub: #5B6761; --paper: #F6F7F4; --card: #fff; --hair: #E2E6E1; --free: #1F8A4C; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #E8EEEA; --sub: #9AA8A1; --paper: #101613; --card: #151C18; --hair: #26302B; --free: #4CC07E; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); background: var(--paper); }
+  #map { height: 46vh; min-height: 260px; background: #CFE0D6; }
+  main { max-width: 640px; margin: -26px auto 0; position: relative; z-index: 500; padding: 0 12px calc(30px + env(safe-area-inset-bottom, 0px)); }
+  .head { background: var(--sign); color: #fff; border-radius: 20px; padding: 18px 18px 16px; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+  .kicker { font: 800 11px/1 sans-serif; letter-spacing: .25em; color: var(--gold); }
+  h1 { margin: 8px 0 4px; font-size: 25px; line-height: 1.12; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .meta span { background: rgba(255,255,255,.14); border-radius: 999px; padding: 5px 10px; font-size: 13px; font-weight: 700; }
+  ol { list-style: none; margin: 16px 0 0; padding: 0; }
+  li.day { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--hair); }
+  .num { flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--sign); color: #fff; display: grid; place-items: center; font-weight: 900; }
+  .num.end { background: var(--gold); color: #1A1608; }
+  .day b { display: block; font-size: 16px; line-height: 1.25; }
+  .day small { display: block; color: var(--sub); font-size: 13.5px; margin-top: 3px; line-height: 1.35; }
+  .tag { display: inline-block; margin: 6px 6px 0 0; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: var(--hair); }
+  .tag.free { background: var(--free); color: #fff; }
+  .day a { color: var(--sign); font-weight: 700; font-size: 13.5px; text-decoration: none; }
+  @media (prefers-color-scheme: dark) { .day a { color: var(--gold); } }
+  h2 { font-size: 17px; margin: 22px 0 6px; }
+  .see { display: flex; flex-wrap: wrap; gap: 6px; }
+  .see span { background: var(--card); border: 1px solid var(--hair); border-radius: 999px; padding: 6px 10px; font-size: 13.5px; }
+  .cta { margin-top: 22px; background: var(--card); border: 1px solid var(--hair); border-radius: 18px; padding: 16px; }
+  .cta p { margin: 4px 0 12px; color: var(--sub); font-size: 14.5px; line-height: 1.4; }
+  .btn { display: inline-block; padding: 11px 16px; border-radius: 12px; background: var(--gold); color: #1A1608; font-weight: 800; text-decoration: none; }
+  .fine { color: var(--sub); font-size: 12px; margin-top: 16px; line-height: 1.45; }
+  .msg { padding: 40px 10px; text-align: center; color: var(--sub); }
+  .pin { width: 26px; height: 26px; border-radius: 8px; background: var(--sign); color: #fff; border: 2px solid #fff; display: grid; place-items: center; font: 900 13px sans-serif; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+  .pin.s { background: #fff; color: var(--sign); border-color: var(--sign); }
+  .pin.e { background: var(--gold); color: #1A1608; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<main id="main"><div class="head"><div class="kicker">CAMP FINDER · TRIP PLAN</div><h1 id="title">Loading the trip…</h1><div class="meta" id="meta"></div></div><div id="body"></div></main>
+<script src="vendor/leaflet.min.js"></script>
+<script>
+(() => {
+  const URL_ = "https://cesprkqwzmcioeydxsms.supabase.co", KEY = "sb_publishable_VIMVz7yyvc5-GR_v1aQmwg_oBtMIju0";
+  const id = location.hash.slice(1);
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const map = L.map("map", { zoomControl: false, attributionControl: true }).setView([-25.5, 134], 4);
+  const stadia = /(^|\.)gonelappin\.au$/.test(location.hostname);
+  L.tileLayer(stadia ? "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png" : "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 18, attribution: stadia ? "© Stadia Maps © OpenMapTiles © OpenStreetMap" : "© OpenStreetMap contributors" }).addTo(map);
+  const pin = (cls, txt) => L.divIcon({ className: "", html: `<div class="pin ${cls}">${txt}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+  const RIG = { tent: "Tent", rooftop: "Rooftop tent", camper: "Camper trailer", caravan: "Caravan", motorhome: "Motorhome" };
+  const AM = { toilets: "Toilets", water: "Water", showers: "Showers", dogs: "Dogs OK", power: "Power", fires: "Fires OK" };
+  const fail = (t) => { $("#title").textContent = t; $("#body").innerHTML = `<p class="msg"><a class="btn" href="./">About Camp Finder</a></p>`; };
+  async function load() {
+    if (!id) return fail("This link is missing its trip code.");
+    let p = null;
+    try {
+      const r = await fetch(`${URL_}/rest/v1/rpc/get_plan`, { method: "POST", headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_id: id }) });
+      p = r.ok ? await r.json() : null;
+    } catch { return fail("Couldn't load the trip. Check your connection."); }
+    if (!p || !p.from) return fail("This trip plan has expired or doesn't exist.");
+    const title = `${p.from.name} to ${p.to.name}`;
+    document.title = `${title} · Camp Finder`;
+    $("#title").textContent = title;
+    const leave = p.leave ? new Date(p.leave + "T00:00").toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" }) : "";
+    $("#meta").innerHTML = [`${p.days} days`, `${(p.km || 0).toLocaleString("en-AU")} km`, p.hours ? `${p.hours} h driving` : "", RIG[p.rig] || "", leave ? `Leaving ${leave}` : "", p.cost ? `About $${p.cost.toLocaleString("en-AU")}` : ""].filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join("");
+    if (p.line?.length > 1) {
+      const pl = L.polyline(p.line, { color: "#fff", weight: 8, opacity: .9 }).addTo(map);
+      L.polyline(p.line, { color: "#0E5A3E", weight: 4.5 }).addTo(map);
+      map.fitBounds(pl.getBounds(), { padding: [24, 24] });
+    }
+    L.marker([p.from.lat, p.from.lon], { icon: pin("s", "▶") }).addTo(map);
+    L.marker([p.to.lat, p.to.lon], { icon: pin("e", "★") }).addTo(map);
+    (p.nights || []).forEach((n, i) => L.marker([n.lat, n.lon], { icon: pin("", i + 1), title: n.name }).addTo(map));
+    const days = (p.nights || []).map((n, i) => `<li class="day"><div class="num">${i + 1}</div><div>
+        <small>Day ${n.day}${n.km ? ` · ${n.km} km` : ""}</small>
+        <b>${esc(n.name)}</b>
+        <div>${n.cost === "free" ? `<span class="tag free">Free</span>` : n.fee ? `<span class="tag">~$${n.fee}</span>` : ""}${n.stay > 1 ? `<span class="tag">${n.stay} nights</span>` : ""}${(n.a || []).filter((k) => AM[k]).map((k) => `<span class="tag">${AM[k]}</span>`).join("")}</div>
+        <a href="https://maps.apple.com/?daddr=${n.lat},${n.lon}&q=${encodeURIComponent(n.name)}" target="_blank" rel="noopener">Open in Maps</a>
+      </div></li>`).join("");
+    $("#body").innerHTML = `<ol><li class="day"><div class="num end" style="background:#fff;color:#0E5A3E;border:2px solid #0E5A3E">▶</div><div><small>Start</small><b>${esc(p.from.name)}</b></div></li>${days}<li class="day"><div class="num end">★</div><div><small>Day ${p.days}</small><b>${esc(p.to.name)}</b></div></li></ol>
+      ${p.see?.length ? `<h2>Worth stopping for</h2><div class="see">${p.see.map((x) => `<span>${esc(x.emoji || "📍")} ${esc(x.name)}</span>`).join("")}</div>` : ""}
+      <div class="cta"><b>Planned with Camp Finder</b><p>Free camps for every night of your trip, fuel checks for your rig and the sights worth the detour. Free for iPhone.</p><a class="btn" href="./#beta">Get Camp Finder</a></div>
+      <p class="fine">Camp details are a guide only. Camps close and rules change, so check the signs and local rules when you arrive. Map data © OpenStreetMap contributors.</p>`;
+  }
+  load();
+})();
+</script>
+</body>
+</html>

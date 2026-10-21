@@ -718,7 +718,17 @@ a { color: inherit; }
 .alerts { border: 1.5px solid var(--hair); border-radius: 18px; padding: 14px; margin: 0 0 14px; background: var(--sheet); }
 .al-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .al-head b { font: 900 16px var(--display); }
-.al { display: flex; gap: 10px; padding: 9px 10px; border-radius: 12px; margin-top: 6px; background: var(--well); }
+.al { display: block; padding: 8px 10px; border-radius: 12px; margin-top: 6px; background: var(--well); }
+.al summary { display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; }
+.al summary::-webkit-details-marker, .al-more summary::-webkit-details-marker { display: none; }
+.al summary b { flex: 1; }
+.al summary::after { content: "›"; font-size: 20px; color: var(--sub); transition: transform .2s; }
+.al[open] summary::after { transform: rotate(90deg); }
+.al > small { display: block; margin: 6px 0 2px 34px; }
+.al-more > summary { list-style: none; cursor: pointer; margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--sign); }
+.al-more.links > summary { color: var(--sub); font-weight: 600; }
+.al-more > summary::before { content: "+ "; }
+.al-more[open] > summary::before { content: "− "; }
 .al.lvl3 { background: #FDE2DD; } .al.lvl2 { background: #FFF1CC; } .al.lvl1 { background: #EEF3FF; }
 @media (prefers-color-scheme: dark) { .al.lvl3 { background: #4A2420; } .al.lvl2 { background: #3F3517; } .al.lvl1 { background: #1F2A40; } }
 .al-ic { font-size: 20px; line-height: 1.2; }
@@ -1116,3 +1126,30 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .bx-bar i { display: block; height: 100%; background: #F5C518; border-radius: 6px; }
 .bx-hero p { margin: 0; font-size: 14px; color: rgba(255,255,255,.88); }
 .bx-hero p b { color: #fff; }
+
+/* stay an extra night */
+.stay-more { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 2px; padding: 7px 12px; border-radius: 999px; border: 1.5px dashed var(--hair); background: none; color: var(--ink); font-family: inherit; font-weight: 700; font-size: 13.5px; cursor: pointer; }
+.stay-more:disabled { opacity: .45; }
+.stay-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; padding: 6px 6px 6px 12px; border-radius: 14px; background: #E5F3EA; font-size: 13.5px; }
+.stay-row span { flex: 1; }
+.st-step { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--sheet); font: 800 18px/1 var(--display); color: var(--ink); cursor: pointer; }
+.st-step:disabled { opacity: .4; }
+@media (prefers-color-scheme: dark) { .stay-row { background: #1D3A2B; } }
+.pill i { font-style: normal; }
+/* compact trip-essentials card */
+.guide-card.slim { display: flex; align-items: center; gap: 12px; }
+.guide-card.slim .gc-main { flex: 1; min-width: 0; }
+.guide-card.slim .btn { flex: none; padding: 0 14px; }
+
+/* send feedback */
+.fb-card { display: flex; align-items: center; gap: 12px; width: 100%; margin: 0 0 14px; padding: 14px; border: none; border-radius: 18px; background: var(--sign); color: var(--sign-ink); text-align: left; font: inherit; cursor: pointer; }
+.fb-card > span:nth-child(2) { flex: 1; }
+.fb-card b { display: block; font: 800 16px var(--display); }
+.fb-card small { opacity: .9; font-size: 13px; }
+.fb-ic { font-size: 26px; }
+.fb-form { display: grid; gap: 10px; }
+.fb-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-form textarea, .fb-form input[type=email] { width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 14px; border: 1.5px solid var(--hair); background: var(--sheet); color: var(--ink); -webkit-user-select: text; user-select: text; }
+.field-lab { font-weight: 700; font-size: 14px; }
+.linkish { border: none; background: none; padding: 0; font: inherit; color: var(--sign); font-weight: 700; text-decoration: underline; cursor: pointer; }
+@media (prefers-color-scheme: dark) { .linkish { color: var(--free); } }
