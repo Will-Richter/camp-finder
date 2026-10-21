@@ -1915,6 +1915,7 @@
       };
       await idb.put(pack);
       toast(`Saved for offline: ${pack.camps.length} camps and directions`);
+      refreshOfflinePill?.();
       btn.classList.add("is-on");
     } catch { toast("Couldn't save the download. Check your phone's storage."); }
     finally { btn.disabled = false; }
@@ -2958,6 +2959,88 @@
   renderDiscover();
   ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { if (viaStops.length) { viaStops = []; renderVia(); } }));
 
+  // ================================================================ first-time sign in
+  function showLogin() {
+    return new Promise((resolve) => {
+      const C = window.CFCloud, w = $("#login");
+      if (!C?.enabled || C.signedIn() || store.get("cf-login-seen", false)) return resolve();
+      w.hidden = false; w.classList.remove("out");
+      const msg = $("#lgMsg");
+      const finish = async (signedIn) => {
+        store.set("cf-login-seen", true);
+        w.classList.add("out"); await sleep(animOn() ? 560 : 0); w.hidden = true;
+        if (signedIn) { await afterSignIn(); toast("You're signed in. Welcome!"); }
+        resolve();
+      };
+      $("#lgSend").onclick = async () => {
+        const email = $("#lgEmail").value.trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = "Enter your email address"; return; }
+        $("#lgSend").disabled = true; msg.innerHTML = `<span class="spinner"></span>Sending`;
+        try {
+          await C.sendCode(email);
+          msg.textContent = ""; $("#lgStep1").hidden = true; $("#lgStep2").hidden = false;
+          $("#lgSent").innerHTML = `We've sent a sign-in link to <b>${esc(email)}</b>. Open it on this phone and tap <b>Log In</b>.`;
+        } catch (e) { msg.textContent = /rate|seconds/i.test(e.message) ? "Too many emails just now. Wait a minute and try again." : "Couldn't send the email. Check your signal and try again."; }
+        finally { $("#lgSend").disabled = false; }
+      };
+      $("#lgVerify").onclick = async () => {
+        try { await C.verifyCode($("#lgEmail").value.trim(), $("#lgCode").value.trim()); finish(true); }
+        catch { msg.textContent = "That code didn't work. Check it, or send a new link."; }
+      };
+      $("#lgBack").onclick = () => { $("#lgStep2").hidden = true; $("#lgStep1").hidden = false; msg.textContent = ""; };
+      $("#lgSkip").onclick = () => finish(false);
+      $("#lgTerms").onclick = () => { w.hidden = true; openLegal("terms"); const back = () => { w.hidden = false; $("#detailClose").removeEventListener("click", back); }; $("#detailClose").addEventListener("click", back); };
+      $("#lgPrivacy").onclick = () => { w.hidden = true; openLegal("privacy"); const back = () => { w.hidden = false; $("#detailClose").removeEventListener("click", back); }; $("#detailClose").addEventListener("click", back); };
+      // tapping the email link while this screen is open
+      window.addEventListener("cf-auth-link", (e) => { if (!w.hidden && e.detail.ok) finish(true); });
+    });
+  }
+
+  // ================================================================ offline hub
+  async function offlineSummary() {
+    let packs = [];
+    try { packs = await idb.all(); } catch {}
+    const info = campDB.info();
+    return { packs, info, trips: packs.filter((p) => p.type === "trip").length, areas: packs.filter((p) => p.type === "area").length };
+  }
+  async function refreshOfflinePill() {
+    const s = await offlineSummary();
+    $("#offlinePill").classList.toggle("ready", s.packs.length > 0);
+    $("#offlinePill span").textContent = s.packs.length ? `Offline · ${s.packs.length}` : "Offline";
+    if ($("#stOffline")) $("#stOffline").textContent = `${s.info ? `${s.info.count.toLocaleString("en-AU")} camps are always saved on your phone. ` : ""}${s.trips} trip${s.trips === 1 ? "" : "s"} and ${s.areas} area${s.areas === 1 ? "" : "s"} downloaded.`;
+  }
+  async function openOffline() {
+    const s = await offlineSummary();
+    const built = s.info ? new Date(s.info.built).toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : "";
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Offline use</h2><p class="d-kind">Get ready before you lose signal</p>
+      <div class="off-status">
+        <div><span class="ok">✅</span><span><b>${s.info ? s.info.count.toLocaleString("en-AU") : "All"} camps across Australia</b><small>Always on your phone, with fuel, water and dump points. Updated ${esc(built)}.</small></span></div>
+        <div><span class="ok">${s.trips ? "✅" : "⬜"}</span><span><b>${s.trips ? `${s.trips} trip${s.trips > 1 ? "s" : ""} downloaded` : "No trips downloaded yet"}</b><small>A downloaded trip keeps your route, turn-by-turn directions, camps and fuel stops.</small></span></div>
+        <div><span class="ok">${s.areas ? "✅" : "⬜"}</span><span><b>${s.areas ? `${s.areas} area${s.areas > 1 ? "s" : ""} downloaded` : "No areas downloaded yet"}</b><small>Every camp in the part of the map you choose, with its details.</small></span></div>
+      </div>
+      <div class="off-actions">
+        ${plan ? `<button class="cta" type="button" id="offTrip">${icon("download")}Download this trip: ${esc(short(plan.from.name))} to ${esc(short(plan.to.name))}</button>` : `<p class="help">Plan a trip first, then come back here to download it.</p>`}
+        <button class="btn" type="button" id="offArea">${icon("download")}Download the area on the map</button>
+      </div>
+      <h3 class="h2">Your downloads</h3>
+      <ul class="list" id="offList"></ul>
+      <p class="caveat">Without signal the map background shows only places you've already looked at, and Google photos need signal. Camp details, directions you've downloaded and your journey recording all work offline.</p>
+    </div>`);
+    const list = $("#offList");
+    const packs = s.packs.sort((a, b) => b.created.localeCompare(a.created));
+    list.innerHTML = packs.length ? packs.map((p) => `<li class="trip-item"><b>${esc(p.name)}</b><span class="help">${p.type === "trip" ? "Trip" : "Area"} · ${p.camps.length} camps · ${sizeOf(p)}</span><span class="row">${p.type === "trip" ? `<button class="btn" data-open-pack="${esc(p.id)}" type="button">Open</button>` : `<button class="btn" data-show-pack="${esc(p.id)}" type="button">Show</button>`}<button class="icon-btn" data-del-pack="${esc(p.id)}" type="button" aria-label="Delete download">${icon("close")}</button></span></li>`).join("") : `<li class="empty">Nothing downloaded yet.</li>`;
+    list.addEventListener("click", (e) => { const b = e.target.closest("[data-open-pack],[data-show-pack],[data-del-pack]"); if (!b) return; const ul = $("#offlinePacks"); ul.innerHTML = list.innerHTML; ul.querySelector(`[${[...b.attributes].find((a) => a.name.startsWith("data-")).name}="${CSS.escape(Object.values(b.dataset)[0])}"]`)?.click(); setTimeout(() => { refreshOfflinePill(); if (!$("#detail").hidden && $("#offList")) openOffline(); }, 300); });
+    $("#offTrip")?.addEventListener("click", async (e) => { e.currentTarget.disabled = true; e.currentTarget.innerHTML = `<span class="spinner"></span>Downloading directions and camps`; await saveTripOffline(); refreshOfflinePill(); openOffline(); });
+    $("#offArea").addEventListener("click", async () => {
+      closeDetail();
+      if (map.getZoom() < CFG.exploreMinZoom) { setView("explore"); toast("Zoom in on the area you want, then tap Download area", 4000); return; }
+      setView("explore"); await loadExplore(); await saveAreaOffline(); refreshOfflinePill();
+    });
+  }
+  $("#offlinePill").addEventListener("click", openOffline);
+  $("#stOfflineOpen").addEventListener("click", openOffline);
+  refreshOfflinePill();
+
   function openHelp() {
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">How to use Camp Finder</h2><p class="d-kind">Four easy steps</p>
       <ol class="help-list">
@@ -3063,6 +3146,7 @@
     await sleep(animOn() ? 880 : 0);
     sp.classList.add("gone");
     moveInk();
+    if (first) await showLogin();
     if (settings.welcomeEveryTime || !store.get("cf-welcomed", false)) showWelcome();
   }
   playIntro(true);

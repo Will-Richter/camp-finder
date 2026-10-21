@@ -881,3 +881,46 @@ a { color: inherit; }
 .sf-body { padding: 0 16px 16px; }
 .motion .set-fold[open] .sf-body { animation: rise .35s var(--ease-out) both; }
 .simple .set-fold > summary { padding: 20px 16px; font-size: 20px; }
+
+/* =================================================================== first-time sign in */
+.login { position: fixed; inset: 0; z-index: 4950; display: flex; align-items: flex-end; justify-content: center; color: #fff; overflow: hidden;
+  background: linear-gradient(180deg, #0B4A33 0%, #0E5A3E 45%, #2E6B43 70%, #B8693A 100%); }
+.lg-bg { position: absolute; inset: 0; background:
+  radial-gradient(60% 40% at 50% 100%, rgba(255,214,120,.55), transparent 70%),
+  radial-gradient(2px 2px at 20% 18%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 70% 12%, rgba(255,255,255,.6), transparent),
+  radial-gradient(1.5px 1.5px at 85% 30%, rgba(255,255,255,.5), transparent), radial-gradient(2px 2px at 40% 8%, rgba(255,255,255,.6), transparent); }
+.login.out { animation: wlOut .55s cubic-bezier(.7, 0, .3, 1) forwards; }
+.lg-card { position: relative; width: min(100%, 460px); padding: 28px 24px calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.motion .lg-card > * { animation: rise .6s var(--ease-out) both; }
+.motion .lg-card > :nth-child(2) { animation-delay: .1s; } .motion .lg-card > :nth-child(n+3) { animation-delay: .2s; }
+.lg-sign { align-self: center; background: var(--gold); color: var(--gold-ink); border: 3px solid var(--gold-ink); border-radius: 10px; padding: 7px 18px 5px; box-shadow: 0 10px 30px rgba(0,0,0,.3), inset 0 0 0 3px var(--gold); margin-bottom: 14px; }
+.lg-sign small { display: block; font: 800 10.5px/1 var(--display); letter-spacing: .28em; margin-bottom: 3px; }
+.lg-sign b { display: block; font: 900 26px/1 var(--display); letter-spacing: .04em; }
+.lg-card h2 { margin: 0; font: 900 clamp(28px, 8vw, 36px)/1.05 var(--display); letter-spacing: -.01em; }
+.lg-card p { margin: 6px 0 4px; color: rgba(255,255,255,.88); font-size: 16px; line-height: 1.45; }
+.lg-card input { width: 100%; padding: 16px; border-radius: 16px; border: 0; font: 700 17px var(--display); color: #17201C; -webkit-text-fill-color: #17201C; background: #fff; margin: 10px 0; }
+.lg-card .cta { width: 100%; min-height: 56px; font-size: 17px; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+.lg-small, .lg-legal { font-size: 13px !important; color: rgba(255,255,255,.75) !important; }
+.lg-code { display: flex; gap: 8px; margin-top: 8px; }
+.lg-code input { margin: 0; }
+.lg-code .btn { flex: none; min-width: 96px; }
+.lg-link { background: none; border: 0; color: var(--gold); font: inherit; font-weight: 800; text-decoration: underline; padding: 0; }
+.lg-skip { background: rgba(255,255,255,.12); border: 0; color: #fff; font: 800 16px var(--display); padding: 14px; border-radius: 14px; margin-top: 4px; }
+.lg-msg { min-height: 1.2em; color: var(--gold) !important; font-weight: 700; }
+
+/* =================================================================== offline */
+.offline-pill { position: absolute; z-index: 1000; left: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); display: flex; align-items: center; gap: 6px; padding: 9px 13px 9px 10px;
+  border: 0; border-radius: 999px; background: var(--sheet); color: var(--ink); font: 800 14px var(--display); box-shadow: var(--float); }
+.offline-pill .ic { width: 20px; height: 20px; color: var(--sign); }
+.offline-pill.ready { background: var(--sign); color: #fff; } .offline-pill.ready .ic { color: #fff; }
+.on-journey .offline-pill { display: none; }
+.simple .offline-pill { font-size: 16px; padding: 12px 16px 12px 12px; }
+.off-status { display: grid; gap: 8px; margin: 14px 0; }
+.off-status div { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 14px; background: var(--well); }
+.off-status b { display: block; font: 800 15px var(--display); }
+.off-status small { color: var(--sub); font-size: 13px; }
+.off-status .ok { font-size: 22px; }
+.off-actions { display: grid; gap: 10px; margin: 12px 0; }
+.off-actions .cta, .off-actions .btn { width: 100%; justify-content: center; min-height: 54px; }
+@media (min-width: 900px) { .offline-pill { left: 440px; } }
+.detail-open .offline-pill { display: none; }
