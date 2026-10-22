@@ -224,6 +224,16 @@
     async stopFamily(me) { must(); const { error } = await sb.rpc("stop_family", { p_id: me.id, p_secret: me.secret }); fail(error); },
     async getFamily(code) { must(); const { data, error } = await sb.rpc("get_family", { p_code: code }); fail(error); return data || null; },
 
+    // ---- live fuel prices from the state government schemes (refreshed inside Supabase)
+    async fuelPricesIn(lat, lon, radiusM) {
+      if (!sb) return [];
+      const dLat = radiusM / 111000, dLon = radiusM / (111000 * Math.cos(lat * Math.PI / 180));
+      const since = new Date(Date.now() - 4 * 864e5).toISOString();
+      const { data, error } = await sb.from("fuel_prices").select("id,state,brand,name,address,lat,lon,prices,updated_at")
+        .gte("lat", lat - dLat).lte("lat", lat + dLat).gte("lon", lon - dLon).lte("lon", lon + dLon).gte("updated_at", since).limit(300);
+      return error ? [] : (data || []);
+    },
+
     // ---- shared trip plans (anyone with the link can view; no sign-in needed)
     async createPlan(data) {
       if (!sb) throw new Error("offline");

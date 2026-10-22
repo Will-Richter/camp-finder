@@ -969,7 +969,7 @@
   // never flashes grey while the sharp tiles load.
   const map = L.map("map", {
     zoomControl: false, attributionControl: true, preferCanvas: true, renderer: L.canvas({ padding: 0.8 }),
-    fadeAnimation: false, bounceAtZoomLimits: false, minZoom: 3, worldCopyJump: false,
+    fadeAnimation: false, bounceAtZoomLimits: false, minZoom: 3, maxZoom: 19, worldCopyJump: false,
     zoomSnap: 0, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,   // pinch zoom stops exactly where your fingers do (no snapping jump)
     maxBounds: [[-85, 70], [45, 200]], maxBoundsViscosity: 0.85, // stay around Australia (room below for the panel)
   }).setView([-26.5, 134], 4);
@@ -983,8 +983,26 @@
   const OSM = CFG.stadiaKey ? `https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png?api_key=${CFG.stadiaKey}` : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const OSM_ATTR = CFG.stadiaKey ? '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
   const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-  const streetBase = L.tileLayer(OSM, { ...backdropOpts, className: "tiles-backdrop" });
-  const street = L.tileLayer(OSM, { ...tileOpts, attribution: OSM_ATTR });
+  let streetBase = L.tileLayer(OSM, { ...backdropOpts, className: "tiles-backdrop" });
+  let street = L.tileLayer(OSM, { ...tileOpts, attribution: OSM_ATTR });
+  // Vector map (Stadia Outdoors drawn by the phone's graphics chip): smooth pinch zoom, sharp at every zoom, no squares
+  // loading in. Falls back to the picture tiles above if WebGL or the map library isn't available, or with no signal.
+  const glOK = (() => { try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); } catch { return false; } })();
+  if (CFG.stadiaKey && glOK && window.maplibregl && L.maplibreGL && !isOffline()) {
+    try {
+      const vec = L.maplibreGL({
+        style: `https://tiles.stadiamaps.com/styles/outdoors.json?api_key=${CFG.stadiaKey}`,
+        transformRequest: (url) => (/stadiamaps\.com/.test(url) && !/api_key=/.test(url) ? { url: url + (url.includes("?") ? "&" : "?") + `api_key=${CFG.stadiaKey}` } : { url }),
+        attribution: OSM_ATTR, interactive: false, attributionControl: false, fadeDuration: 0,
+      });
+      const raster = street;
+      street = vec; streetBase = L.layerGroup();   // the vector map needs no low-detail backdrop
+      // if the vector map can't load (no signal, blocked), quietly go back to the picture tiles
+      let fellBack = false;
+      const fallBack = () => { if (fellBack) return; fellBack = true; const onMap = map.hasLayer(street); if (onMap) map.removeLayer(street); street = raster; streetBase = L.tileLayer(OSM, { ...backdropOpts, className: "tiles-backdrop" }); if (onMap && !onSat) { streetBase.addTo(map); street.addTo(map); } };
+      vec.on?.("add", () => { const gl = vec.getMaplibreMap?.(); if (!gl) return; gl.on("error", (e) => { if (!gl.isStyleLoaded() || /style/i.test(String(e?.error?.message || ""))) fallBack(); }); setTimeout(() => { if (!gl.isStyleLoaded()) fallBack(); }, 12000); });
+    } catch { /* keep the picture tiles */ }
+  }
   const satBase = L.tileLayer(ESRI, { ...backdropOpts, maxNativeZoom: 8, className: "tiles-backdrop" });
   const sat = L.tileLayer(ESRI, { ...tileOpts, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" });
   streetBase.addTo(map); street.addTo(map);
@@ -1787,7 +1805,7 @@
       <div class="gallery" id="gallery">${ownPhoto ? `<a href="${esc(ownPhoto)}" target="_blank" rel="noopener"><img src="${esc(ownPhoto)}" alt="${esc(c.name)}"></a>` : ""}<div class="none" id="galleryWait"><span class="spinner"></span></div></div>
       <div class="d-pad">
         <p class="d-credit" id="photoNote"></p>
-        <div class="d-head"><div><h2 class="d-title">${esc(c.name)}</h2><p class="d-kind">${esc(metaLine(c))}</p></div>${priceTag(c)}</div>
+        <div class="d-head"><div><h2 class="d-title" data-camp="${esc(c.id)}">${esc(gNames.get(c.id) || c.name)}</h2><p class="d-kind">${esc(metaLine(c))}</p></div>${priceTag(c)}</div>
         <div class="d-actions">
           <a class="cta" href="${navUrl(c, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
           <button class="btn" id="dirBtn" type="button">${icon("route")}Directions</button>
@@ -1926,7 +1944,7 @@
   function goSignIn() { closeDetail(); $("#tab-saved")?.click(); setTimeout(() => $("#acctEmail")?.focus(), 300); }
 
   // Google Places photos (licensed; switched on by CFG.googleKey). Place IDs are kept; photo links are not.
-  const gIds = store.get("cf-gpid", {});
+  const gIds = store.get("cf-gpid2", {});   // v2: unnamed camps now matched to nearby campgrounds
   async function gfetch(url, { method = "GET", body, fieldMask } = {}) {
     const headers = { "X-Goog-Api-Key": CFG.googleKey };
     if (fieldMask) headers["X-Goog-FieldMask"] = fieldMask;
@@ -1938,17 +1956,26 @@
   async function googlePlaceId(c) {
     let id = gIds[c.id];
     if (id === undefined || (id === "" && Date.now() - (gIds[c.id + "@t"] || 0) > 14 * 864e5)) {
-      const near = c.named ? 3000 : 600;
-      const j = await gfetch("https://places.googleapis.com/v1/places:searchText", {
-        method: "POST", fieldMask: "places.id,places.location",
-        body: { textQuery: c.named ? c.name : "campground", pageSize: 3, regionCode: "AU",
-          locationBias: { circle: { center: { latitude: c.lat, longitude: c.lon }, radius: near } } },
-      });
-      // only accept a match that's actually at this camp
-      const hit = (j.places || []).find((p) => p.location && hav([c.lat, c.lon], [p.location.latitude, p.location.longitude]) <= near * 1.2);
+      let hit = null;
+      if (c.named) {
+        const j = await gfetch("https://places.googleapis.com/v1/places:searchText", {
+          method: "POST", fieldMask: "places.id,places.location",
+          body: { textQuery: c.name, pageSize: 3, regionCode: "AU", locationBias: { circle: { center: { latitude: c.lat, longitude: c.lon }, radius: 3000 } } },
+        });
+        // only accept a match that's actually at this camp
+        hit = (j.places || []).find((p) => p.location && hav([c.lat, c.lon], [p.location.latitude, p.location.longitude]) <= 3600);
+      }
+      if (!hit) {
+        // no name (or no match by name): the nearest campground or RV park Google knows right at this spot
+        const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
+          method: "POST", fieldMask: "places.id,places.location",
+          body: { includedTypes: ["campground", "rv_park"], maxResultCount: 3, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: c.lat, longitude: c.lon }, radius: c.named ? 800 : 1200 } } },
+        });
+        hit = (j.places || []).find((p) => p.location && hav([c.lat, c.lon], [p.location.latitude, p.location.longitude]) <= (c.named ? 900 : 1300));
+      }
       id = hit?.id || "";
       gIds[c.id] = id; if (!id) gIds[c.id + "@t"] = Date.now();
-      store.set("cf-gpid", gIds);
+      store.set("cf-gpid2", gIds);
     }
     return id;
   }
@@ -1961,7 +1988,8 @@
     if (!id) { const e = []; e.done = true; gCache.set(c.id, e); return []; }
     let names = gPhotoNames.get(c.id);
     if (!names) {
-      const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos" });
+      const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: (CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos") + (c.named ? "" : ",displayName") });
+      if (!c.named && det.displayName?.text) nameFromGoogle(c, det.displayName.text);
       if (det.rating) { gPlace.set(c.id, { rating: det.rating, count: det.userRatingCount || 0, reviews: det.reviews || [], uri: det.googleMapsUri || "" }); renderGoogleRating(c, gPlace.get(c.id)); }
       names = det.photos || []; gPhotoNames.set(c.id, names);
     }
@@ -1978,6 +2006,14 @@
     out.done = out.length >= names.length;
     gCache.set(c.id, out);
     return out.slice(0, limit);
+  }
+  // An unnamed camp that Google knows by name: show that name (kept only while the app is open, per Google's terms)
+  const gNames = new Map();
+  function nameFromGoogle(c, name) {
+    gNames.set(c.id, name);
+    for (const x of [findCamp(c.id), c]) if (x && !x.named) { x.name = name; x.gnamed = true; }
+    $$(`.camp-card[data-id="${CSS.escape(c.id)}"] .cc-name`).forEach((el) => (el.textContent = name));
+    const t = $(`#detailBody .d-title[data-camp="${CSS.escape(c.id)}"]`); if (t) t.textContent = name;
   }
   // "Learn more": the camp's Google Maps page when we know it, otherwise a Google search for it
   function learnUrl(c) {
@@ -2872,7 +2908,7 @@
       <h3 class="h2">Nights</h3>
       ${t.nightsList.map((n) => row(`Night ${n.i + 1}: ${esc(n.name)}${n.n > 1 ? ` × ${n.n}` : ""}`, n.v ? (n.known ? money(n.v) : "~" + money(n.v)) : "$0", esc(n.why))).join("")}
       ${t.daily ? `<h3 class="h2">Spending money</h3>${row(`${t.days} days at ${money(settings.daily)}`, money(t.daily))}` : ""}
-      <p class="caveat">Prices marked ~ are estimates from Camp Finder's price guide (updated ${esc(PRICES.updated || "regularly")}), used when a place doesn't list its price. Fuel uses live Google Maps prices where available. Always check the price when you book.</p>
+      <p class="caveat">Prices marked ~ are estimates from Camp Finder's price guide (updated ${esc(PRICES.updated || "regularly")}), used when a place doesn't list its price. Fuel uses live government price feeds (WA, NSW, TAS, QLD) and Google Maps prices where available. Always check the price when you book.</p>
       <button class="btn" type="button" id="brSettings">${icon("gear")}Change vehicle, fuel price or budget</button>
     </div>`);
     $("#brSettings").addEventListener("click", () => { setView("settings"); $$(".set-fold").slice(0, 1).forEach((d) => (d.open = true)); });
@@ -2908,19 +2944,43 @@
     return { lat: line.pts[i][0], lon: line.pts[i][1] };
   }
 
-  // Petrol stations near a point, from Google Maps (with live prices) or the built-in map data
+  // Government price schemes (WA FuelWatch, NSW/TAS FuelCheck, QLD) via Camp Finder's database: every station that has to report its prices
+  const GOV_FUEL = { petrol: ["ulp", "e10", "p95", "p98"], diesel: ["diesel", "pdiesel"], lpg: ["lpg"] };
+  const GOV_NAME = { ulp: "Unleaded 91", e10: "E10", p95: "Premium 95", p98: "Premium 98", diesel: "Diesel", pdiesel: "Premium diesel", lpg: "LPG" };
+  function govPrice(row) {
+    for (const t of GOV_FUEL[settings.fuel] || []) { const v = +row.prices?.[t]; if (v > 0.5 && v < 5) return { price: v, type: GOV_NAME[t], updated: row.updated_at, gov: true }; }
+    return null;
+  }
+  async function govStationsNear(pt, radius) {
+    if (!window.CFCloud?.fuelPricesIn || isOffline()) return [];
+    try {
+      const rows = await soon(CFCloud.fuelPricesIn(pt.lat, pt.lon, radius), 6000, []);
+      return rows.filter((r) => hav([pt.lat, pt.lon], [r.lat, r.lon]) <= radius).map((r) => ({
+        id: `gov:${r.id}`, name: r.name || r.brand || "Fuel station", brand: r.brand || "", lat: r.lat, lon: r.lon, addr: r.address || "", fuel: govPrice(r) }));
+    } catch { return []; }
+  }
+  // Petrol stations near a point: government price feeds + Google Maps (with live prices) + the built-in map data, merged
   async function stationsNear(pt, radius) {
+    const govP = govStationsNear(pt, radius);
+    let list = [];
     if (CFG.googleKey) {
       try {
         const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
           method: "POST", fieldMask: "places.id,places.displayName,places.location,places.fuelOptions,places.formattedAddress,places.googleMapsUri,places.currentOpeningHours.openNow",
-          body: { includedTypes: ["gas_station"], maxResultCount: 12, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: pt.lat, longitude: pt.lon }, radius } } },
+          body: { includedTypes: ["gas_station"], maxResultCount: 20, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: pt.lat, longitude: pt.lon }, radius } } },
         });
-        const list = (j.places || []).map((g) => ({ id: g.id, name: g.displayName?.text || "Fuel station", lat: g.location.latitude, lon: g.location.longitude, addr: g.formattedAddress || "", uri: g.googleMapsUri || "", open: g.currentOpeningHours?.openNow, fuel: priceFor(g.fuelOptions) }));
-        if (list.length) return list;
+        list = (j.places || []).map((g) => ({ id: g.id, name: g.displayName?.text || "Fuel station", lat: g.location.latitude, lon: g.location.longitude, addr: g.formattedAddress || "", uri: g.googleMapsUri || "", open: g.currentOpeningHours?.openNow, fuel: priceFor(g.fuelOptions) }));
       } catch { /* fall through to the built-in list */ }
     }
-    return campDB.fuelIn ? campDB.fuelIn(pt, radius) : [];
+    if (!list.length) list = campDB.fuelIn ? campDB.fuelIn(pt, radius) : [];
+    const gov = await govP;
+    // the government price wins (stations must report it); unmatched government stations are added
+    for (const g of gov) {
+      const m = list.find((x) => hav([x.lat, x.lon], [g.lat, g.lon]) < 150);
+      if (m) { if (g.fuel) m.fuel = g.fuel; if (!m.name || m.name === "Fuel station") m.name = g.name; m.gov = true; }
+      else list.push(g);
+    }
+    return list;
   }
   async function computeFuelStops(p) {
     const range = rangeKm(p.opts.rig) * 1000;
@@ -2956,7 +3016,7 @@
       <div class="fuel-card">
         <div class="fc-top"><div><b>${esc(o.name)}</b><small>${o.off < 400 ? "On your route" : `${km(o.off)} off your route`}${o.open === false ? " · closed now" : ""}</small></div>
           ${o.fuel ? `<div class="fc-price"><b>${money(o.fuel.price)}</b><small>${esc(settings.fuel)} /L</small></div>` : `<div class="fc-price none"><small>No price listed</small></div>`}</div>
-        <p class="fc-sub">${o.fuel ? `Updated ${agoTime(o.fuel.updated)}${litres ? ` · about ${money(o.fuel.price * litres)} to fill up` : ""}` : "Price not listed for this station"}</p>
+        <p class="fc-sub">${o.fuel ? `${o.fuel.gov ? "Official price, updated" : "Updated"} ${agoTime(o.fuel.updated)}${litres ? ` · about ${money(o.fuel.price * litres)} to fill up` : ""}` : "Price not listed for this station"}</p>
         <div class="stop-actions"><a class="btn" href="${navUrl({ lat: o.lat, lon: o.lon, name: o.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a></div>
       </div>
       ${fs.options.length > 1 ? `<details class="alt-wrap"><summary>${fs.options.length - 1} other station${fs.options.length > 2 ? "s" : ""} here ${icon("chev", "ic sm")}</summary>${fs.options.slice(1).map((x) => `<div class="alt fuel-alt"><span><b>${esc(x.name)}</b><small>${x.fuel ? `${money(x.fuel.price)}/L · ` : ""}${x.off < 400 ? "on route" : km(x.off) + " off route"}</small></span><button class="btn" type="button" data-act="fuelpick" data-f="${f}" data-id="${esc(x.id)}">Use this</button></div>`).join("")}</details>` : ""}
@@ -3187,7 +3247,7 @@
     const title = { water: "Water nearby", dump: "Dump points nearby", fuel: "Fuel nearby" }[kind];
     const go = async (from, label) => {
       let list = nearbyNeeds(kind, from);
-      if (kind === "fuel" && CFG.googleKey) { const live = await soon(stationsNear(from, 30000), 8000, []); if (live.length) list = live.map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6); }
+      if (kind === "fuel" && (CFG.googleKey || window.CFCloud?.fuelPricesIn) && !isOffline()) { const live = await soon(stationsNear(from, 30000), 8000, []); if (live.length) list = live.map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6); }
       showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${title}</h2><p class="d-kind">${esc(label)}</p>
         ${list.length ? `<ul class="need-list">${list.map((x) => `<li><div><b>${esc(x.name)}</b><small>${x.along != null && journey ? `${km(Math.max(0, x.along - project(plan.line, from).along))} ahead on your route` : `${km(x.d)} away`}${x.fuel ? ` · ${money(x.fuel.price)}/L ${esc(settings.fuel)}` : ""}</small></div><a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
           : `<p class="msg">Nothing found within about 90 km. ${kind === "water" ? "Town visitor centres, roadhouses and caravan parks usually let you fill up." : kind === "dump" ? "Caravan parks often allow dump use for a small fee." : ""}</p>`}
@@ -4383,7 +4443,7 @@
     $("#stAccount").textContent = !C?.enabled ? "Accounts aren't switched on in this version." : C.signedIn() ? `Signed in as ${C.email()}.` : "Not signed in. Sign in to rate camps, post photos and keep your trips on every device.";
     const info = campDB.info();
     $("#stData").textContent = info ? `Camp database: ${info.count.toLocaleString("en-AU")} camps, updated ${new Date(info.built).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}. Updates download automatically each week.` : "";
-    $("#stPrices").textContent = `Price guide for camps and stays updated ${PRICES.updated || "regularly"}. Fuel prices come live from Google Maps where available.`;
+    $("#stPrices").textContent = `Price guide for camps and stays updated ${PRICES.updated || "regularly"}. Fuel prices come live from the state government price schemes and Google Maps where available.`;
     renderVehicleSummary();
   }
   function renderVehicleSummary() {
