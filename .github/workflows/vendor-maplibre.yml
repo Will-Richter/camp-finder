@@ -1,0 +1,34 @@
+name: Vendor map libraries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download MapLibre GL and the Leaflet bridge
+        run: |
+          set -e
+          mkdir -p /tmp/v && cd /tmp/v
+          npm pack maplibre-gl@4.7.1 @maplibre/maplibre-gl-leaflet@0.0.22
+          for f in *.tgz; do mkdir -p "${f%.tgz}" && tar -xzf "$f" -C "${f%.tgz}"; done
+          ls -R | head -50
+          cd "$GITHUB_WORKSPACE"
+          for d in docs/vendor ios-native/CampFinder/web/vendor; do
+            cp /tmp/v/maplibre-gl-4.7.1/package/dist/maplibre-gl.js "$d/maplibre-gl.js"
+            cp /tmp/v/maplibre-gl-4.7.1/package/dist/maplibre-gl.css "$d/maplibre-gl.css"
+            cp /tmp/v/maplibre-maplibre-gl-leaflet-0.0.22/package/leaflet-maplibre-gl.js "$d/leaflet-maplibre-gl.js"
+          done
+          ls -la docs/vendor
+      - name: Commit
+        run: |
+          git config user.name "camp-data-bot"
+          git config user.email "camp-data-bot@users.noreply.github.com"
+          git add docs/vendor ios-native/CampFinder/web/vendor
+          git diff --cached --quiet || git commit -m "Vendor MapLibre GL 4.7.1 and maplibre-gl-leaflet 0.0.22"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
