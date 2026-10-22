@@ -923,12 +923,15 @@
   const map = L.map("map", {
     zoomControl: false, attributionControl: true, preferCanvas: true, renderer: L.canvas({ padding: 0.8 }),
     fadeAnimation: false, bounceAtZoomLimits: false, minZoom: 3, worldCopyJump: false,
-    zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
-    maxBounds: [[-85, 70], [45, 200]], maxBoundsViscosity: 1, // stay around Australia (room below for the panel)
+    zoomSnap: 0, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,   // pinch zoom stops exactly where your fingers do (no snapping jump)
+    maxBounds: [[-85, 70], [45, 200]], maxBoundsViscosity: 0.85, // stay around Australia (room below for the panel)
   }).setView([-26.5, 134], 4);
+  window.__map ||= map;
   const AU = [[-43.7, 113.1], [-10.6, 153.7]];
-  const tileOpts = { maxZoom: 19, keepBuffer: 8, updateWhenZooming: false, updateWhenIdle: true };
-  const backdropOpts = { maxZoom: 19, maxNativeZoom: 7, keepBuffer: 24, updateWhenZooming: false, attribution: "" };
+  // tiles keep loading while you drag (no blank squares), and the low-detail backdrop that fills gaps is only used when
+  // zoomed out: stretched to street level it made the phone redraw enormous images and the map stuttered
+  const tileOpts = { maxZoom: 19, keepBuffer: 6, updateWhenZooming: false, updateWhenIdle: false };
+  const backdropOpts = { maxZoom: 11, maxNativeZoom: 7, keepBuffer: 4, updateWhenZooming: false, attribution: "" };
   // Map background: Stadia Maps "Outdoors" (shows tracks, terrain and national parks) when the key is set
   const OSM = CFG.stadiaKey ? `https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png?api_key=${CFG.stadiaKey}` : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const OSM_ATTR = CFG.stadiaKey ? '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
@@ -951,23 +954,29 @@
   map.on("zoomend", () => setTimeout(() => map.getContainer().classList.remove("is-zooming"), 60));
 
   // The web view can report its size late on first launch: re-measure so Australia is centred.
+  // once you've touched the map it never jumps back to Australia by itself (the keyboard opening used to trigger that)
   let userMovedMap = false;
   map.on("dragstart", () => (userMovedMap = true));
+  map.getContainer().addEventListener("touchstart", () => (userMovedMap = true), { passive: true });
+  map.getContainer().addEventListener("wheel", () => (userMovedMap = true), { passive: true });
   const fixMapSize = () => {
     const el = map.getContainer?.();
     if (el && (el.clientWidth < 100 || el.clientHeight < 100)) return; // not laid out yet
     map.invalidateSize();
     // you can zoom out to see all of Australia, but not much further
     if (map.getBoundsZoom && map.setMinZoom) { const fp = fitPad(); const pad = L.point(fp.paddingTopLeft).add(fp.paddingBottomRight); map.setMinZoom(Math.max(1.5, map.getBoundsZoom(AU, false, pad) - 0.5)); }
-    if (!plan && !userMovedMap && view === "plan" && window.innerHeight > 200) map.fitBounds(AU, fitPad());
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
+    if (!plan && !userMovedMap && !typing && view === "plan" && window.innerHeight > 200) map.fitBounds(AU, fitPad());
   };
   [60, 400, 1200, 2500].forEach((ms) => setTimeout(fixMapSize, ms));
+  // keep Australia in the space above the panel whenever the panel or screen changes size, until you move the map
+  if (window.ResizeObserver) { const ro = new ResizeObserver(() => { if (userMovedMap) return; clearTimeout(fixMapSize.t); fixMapSize.t = setTimeout(fixMapSize, 80); }); ro.observe($("#sheet")); ro.observe(map.getContainer()); }
   window.addEventListener("load", () => setTimeout(fixMapSize, 120));
-  window.addEventListener("resize", () => setTimeout(fixMapSize, 50));
+  window.addEventListener("resize", () => { clearTimeout(fixMapSize.t); fixMapSize.t = setTimeout(fixMapSize, 120); });
   const tripLayer = L.layerGroup().addTo(map);
   const legLayer = L.layerGroup().addTo(map);
   const travelLayer = L.layerGroup().addTo(map);   // the part of your route you've already driven
-  const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true });
+  const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true, animate: false });
   map.addLayer(cluster);
 
   const divIcon = (html, size) => L.divIcon({ className: "", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] });
@@ -1019,8 +1028,10 @@
     const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lon - a.lon));
     return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   }
+  let lastFixAt = 0;
   function onPosition(pos) {
     const c = pos.coords;
+    lastFixAt = Date.now();
     me = { lat: c.latitude, lon: c.longitude };
     if (c.heading != null && c.heading >= 0 && (c.speed == null || c.speed > 1)) heading = c.heading;
     else if (lastPos && hav([lastPos.lat, lastPos.lon], [me.lat, me.lon]) > 15) heading = bearing(lastPos, me);
@@ -1179,13 +1190,23 @@
   (() => { const d = new Date(); $("#leaveDate").value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   $("#detourSeg").addEventListener("change", () => ($("#detourShown").textContent = (+radio("detour") / 1000) + " km"));
 
+  // "Use my location": instant if we already know where you are, named after your town, clear when it can't
+  const myPlaceName = (p) => { const t = campDB.townNear?.(p.lat, p.lon); return t ? `${t.name} (my location)` : "My location"; };
+  let hereBusy = false;
   $("#useHere").addEventListener("click", () => {
-    const f = $("#from");
-    const set = (p) => { f.value = "My location"; f.dataset.lat = p.lat; f.dataset.lon = p.lon; $("#useHere").hidden = true; };
-    if (me) return set(me); // already know where you are
-    f.value = ""; f.placeholder = "Finding you…"; $("#useHere").textContent = "Finding you…";
-    locate((p) => { set(p); f.placeholder = "Starting from"; $("#useHere").textContent = "Use my location"; });
-    setTimeout(() => { if (!f.dataset.lat) { f.placeholder = "Starting from"; $("#useHere").textContent = "Use my location"; } }, 15000);
+    const f = $("#from"), b = $("#useHere");
+    const set = (p) => { f.value = myPlaceName(p); f.dataset.lat = p.lat; f.dataset.lon = p.lon; b.hidden = true; b.classList.remove("busy"); b.textContent = "Use my location"; f.placeholder = "Starting from"; hereBusy = false; };
+    if (me && lastFixAt && Date.now() - lastFixAt < 10 * 60000) return set(me);   // a recent fix: use it straight away
+    if (hereBusy) return;
+    if (!navigator.geolocation) return toast("Location isn't available on this phone");
+    hereBusy = true; b.classList.add("busy"); b.innerHTML = `<span class="spinner"></span>Finding you`; f.placeholder = "Finding your location…";
+    const fail = (msg) => { hereBusy = false; b.classList.remove("busy"); b.textContent = "Use my location"; f.placeholder = "Starting from"; if (me) return set(me); toast(msg); };
+    const timer = setTimeout(() => fail("Couldn't get a GPS fix. Type your town instead, or try again outside."), 15000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { clearTimeout(timer); onPosition(pos); store.set("cf-loc-ok", true); startTracking(); set(me); },
+      (err) => { clearTimeout(timer); fail(err && err.code === 1 ? "Location is turned off for Camp Finder. Turn it on in iPhone Settings → Camp Finder → Location." : "Couldn't find your location. Type your town instead."); },
+      { enableHighAccuracy: true, timeout: 14000, maximumAge: 300000 }
+    );
   });
   $("#from").addEventListener("input", () => ($("#useHere").hidden = !!$("#from").value));
   attachSuggest($("#from"), () => ($("#useHere").hidden = true));
@@ -1356,21 +1377,55 @@
     if (focusId) setTimeout(() => { const el = document.getElementById(`row-${CSS.escape(focusId)}`); el?.scrollIntoView({ block: "center" }); el?.classList.add("flash"); }, 60);
     $("#poiList").addEventListener("change", (e) => { const cb = e.target.closest("input[type=checkbox]"); if (!cb) return; cb.checked ? draft.add(cb.value) : draft.delete(cb.value); cb.closest(".poi-row").classList.toggle("on", cb.checked); updateBtn(); });
     if (CFG.googleKey) googlePois(p).then((g) => { if (!$("#poiMore")) return; $("#poiMore").textContent = g.length ? `Includes ${g.length} of the most-reviewed spots on Google Maps.` : ""; draw(); }).catch(() => { if ($("#poiMore")) $("#poiMore").textContent = ""; });
-    $("#poiApply").addEventListener("click", () => {
-      const all = poisAlong(p);
-      seeIds.clear(); draft.forEach((id) => seeIds.add(id));
-      const chosen = all.filter((x) => seeIds.has(x.id)).slice(0, 10);
-      // route past the sights you picked (a few km away counts as on the way: no detour)
-      const keep = viaStops.filter((v) => !v.poi);
-      const wasVia = new Set(viaStops.filter((v) => v.poi).map((v) => v.name));
-      const vias = [...keep.map((v) => ({ ...v, along: project(p.line, v).along })), ...chosen.filter((x) => x.off >= 1500 || wasVia.has(x.name)).map((x) => ({ name: x.name, lat: x.lat, lon: x.lon, poi: true, along: x.along }))]
-        .sort((a, b) => a.along - b.along).map(({ along, ...v }) => v);
-      viaStops = vias; renderVia();
-      closeDetail();
-      toast(chosen.length ? `Adding ${chosen.length} sight${chosen.length > 1 ? "s" : ""} to your trip` : "Sights removed");
-      $("#results").hidden = true; $("#planForm").hidden = false;
-      $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
-    });
+    $("#poiApply").addEventListener("click", () => applySights(draft));
+  }
+  // re-plan the trip so it routes past the sights you picked
+  function applySights(ids) {
+    const p = plan; if (!p) return;
+    const all = poisAlong(p);
+    seeIds.clear(); ids.forEach((id) => seeIds.add(id));
+    const chosen = all.filter((x) => seeIds.has(x.id)).slice(0, 10);
+    // a few km away counts as on the way: no detour
+    const keep = viaStops.filter((v) => !v.poi);
+    const wasVia = new Set(viaStops.filter((v) => v.poi).map((v) => v.name));
+    const vias = [...keep.map((v) => ({ ...v, along: project(p.line, v).along })), ...chosen.filter((x) => x.off >= 1500 || wasVia.has(x.name)).map((x) => ({ name: x.name, lat: x.lat, lon: x.lon, poi: true, along: x.along }))]
+      .sort((a, b) => a.along - b.along).map(({ along, ...v }) => v);
+    viaStops = vias; renderVia();
+    closeDetail();
+    toast(chosen.length ? `Adding ${chosen.length} sight${chosen.length > 1 ? "s" : ""} to your trip` : "Sights removed");
+    $("#results").hidden = true; $("#planForm").hidden = false;
+    $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
+  }
+  // One sight, opened straight from the map or the day it's on
+  async function openPoi(id) {
+    const p = plan; if (!p) return;
+    const x = poisAlong(p).find((q) => q.id === id) || POIS.find((q) => q.id === id); if (!x) return openPois();
+    const along = x.along ?? project(p.line, x).along, off = x.off ?? project(p.line, x).off;
+    const day = dayOfAlong(p, along) + 1, on = seeIds.has(x.id);
+    const detour = off < 1500 ? "Right on your route" : `${km(off)} off your route · about ${hrs((off * 2) / 22)} there and back`;
+    const learn = x.uri || `https://www.google.com/search?q=${encodeURIComponent(`${x.name} ${stateOf(x.lat, x.lon)}`)}`;
+    showDetail(`<div class="poi-detail"><div class="pd-photo" id="pdPhoto"><span class="pd-emoji">${x.emoji}</span></div>
+      <div class="d-pad" style="padding-top:14px">
+        <h2 class="d-title">${esc(x.name)}${x.star >= 3 ? ` <i class="must">Must see</i>` : ""}</h2>
+        <p class="d-kind">Day ${day} · ${detour}${x.rating ? ` · ★ ${x.rating.toFixed(1)} on Google (${x.count.toLocaleString("en-AU")})` : ""}</p>
+        <p class="pd-blurb">${esc(x.blurb || "")}</p>
+        <div class="stop-actions">
+          <button class="cta" type="button" id="pdToggle">${on ? "Remove from my trip" : "➕ Add to my trip"}</button>
+        </div>
+        <div class="stop-actions">
+          <a class="btn line" href="https://maps.apple.com/?daddr=${x.lat},${x.lon}&dirflg=d&q=${encodeURIComponent(x.name)}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
+          <a class="btn line" href="${esc(learn)}" target="_blank" rel="noopener">${icon("search")}Learn more</a>
+          <button class="btn line" type="button" id="pdAll">All sights</button>
+        </div>
+        <p class="caveat" id="pdCredit"></p>
+      </div></div>`);
+    if (window.innerWidth < 900) map.setView([x.lat, x.lon], Math.max(map.getZoom(), 10));
+    $("#pdToggle").addEventListener("click", () => { const ids = new Set(seeIds); on ? ids.delete(x.id) : ids.add(x.id); applySights(ids); });
+    $("#pdAll").addEventListener("click", () => openPois(x.id));
+    try {
+      const ph = (await soon(googlePhotos({ id: `poi:${x.id}`, name: x.name, named: true, lat: x.lat, lon: x.lon }, 1), 8000, []))[0];
+      if (ph && $("#pdPhoto")) { $("#pdPhoto").innerHTML = `<img src="${esc(ph.src)}" alt="">`; $("#pdCredit").textContent = `Photo: ${ph.credit}`; }
+    } catch { /* the emoji stays */ }
   }
 
   // ---- Arrive before dark: sunset at each night's camp and the time to leave by
@@ -1483,7 +1538,7 @@
     p.picks.forEach((pk, i) => { if (pk.camp) campMarker(pk.camp, { night: true, label: String(i + 1) }).addTo(tripLayer); });
     for (const poi of poisAlong(p).slice(0, 40)) {
       const m = L.marker([poi.lat, poi.lon], { icon: divIcon(`<div class="mk-poi${seeIds.has(poi.id) ? " on" : ""}">${poi.emoji}</div>`, [30, 30]), title: poi.name, zIndexOffset: 500 });
-      m.on("click", () => openPois(poi.id)); m.addTo(tripLayer);
+      m.on("click", () => openPoi(poi.id)); m.addTo(tripLayer);
     }
     map.fitBounds(line.getBounds(), fitPad());
     try { if (journey) drawTravelled(); } catch { /* journey not set up yet while the app starts */ }
@@ -1511,7 +1566,7 @@
     }
     if (b?.dataset.act === "leg") { showLeg(+b.dataset.i); return; }
     if (b?.dataset.act === "pois") { openPois(); return; }
-    if (b?.dataset.poi) { openPois(b.dataset.poi); return; }
+    if (b?.dataset.poi) { openPoi(b.dataset.poi); return; }
     if (b?.dataset.act === "fuelpick") { const fs = plan.fuel[+b.dataset.f]; const o = fs.options.find((x) => x.id === b.dataset.id); fs.options = [o, ...fs.options.filter((x) => x !== o)]; renderItinerary(); renderBudget(); return; }
     if (b?.dataset.act === "staypick") { const pk = plan.picks[+b.dataset.i]; const o = pk.refresh.options.find((x) => x.id === b.dataset.id); pk.refresh.options = [o, ...pk.refresh.options.filter((x) => x !== o)]; renderItinerary(); renderBudget(); return; }
     if (b?.dataset.act === "camphere") { const pk = plan.picks[+b.dataset.i]; pk.refresh = null; renderItinerary(); renderBudget(); toast(`Night ${+b.dataset.i + 1}: camping instead`); return; }
@@ -2624,7 +2679,7 @@
   const DEFAULT_PRICE = { diesel: 2.75, petrol: 2.30, lpg: 1.20 };
   const settings = Object.assign({
     make: "", model: "", fuel: "diesel", use: 10.5, tank: 80, prices: { ...DEFAULT_PRICE }, tow: 30,
-    campUnknown: 35, daily: 0, maxKm: 500, anim: true, follow: false, sat: false, welcomeEveryTime: true,
+    campUnknown: 35, daily: 0, maxKm: 500, anim: true, follow: false, sat: false, welcomeAlways: false,
   }, store.get("cf-settings", {}));
   const saveSettings = () => store.set("cf-settings", settings);
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -3914,7 +3969,7 @@
     else if (!$("#from").dataset.lat) {
       const f = $("#from");
       const here = me || await new Promise((res) => { locate((p) => res(p)); setTimeout(() => res(null), 12000); });
-      if (here) { f.value = "My location"; f.dataset.lat = here.lat; f.dataset.lon = here.lon; $("#useHere").hidden = true; }
+      if (here) { f.value = myPlaceName(here); f.dataset.lat = here.lat; f.dataset.lon = here.lon; $("#useHere").hidden = true; }
       else { voiceResult("I couldn't find where you are. Say where you're starting from too, like \"Bundaberg to Cairns\".", false); return; }
     }
     if (okTo && okFrom) {
@@ -4096,14 +4151,16 @@
   ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); if (viaStops.length) { viaStops = []; renderVia(); } }));
 
   // ================================================================ first-time sign in
-  function showLogin() {
+  // shows every time the app opens until you're signed in (Skip just closes it for now)
+  async function showLogin() {
+    const C = window.CFCloud;
+    if (C?.enabled && C.whenReady) await Promise.race([C.whenReady(), sleep(2500)]);
     return new Promise((resolve) => {
-      const C = window.CFCloud, w = $("#login");
-      if (!C?.enabled || C.signedIn() || store.get("cf-login-seen", false)) return resolve();
+      const w = $("#login");
+      if (!C?.enabled || C.signedIn()) return resolve();
       w.hidden = false; w.classList.remove("out");
       const msg = $("#lgMsg");
       const finish = async (signedIn) => {
-        store.set("cf-login-seen", true);
         w.classList.add("out"); await sleep(animOn() ? 560 : 0); w.hidden = true;
         if (signedIn) { await afterSignIn(); toast("You're signed in. Welcome!"); }
         resolve();
@@ -4253,7 +4310,7 @@
     $("#stCamp").value = settings.campUnknown; $("#stDaily").value = settings.daily || ""; $("#stMaxKm").value = settings.maxKm;
     $("#stHeight").value = settings.height || RIG_HEIGHT[prefs.rig] || ""; $("#stLength").value = settings.length || "";
     $("#stDog").checked = !!settings.dog; $("#stCampAlerts").checked = !!settings.campAlerts;
-    $("#stWelcomeEvery").checked = settings.welcomeEveryTime;
+    $("#stWelcomeEvery").checked = !!settings.welcomeAlways;
     const mp = $(`#modePick input[value="${settings.simple ? "simple" : "full"}"]`); if (mp) mp.checked = true; $("#stAnim").checked = settings.anim; $("#stFollow").checked = settings.follow; $("#stSat").checked = settings.sat;
     const C = window.CFCloud;
     $("#stAccount").textContent = !C?.enabled ? "Accounts aren't switched on in this version." : C.signedIn() ? `Signed in as ${C.email()}.` : "Not signed in. Sign in to rate camps, post photos and keep your trips on every device.";
@@ -4284,7 +4341,7 @@
     num("#stHeight", "height", 1.5, 4.6); num("#stLength", "length", 3, 30);
     $("#stDog").addEventListener("change", (e) => { settings.dog = e.target.checked; saveSettings(); toast(settings.dog ? "Dog mode on: plan a trip to see dog-friendly camps" : "Dog mode off"); });
     $("#stCampAlerts").addEventListener("change", (e) => { settings.campAlerts = e.target.checked; saveSettings(); });
-    $("#stWelcomeEvery").addEventListener("change", (e) => { settings.welcomeEveryTime = e.target.checked; saveSettings(); });
+    $("#stWelcomeEvery").addEventListener("change", (e) => { settings.welcomeAlways = e.target.checked; saveSettings(); });
     $("#stGoAccount").addEventListener("click", () => setView("saved"));
     $("#stFeedback").addEventListener("click", () => openFeedback());
     $("#stFamily").addEventListener("click", () => { setView("saved"); setSeg("family"); });
@@ -4317,8 +4374,8 @@
     await sleep(animOn() ? 880 : 0);
     sp.classList.add("gone");
     moveInk(); fixMapSize();
-    if (first) await showLogin();
-    if (settings.welcomeEveryTime || !store.get("cf-welcomed", false)) showWelcome();
+    if (first) { await showLogin(); fixMapSize(); }
+    if (settings.welcomeAlways || !hasCar()) showWelcome();   // keeps coming back until you've picked your car
   }
   playIntro(true);
   // iPhones keep apps open in the background, so replay the intro when you come back after a while
@@ -4328,6 +4385,7 @@
     if (hiddenAt && Date.now() - hiddenAt > 3 * 60 * 1000 && $("#welcome").hidden) playIntro(false);
   });
 
+  const hasCar = () => !!(settings.make && (settings.model || settings.make === "Other"));
   function showWelcome() {
     const w = $("#welcome"), track = $("#wlTrack"), slides = $$(".wl-slide", w), dots = $$("#wlDots i");
     w.classList.remove("out"); w.hidden = false; track.scrollLeft = 0;

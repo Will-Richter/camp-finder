@@ -12,10 +12,10 @@
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: "cf-auth" },
   }) : null;
 
-  let session = null;
+  let session = null, ready = Promise.resolve();
   const listeners = new Set();
   if (sb) {
-    sb.auth.getSession().then(({ data }) => { session = data.session; listeners.forEach((f) => f(session)); });
+    ready = sb.auth.getSession().then(({ data }) => { session = data.session; listeners.forEach((f) => f(session)); }).catch(() => {});
     sb.auth.onAuthStateChange((_e, s) => { session = s; listeners.forEach((f) => f(session)); });
   }
   const must = () => { if (!sb) throw new Error("Sharing isn't switched on in this version yet."); };
@@ -66,6 +66,7 @@
     enabled,
     signedIn: () => !!session,
     email: () => session?.user?.email || "",
+    whenReady: () => ready,   // the saved sign-in has been read from the phone
     onChange: (f) => { listeners.add(f); return () => listeners.delete(f); },
 
     async sendCode(email) {

@@ -57,7 +57,7 @@ a { color: inherit; }
 /* ---------- bottom sheet ---------- */
 .sheet {
   position: absolute; z-index: 1000; left: 0; right: 0; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px));
-  height: 60%; background: var(--sheet); border-radius: 18px 18px 0 0; box-shadow: var(--lift);
+  height: 52%; background: var(--sheet); border-radius: 18px 18px 0 0; box-shadow: var(--lift);
   display: flex; flex-direction: column; transition: height .28s cubic-bezier(.2,.8,.2,1);
 }
 .sheet.is-peek { height: 168px; }
@@ -89,6 +89,12 @@ a { color: inherit; }
 .here { position: absolute; right: 0; top: 50%; transform: translateY(-50%); border: 0; background: var(--sheet); color: var(--sign);
   font: 700 12.5px var(--display); padding: 6px 9px; border-radius: 8px; }
 @media (prefers-color-scheme: dark) { .here { color: var(--free); } }
+.here.busy { display: inline-flex; align-items: center; gap: 6px; color: var(--sub); }
+.here .spinner { width: 12px; height: 12px; }
+/* place suggestions always sit on top of the rest of the form */
+.journey, .search { position: relative; }
+.journey:focus-within, .search:focus-within, .place:focus-within { z-index: 60; }
+.suggest { z-index: 70; }
 .suggest { position: absolute; top: calc(100% + 4px); left: -10px; right: -12px; z-index: 30; list-style: none; margin: 0; padding: 6px;
   background: var(--sheet); border-radius: 14px; box-shadow: var(--float); max-height: 260px; overflow: auto; }
 .suggest li { padding: 10px 10px; border-radius: 10px; cursor: pointer; font-weight: 600; }
@@ -957,7 +963,7 @@ img, a, svg { -webkit-user-drag: none; -webkit-touch-callout: none; }
 /* map: steady while pinching */
 .is-zooming .leaflet-marker-icon.me-icon { transition: none; }
 .leaflet-tile-container img.leaflet-tile { image-rendering: auto; }
-.tiles-backdrop { filter: saturate(.95); }
+
 .leaflet-container { background: #DCE4DA; -webkit-user-select: none; user-select: none; touch-action: none; }
 
 /* ready-made trips: where are you starting from */
@@ -1218,3 +1224,12 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .fam-card { scroll-margin-top: 70px; }
 .acct-pw { margin-top: 8px; } .acct-pw summary { cursor: pointer; font-size: 13px; color: var(--sub); }
 .acct-pw .coord-row { margin-top: 8px; }
+
+/* one sight */
+.poi-detail .pd-photo { height: 190px; display: grid; place-items: center; background: linear-gradient(135deg, #CFE0D6, #E9DFC8); overflow: hidden; }
+.poi-detail .pd-photo img { width: 100%; height: 100%; object-fit: cover; }
+.pd-emoji { font-size: 64px; }
+.pd-blurb { font-size: 16px; line-height: 1.5; margin: 10px 0 14px; }
+.poi-detail .stop-actions { flex-wrap: wrap; }
+.poi-detail .cta { flex: 1; }
+@media (prefers-color-scheme: dark) { .poi-detail .pd-photo { background: linear-gradient(135deg, #1D3A2B, #3A3324); } }
