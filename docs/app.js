@@ -966,6 +966,7 @@
   window.addEventListener("resize", () => setTimeout(fixMapSize, 50));
   const tripLayer = L.layerGroup().addTo(map);
   const legLayer = L.layerGroup().addTo(map);
+  const travelLayer = L.layerGroup().addTo(map);   // the part of your route you've already driven
   const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true });
   map.addLayer(cluster);
 
@@ -1036,6 +1037,7 @@
     if (typeof recordPoint === "function") try { recordPoint(me); } catch {}
     if (typeof onRoadCheck === "function") try { onRoadCheck(me); } catch {}
     if (typeof famOnPos === "function") try { famOnPos(c); } catch {}
+    if (typeof travelOnPos === "function") try { travelOnPos(me); } catch {}
   }
   function startTracking() {
     if (tracking != null || !navigator.geolocation?.watchPosition) return;
@@ -1124,6 +1126,7 @@
     if (sheet.classList.contains("is-peek")) setSheet("half");
     if (v === "explore") { tripLayer.clearLayers(); legLayer.clearLayers(); loadExplore(); }
     else cluster.clearLayers();
+    setTimeout(() => { try { if (journey) drawTravelled(); } catch {} }, 0);
     if (v === "plan" && plan) drawPlan();
     if (v === "saved") renderSaved();
     if (v === "settings") renderSettings();
@@ -1467,6 +1470,7 @@
     cardPhotos();
   }
 
+
   function drawPlan() {
     tripLayer.clearLayers(); legLayer.clearLayers();
     const p = plan; if (!p) return;
@@ -1482,6 +1486,7 @@
       m.on("click", () => openPois(poi.id)); m.addTo(tripLayer);
     }
     map.fitBounds(line.getBounds(), fitPad());
+    try { if (journey) drawTravelled(); } catch { /* journey not set up yet while the app starts */ }
   }
 
   $("#nightList").addEventListener("click", (e) => {
@@ -1518,7 +1523,7 @@
   function findCamp(id) {
     return (plan?.camps || []).find((c) => c.id === id) || exploreCamps.find((c) => c.id === id) || store.get("cf-camps", []).find((c) => c.id === id) || userCamps().find((c) => c.id === id);
   }
-  $("#editTrip").addEventListener("click", () => { $("#planForm").hidden = false; $("#results").hidden = true; tripLayer.clearLayers(); legLayer.clearLayers(); });
+  $("#editTrip").addEventListener("click", () => { $("#planForm").hidden = false; $("#results").hidden = true; tripLayer.clearLayers(); legLayer.clearLayers(); try { if (journey) drawTravelled(); } catch {} });
   $("#saveTrip").addEventListener("click", (e) => {
     const trips = store.get("cf-trips", []);
     trips.unshift({
@@ -3191,11 +3196,59 @@
     updateJourneyBar();
   }
   function showJourneyBar() { $("#journeyBar").hidden = !journey; $("#app").classList.toggle("on-journey", !!journey); updateJourneyBar(); }
+  // ---- Driven so far: the route changes colour behind you as you travel it
+  let travel = null;   // { key, line, done, n, last }
+  function travelLine() {
+    if (!journey) return null;
+    if (plan && journey.name === `${short(plan.from.name)} to ${short(plan.to.name)}`) return { key: `p:${plan.line.total}`, line: plan.line, own: !(tripLayer.getLayers?.() || [1]).length };
+    if ((journey.route || []).length > 1) return { key: `j:${journey.id}`, line: (journey._line ||= buildLine({ geometry: { coordinates: journey.route } })), own: true };
+    return null;
+  }
+  // move "done" forward only: a point counts if it's near the route and not an impossible jump ahead
+  function travelAdvance(t, lat, lon, prev) {
+    const pr = project(t.line, { lat, lon });
+    if (pr.off > 1500 || pr.along <= t.done) return;
+    const step = prev ? hav(prev, [lat, lon]) : 0;
+    if (t.done === 0 ? pr.along < 60000 || pr.along < step + 25000 : pr.along - t.done < step * 1.6 + 25000) t.done = pr.along;
+  }
+  function drawTravelled(live) {
+    const tl = travelLine();
+    if (!tl) { travelLayer.clearLayers(); travel = null; return; }
+    if (!travel || travel.key !== tl.key) travel = { key: tl.key, line: tl.line, done: 0, n: 0, last: null };
+    const pts = journey.points || [];
+    for (; travel.n < pts.length; travel.n++) { const p = pts[travel.n]; travelAdvance(travel, p[1], p[2], travel.last); travel.last = [p[1], p[2]]; }
+    if (live) travelAdvance(travel, live.lat, live.lon, travel.last);
+    travelLayer.clearLayers();
+    const line = travel.line;
+    if (tl.own) { // no plan on screen: show the journey's route too
+      L.polyline(line.pts, { color: "#ffffff", weight: 8, opacity: .85, interactive: false }).addTo(travelLayer);
+      L.polyline(line.pts, { color: "#0E5A3E", weight: 4.5, opacity: .9, interactive: false }).addTo(travelLayer);
+    }
+    if (travel.done > 0) {
+      let i = line.cum.findIndex((c) => c >= travel.done); if (i < 0) i = line.pts.length - 1;
+      const driven = line.pts.slice(0, i + 1);
+      if (driven.length > 1) {
+        L.polyline(driven, { color: "#ffffff", weight: 10, opacity: .95, interactive: false }).addTo(travelLayer);
+        L.polyline(driven, { color: "#E07A1F", weight: 6, opacity: 1, interactive: false }).addTo(travelLayer);
+      }
+    }
+  }
+  const travelPct = () => (travel && travel.line.total ? Math.min(100, Math.round((travel.done / travel.line.total) * 100)) : 0);
+  let travelLiveT = 0;
+  window.__cfTravelAt = (m) => { const t = travelLine(); if (!t) return -1; travelLiveT = 0; travelOnPos(pointAt(t.line, m)); return travelPct(); };
+  function travelOnPos(pos) { if (journey && Date.now() - travelLiveT > 5000) { travelLiveT = Date.now(); drawTravelled(pos); updateJourneyStats(); } }
+
   function updateJourneyBar() {
+    if (!journey) { drawTravelled(); return; }
+    drawTravelled();
+    updateJourneyStats();
+  }
+  function updateJourneyStats() {
     if (!journey) return;
     const day = Math.floor((Date.now() - Date.parse(journey.started)) / 864e5) + 1;
+    const pct = travelPct();
     $("#jbTitle").textContent = journey.name;
-    $("#jbStats").textContent = `Day ${day} · ${km(trackKm(journey.points))} driven${journey.share ? " · sharing live" : ""}`;
+    $("#jbStats").textContent = `Day ${day} · ${km(trackKm(journey.points))} driven${pct ? ` · ${pct}% of the way` : ""}${journey.share ? " · sharing live" : ""}`;
     $("#startJourney").textContent = "Journey in progress";
     $("#startJourney").disabled = true;
   }
