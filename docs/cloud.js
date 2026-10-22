@@ -81,6 +81,12 @@
       const { error } = await sb.auth.verifyOtp({ email, token, type: "email" });
       fail(error);
     },
+    // password sign-in (only for accounts set up with a password, e.g. Apple's App Review demo account)
+    async signInPassword(email, password) {
+      must();
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      fail(error);
+    },
     async signOut() { must(); const { error } = await sb.auth.signOut(); fail(error); },
     async deleteAccount() {
       mustUser();

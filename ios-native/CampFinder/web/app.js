@@ -2440,8 +2440,18 @@
       <p class="help">Share the camps you add, report if spots are still free, and keep your trips on every device. We'll email you a 6-digit code, no password needed.</p>
       <div class="coord-row"><label class="sr" for="acctEmail">Email</label><input id="acctEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"><button class="btn gold" type="submit" id="acctSend">Send link</button></div>
       <div class="coord-row" id="acctCodeRow" hidden><label class="sr" for="acctCode">Code</label><input id="acctCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6-digit code"><button class="btn gold" type="button" id="acctVerify">Sign in</button></div>
-      <p class="msg" id="acctMsg" role="status" aria-live="polite"></p></form>`;
+      <p class="msg" id="acctMsg" role="status" aria-live="polite"></p>
+      <details class="acct-pw"><summary>Sign in with a password</summary>
+        <div class="coord-row"><label class="sr" for="acctPw">Password</label><input id="acctPw" type="password" autocomplete="current-password" placeholder="Password"><button class="btn line" type="button" id="acctPwGo">Sign in</button></div>
+      </details></form>`;
     const msg = $("#acctMsg");
+    $("#acctPwGo").addEventListener("click", async () => {
+      const email = $("#acctEmail").value.trim(), pw = $("#acctPw").value;
+      if (!email || !pw) { msg.className = "msg is-error"; msg.textContent = "Enter your email above and your password."; return; }
+      msg.className = "msg"; msg.innerHTML = `<span class="spinner"></span>Signing in`;
+      try { await C.signInPassword(email, pw); await afterSignIn(); renderAccount(); toast("Signed in"); }
+      catch { msg.className = "msg is-error"; msg.textContent = "That email and password didn't work. Most accounts use the emailed code instead."; }
+    });
     $("#acctForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const email = $("#acctEmail").value.trim();

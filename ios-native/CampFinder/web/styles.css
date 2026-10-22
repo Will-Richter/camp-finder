@@ -1216,3 +1216,5 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .fam-night { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: #0E5A3E; color: #fff; font: 900 12px var(--display); border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,.3); }
 .fam-night.done { background: #7E878C; }
 .fam-card { scroll-margin-top: 70px; }
+.acct-pw { margin-top: 8px; } .acct-pw summary { cursor: pointer; font-size: 13px; color: var(--sub); }
+.acct-pw .coord-row { margin-top: 8px; }
