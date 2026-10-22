@@ -13,6 +13,7 @@
 		C31EC03CBF87D36906C17E0B /* Speech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4EFFEB92CF26E47225D1AB /* Speech.swift */; };
 		D0317420F376B6D550DD3011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C951E0F6049D00803F4AB93 /* Assets.xcassets */; };
 		FDC660B7C2E37A9C3907B809 /* web in Resources */ = {isa = PBXBuildFile; fileRef = 5552E6103EA45AD792817FFC /* web */; };
+		B1C2D3E4F5061728394A5B6C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +24,7 @@
 		878474EE137D71C487090E38 /* CampFinderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampFinderApp.swift; sourceTree = "<group>"; };
 		9C951E0F6049D00803F4AB93 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F5BF48AA40CAD7891EB709FC /* CampFinder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CampFinder.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,6 +46,7 @@
 				3604480FE44039BDA6C05674 /* Journey.swift */,
 				0A4EFFEB92CF26E47225D1AB /* Speech.swift */,
 				5552E6103EA45AD792817FFC /* web */,
+				A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */,
 				9C951E0F6049D00803F4AB93 /* Assets.xcassets */,
 			);
 			path = CampFinder;
@@ -125,6 +128,7 @@
 			files = (
 				D0317420F376B6D550DD3011 /* Assets.xcassets in Resources */,
 				FDC660B7C2E37A9C3907B809 /* web in Resources */,
+				B1C2D3E4F5061728394A5B6C /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,7 +182,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -215,7 +219,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
