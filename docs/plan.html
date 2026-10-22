@@ -69,7 +69,7 @@
       p = r.ok ? await r.json() : null;
     } catch { return fail("Couldn't load the trip. Check your connection."); }
     if (!p || !p.from) return fail("This trip plan has expired or doesn't exist.");
-    const title = `${p.from.name} to ${p.to.name}`;
+    const title = `${p.from.name} to ${p.to.name}${p.ret ? " and back" : ""}`;
     document.title = `${title} · Camp Finder`;
     $("#title").textContent = title;
     const leave = p.leave ? new Date(p.leave + "T00:00").toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" }) : "";
@@ -88,7 +88,7 @@
         <div>${n.cost === "free" ? `<span class="tag free">Free</span>` : n.fee ? `<span class="tag">~$${n.fee}</span>` : ""}${n.stay > 1 ? `<span class="tag">${n.stay} nights</span>` : ""}${(n.a || []).filter((k) => AM[k]).map((k) => `<span class="tag">${AM[k]}</span>`).join("")}</div>
         <a href="https://maps.apple.com/?daddr=${n.lat},${n.lon}&q=${encodeURIComponent(n.name)}" target="_blank" rel="noopener">Open in Maps</a>
       </div></li>`).join("");
-    $("#body").innerHTML = `<ol><li class="day"><div class="num end" style="background:#fff;color:#0E5A3E;border:2px solid #0E5A3E">▶</div><div><small>Start</small><b>${esc(p.from.name)}</b></div></li>${days}<li class="day"><div class="num end">★</div><div><small>Day ${p.days}</small><b>${esc(p.to.name)}</b></div></li></ol>
+    $("#body").innerHTML = `<ol><li class="day"><div class="num end" style="background:#fff;color:#0E5A3E;border:2px solid #0E5A3E">▶</div><div><small>Start</small><b>${esc(p.from.name)}</b></div></li>${days}<li class="day"><div class="num end">★</div><div><small>Day ${p.days}</small><b>${esc(p.ret ? p.from.name + " (home)" : p.to.name)}</b></div></li></ol>
       ${p.see?.length ? `<h2>Worth stopping for</h2><div class="see">${p.see.map((x) => `<span>${esc(x.emoji || "📍")} ${esc(x.name)}</span>`).join("")}</div>` : ""}
       <div class="cta"><b>Planned with Camp Finder</b><p>Free camps for every night of your trip, fuel checks for your rig and the sights worth the detour. Free for iPhone.</p><a class="btn" href="./#beta">Get Camp Finder</a></div>
       <p class="fine">Camp details are a guide only. Camps close and rules change, so check the signs and local rules when you arrive. Map data © OpenStreetMap contributors.</p>`;

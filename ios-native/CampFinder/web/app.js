@@ -370,6 +370,48 @@
     }
     return { off: best, along: at };
   }
+  // ---- Return trips: the route goes out and comes back, often on the same road, so a camp, servo or sight can be
+  // "on the way" twice. These give its position on each leg separately (line.turn = where you turn around).
+  function projectRange(line, c, lo, hi) {
+    let best = Infinity, at = lo;
+    const g = lineGrid(line), cy = Math.floor(c.lat * 4), cx = Math.floor(c.lon * 4);
+    for (let r = 1; r <= 4 && best === Infinity; r += r < 2 ? 1 : 2) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const b = g.get(`${cy + dy}:${cx + dx}`); if (!b) continue;
+        for (const i of b) { const cu = line.cum[i]; if (cu < lo || cu > hi) continue; const d = hav(line.pts[i], [c.lat, c.lon]); if (d < best) { best = d; at = cu; } }
+      }
+    }
+    if (best === Infinity) { // far from this leg: check every point on it
+      const step = line.pts.length > 6000 ? 4 : 1;
+      for (let i = 0; i < line.pts.length; i += step) { const cu = line.cum[i]; if (cu < lo || cu > hi) continue; const d = hav(line.pts[i], [c.lat, c.lon]); if (d < best) { best = d; at = cu; } }
+    }
+    return { off: best, along: at };
+  }
+  function projectAll(line, c) {
+    if (!line.turn) return [{ ...project(line, c), leg: "" }];
+    return [{ ...projectRange(line, c, 0, line.turn), leg: "" }, { ...projectRange(line, c, line.turn, line.total), leg: "back" }];
+  }
+  // one copy per leg it's near (the way-back copy is marked _leg: "back")
+  function perLeg(line, list, maxOff, idSuffix = false) {
+    if (!line.turn) return list.map((x) => ({ ...x, ...project(line, x) })).filter((x) => x.off <= maxOff);
+    const out = [];
+    for (const x of list) for (const pr of projectAll(line, x)) {
+      if (pr.off > maxOff) continue;
+      out.push({ ...x, a: x.a ? { ...x.a } : x.a, along: pr.along, off: pr.off, _leg: pr.leg, ...(idSuffix && pr.leg ? { id: `${x.id}@back` } : {}) });
+    }
+    return out;
+  }
+  // where on the route you reach your destination and turn for home
+  function markTurn(line, route, to, outLegs) {
+    const legs = route.legs || [];
+    const outDist = legs.slice(0, outLegs).reduce((a, l) => a + (l.distance || 0), 0);
+    const approx = route.distance ? line.total * outDist / route.distance : line.total / 2;
+    const win = line.total * 0.12;
+    let best = Infinity, at = approx;
+    line.pts.forEach((p, i) => { if (Math.abs(line.cum[i] - approx) <= win) { const d = hav(p, [to.lat, to.lon]); if (d < best) { best = d; at = line.cum[i]; } } });
+    line.turn = at;
+    return at;
+  }
 
   // Turn-by-turn text from OSRM steps
   function stepText(s) {
@@ -812,12 +854,17 @@
     let prevAlong = 0;
     for (let k = 1; k <= nights; k++) {
       // re-balance each night from where the last camp actually is
-      const target = prevAlong + (line.total - prevAlong) / (nights - k + 2);
+      let target = prevAlong + (line.total - prevAlong) / (nights - k + 2);
+      if (line.turn) {   // return trip: about half the nights going, the last of them at your destination
+        const outN = Math.max(1, Math.ceil(nights / 2));
+        target = k <= outN ? prevAlong + (line.turn - prevAlong) / (outN - k + 1) : Math.max(prevAlong, line.turn) + (line.total - Math.max(prevAlong, line.turn)) / (nights - k + 2);
+      }
       const win = Math.max(25000, seg * 0.45);
       const rank = (list) => list
         .map((c) => ({ c, s: score(c, opts.wants, opts.cost) - Math.abs(c.along - target) / 1500 - c.off / 2500 }))
         .sort((a, b) => b.s - a.s).map((x) => x.c);
-      const inWin = usable.filter((c) => Math.abs(c.along - target) <= win && !used.has(c.id));
+      const ukey = (c) => c.id + (c._leg || "");
+      const inWin = usable.filter((c) => Math.abs(c.along - target) <= win && !used.has(ukey(c)));
       let strict = rank(inWin.filter((c) => costOK(c, opts.cost) && ruledOut(c, opts.wants).length === 0));
       if (opts.cost === "cheap") { // free or unknown first, paid only if nothing else
         const freeish = strict.filter((c) => c.cost !== "paid");
@@ -834,7 +881,7 @@
         if (list.length) warn = "No free camp found near this stop. Cheapest nearby options shown.";
       }
       if (!list.length) {
-        const wide = usable.filter((c) => !used.has(c.id) && Math.abs(c.along - target) <= seg * 0.9);
+        const wide = usable.filter((c) => !used.has(ukey(c)) && Math.abs(c.along - target) <= seg * 0.9);
         list = rank(wide);
         if (list.length) warn = "Nothing close to the ideal stop. Nearest camp shown, so this day will be longer or shorter.";
       }
@@ -845,7 +892,7 @@
         list.splice(1, 0, ...freeAlt.filter((c) => !list.slice(1, 4).includes(c)));
       }
       if (camp && !warn) { const u = unrecorded(camp, opts.wants); if (u.length) warn = `Not recorded whether it has ${u.map((w) => SHORT_LABEL[w] || w).join(" or ").toLowerCase()}. Check before you rely on it.`; }
-      if (camp) used.add(camp.id);
+      if (camp) used.add(ukey(camp));
       prevAlong = camp ? camp.along : target;
       picks.push({ target, camp, alts: list.slice(1, 4), warn: camp ? warn : "No camps found for this night. Try a bigger detour or fewer must-haves." });
     }
@@ -1237,13 +1284,16 @@
       savePrefs();
       const nights = +nightsIn.value;
       if (settings.simple) { const r = $("#simpleRefresh").checked ? Math.max(1, Math.round(+nightsIn.value / 3)) : 0; refreshIn.value = Math.min(r, +nightsIn.value); }
-      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "" };
+      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "", ret: !!$("#retTrip")?.checked };
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
       say("Planning the route");
-      const route = await osrm([from, ...viaStops, to]);
+      // return trip: out via your "there" stops, back via your "back" stops, finishing where you started
+      const outV = viaStops.filter((v) => v.leg !== "back"), backV = viaStops.filter((v) => v.leg === "back");
+      const route = await osrm(opts.ret ? [from, ...outV, to, ...backV, from] : [from, ...viaStops, to]);
       say("Looking for camps");
       const data = await campsAlong(route, opts.detour, (t) => say(t.replace("Searching for camps along the route… ", "Looking for camps ")));
+      if (opts.ret) { markTurn(data.line, route, to, outV.length + 1); data.camps = perLeg(data.line, data.camps, opts.detour * 1.15); }
       step(3);
       plan = makePlan({ from, to, route, nights, opts, data });
       plan.offline = data.offline;
@@ -1282,13 +1332,13 @@
   function showPlan() {
     const p = plan;
     $("#planForm").hidden = true; $("#results").hidden = false;
-    $("#tripTitle").textContent = `${short(p.from.name)} to ${short(p.to.name)}`;
+    $("#tripTitle").textContent = `${short(p.from.name)} to ${short(p.to.name)}${p.opts.ret ? " and back" : ""}`;
     const days = totalDays(p);
     $("#tripMeta").textContent = `${km(p.route.distance)} and ${hrs(p.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`;
     renderItinerary();
     renderBudget();
     renderTripExtras();
-    const along = [...p.camps].sort((a, b) => a.along - b.along);
+    const along = [...new Map(p.camps.map((c) => [c.id, c])).values()].sort((a, b) => a.along - b.along);
     $("#alongCount").textContent = along.length;
     $("#alongList").innerHTML = along.map((c) => `<li>${campCard(c)}</li>`).join("") || `<li class="empty">No camps within your detour distance. Try a longer detour.</li>`;
     $("#saveTrip").classList.remove("is-on");
@@ -1309,9 +1359,10 @@
     if (p._pois) return p._pois;
     const pad = 0.6, lats = p.line.pts.map((x) => x[0]), lons = p.line.pts.map((x) => x[1]);
     const bb = [minOf(lats) - pad, minOf(lons) - pad, maxOf(lats) + pad, maxOf(lons) + pad];
-    const list = POIS.filter((x) => x.lat >= bb[0] && x.lat <= bb[2] && x.lon >= bb[1] && x.lon <= bb[3])
-      .map((x) => ({ ...x, ...project(p.line, x) })).filter((x) => x.off <= POI_DETOUR || seeIds.has(x.id));
-    for (const g of p._gpois || []) if (!list.some((x) => hav([x.lat, x.lon], [g.lat, g.lon]) < 2500)) list.push(g);
+    const cand = POIS.filter((x) => x.lat >= bb[0] && x.lat <= bb[2] && x.lon >= bb[1] && x.lon <= bb[3]);
+    // on a return trip a sight can be on the way there, the way back, or both (way-back ids end in "@back")
+    const list = perLeg(p.line, cand, 400000, true).filter((x) => x.off <= POI_DETOUR || seeIds.has(x.id));
+    for (const g of p._gpois || []) if (!list.some((x) => (x._leg || "") === (g._leg || "") && hav([x.lat, x.lon], [g.lat, g.lon]) < 2500)) list.push(g);
     list.sort((a, b) => a.along - b.along);
     return (p._pois = list);
   }
@@ -1345,9 +1396,9 @@
       } catch { /* skip this stretch */ }
     }));
     const out = [...found.values()].map((g) => ({ id: `g:${g.id}`, name: g.displayName?.text || "Attraction", lat: g.location.latitude, lon: g.location.longitude, emoji: "⭐",
-      blurb: g.editorialSummary?.text || g.primaryTypeDisplayName?.text || "Popular with visitors", rating: g.rating, count: g.userRatingCount, uri: g.googleMapsUri, star: g.userRatingCount > 3000 ? 3 : 2 }))
-      .map((x) => ({ ...x, ...project(p.line, x) })).filter((x) => x.off <= 25000);
-    p._gpois = out; p._pois = null;
+      blurb: g.editorialSummary?.text || g.primaryTypeDisplayName?.text || "Popular with visitors", rating: g.rating, count: g.userRatingCount, uri: g.googleMapsUri, star: g.userRatingCount > 3000 ? 3 : 2 }));
+    p._gpois = perLeg(p.line, out, 25000, true); p._pois = null;
+    return p._gpois;
     return out;
   }
   function openPois(focusId) {
@@ -1364,12 +1415,18 @@
     };
     const draw = () => {
       const list = poisAlong(p);
-      $("#poiList").innerHTML = list.map(row).join("") || `<li class="empty">No well-known sights found near this route.</li>`;
+      // return trip: two sections, so you can pick what to see going and what to see coming home
+      const head = (t, sub) => `<li class="poi-head"><b>${t}</b><small>${sub}</small></li>`;
+      const there = list.filter((x) => !x._leg), back = list.filter((x) => x._leg === "back");
+      $("#poiList").innerHTML = (p.line.turn
+        ? (there.length ? head(`On the way to ${esc(short(p.to.name))}`, `${there.length} sight${there.length > 1 ? "s" : ""}`) + there.map(row).join("") : "") +
+          (back.length ? head(`On the way back to ${esc(short(p.from.name))}`, `${back.length} sight${back.length > 1 ? "s" : ""}`) + back.map(row).join("") : "")
+        : list.map(row).join("")) || `<li class="empty">No well-known sights found near this route.</li>`;
       updateBtn();
     };
     const updateBtn = () => { const n = draft.size; $("#poiApply").textContent = n ? `Add ${n} to my trip` : seeIds.size ? "Remove all from my trip" : "Pick the ones you want to see"; $("#poiApply").disabled = !n && !seeIds.size; };
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Things to see on the way</h2>
-      <p class="d-kind">Popular sights near your route, in the order you'll pass them. Tick the ones you want and we'll route you past them.</p>
+      <p class="d-kind">${p.line.turn ? "Pick what you want to see on the way there and on the way back. Sights on a road you drive both ways show in both lists." : "Popular sights near your route, in the order you'll pass them. Tick the ones you want and we'll route you past them."}</p>
       <p class="help" id="poiMore">${CFG.googleKey ? `<span class="spinner"></span>Finding the most popular spots on Google…` : ""}</p>
       <ul class="poi-list" id="poiList"></ul>
       <div class="poi-bar"><button class="cta" type="button" id="poiApply">Pick the ones you want to see</button></div></div>`);
@@ -1387,8 +1444,9 @@
     const chosen = all.filter((x) => seeIds.has(x.id)).slice(0, 10);
     // a few km away counts as on the way: no detour
     const keep = viaStops.filter((v) => !v.poi);
-    const wasVia = new Set(viaStops.filter((v) => v.poi).map((v) => v.name));
-    const vias = [...keep.map((v) => ({ ...v, along: project(p.line, v).along })), ...chosen.filter((x) => x.off >= 1500 || wasVia.has(x.name)).map((x) => ({ name: x.name, lat: x.lat, lon: x.lon, poi: true, along: x.along }))]
+    const wasVia = new Set(viaStops.filter((v) => v.poi).map((v) => v.name + (v.leg || "")));
+    const legAlong = (v) => (p.line.turn ? projectAll(p.line, v)[v.leg === "back" ? 1 : 0].along : project(p.line, v).along);
+    const vias = [...keep.map((v) => ({ ...v, along: legAlong(v) })), ...chosen.filter((x) => x.off >= 1500 || wasVia.has(x.name + (x._leg || ""))).map((x) => ({ name: x.name, lat: x.lat, lon: x.lon, poi: true, leg: x._leg || "", along: x.along }))]
       .sort((a, b) => a.along - b.along).map(({ along, ...v }) => v);
     viaStops = vias; renderVia();
     closeDetail();
@@ -1399,7 +1457,7 @@
   // One sight, opened straight from the map or the day it's on
   async function openPoi(id) {
     const p = plan; if (!p) return;
-    const x = poisAlong(p).find((q) => q.id === id) || POIS.find((q) => q.id === id); if (!x) return openPois();
+    const x = poisAlong(p).find((q) => q.id === id) || POIS.find((q) => q.id === String(id).replace(/@back$/, "")); if (!x) return openPois();
     const along = x.along ?? project(p.line, x).along, off = x.off ?? project(p.line, x).off;
     const day = dayOfAlong(p, along) + 1, on = seeIds.has(x.id);
     const detour = off < 1500 ? "Right on your route" : `${km(off)} off your route · about ${hrs((off * 2) / 22)} there and back`;
@@ -1407,7 +1465,7 @@
     showDetail(`<div class="poi-detail"><div class="pd-photo" id="pdPhoto"><span class="pd-emoji">${x.emoji}</span></div>
       <div class="d-pad" style="padding-top:14px">
         <h2 class="d-title">${esc(x.name)}${x.star >= 3 ? ` <i class="must">Must see</i>` : ""}</h2>
-        <p class="d-kind">Day ${day} · ${detour}${x.rating ? ` · ★ ${x.rating.toFixed(1)} on Google (${x.count.toLocaleString("en-AU")})` : ""}</p>
+        <p class="d-kind">${p.line.turn ? (x._leg === "back" ? "Way back · " : "Way there · ") : ""}Day ${day} · ${detour}${x.rating ? ` · ★ ${x.rating.toFixed(1)} on Google (${x.count.toLocaleString("en-AU")})` : ""}</p>
         <p class="pd-blurb">${esc(x.blurb || "")}</p>
         <div class="stop-actions">
           <button class="cta" type="button" id="pdToggle">${on ? "Remove from my trip" : "➕ Add to my trip"}</button>
@@ -1455,7 +1513,7 @@
     const found = new Map();
     for (let a = 0; a <= p.line.total; a += 40000) for (const st of (campDB.fuelIn ? campDB.fuelIn(pointAt(p.line, a), 32000) : [])) found.set(st.id || `${st.lat},${st.lon}`, st);
     (p.fuel || []).forEach((fs) => (fs.options || []).forEach((o) => found.set(o.id, o)));
-    const list = [...found.values()].map((st) => ({ ...st, ...project(p.line, st) })).filter((st) => st.off < 5000).sort((a, b) => a.along - b.along);
+    const list = perLeg(p.line, [...found.values()], 5000).sort((a, b) => a.along - b.along);
     // nearby stations count as one stop
     const stations = []; for (const st of list) if (!stations.length || st.along - stations.at(-1).along > 1500) stations.push(st);
     const pts = [{ along: 0, name: short(p.from.name), start: true }, ...stations, { along: p.line.total, name: short(p.to.name), end: true }];
@@ -1492,7 +1550,12 @@
     const fuel = [...(p.fuel || [])];
     const fuelUpTo = (along) => { while (fuel.length && fuel[0].along <= along) stops.push(fuelStopHtml(fuel.shift())); };
     stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
+    let turned = !p.line.turn;
     p.picks.forEach((pk, i) => {
+      if (!turned && (pk.camp?.along ?? pk.target) > p.line.turn + 2000) {
+        turned = true;
+        stops.push(`<li class="stop turn"><div class="plate turn" aria-hidden="true">↩</div><div class="stop-body"><div class="stop-place">${esc(short(p.to.name))}</div><p class="help">Turn around and head home to ${esc(short(p.from.name))}</p></div></li>`);
+      }
       fuelUpTo(pk.camp?.along ?? pk.target);
       const leg = `<p class="stop-leg">Day ${dayNo(i)}: ${km(nightKm(i))}${legExtra(nightKm(i))}${weatherChip(i)}</p>${daylightLine(i, pk.camp || pointAt(p.line, pk.target))}${seeTodayLine(i)}`;
       if (pk.refresh) { stops.push(refreshStopHtml(pk, i, leg)); return; }
@@ -1517,7 +1580,7 @@
     });
     const lastAlong = p.picks.at(-1)?.camp?.along ?? p.picks.at(-1)?.target ?? 0;
     fuelUpTo(p.line.total);
-    stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${totalDays(p)}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p>${seeTodayLine(p.nights)}<div class="stop-place" style="padding-top:0">${esc(short(p.to.name))}</div></div></li>`);
+    stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${totalDays(p)}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p>${seeTodayLine(p.nights)}<div class="stop-place" style="padding-top:0">${esc(short((p.opts.ret ? p.from : p.to).name))}${p.opts.ret ? " (home)" : ""}</div></div></li>`);
     { const pt = poiTeaserHtml(p); if (pt) stops.unshift(pt); }
     if (p.fuelState === "done") { const fc = fuelCheckHtml(p); if (fc) stops.unshift(fc); }
     if (p.fuelState === "loading") stops.splice(1, 0, `<li class="stop fuel-wait"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="help"><span class="spinner"></span>Working out where you'll need fuel</p></div></li>`);
@@ -1534,7 +1597,8 @@
     L.marker([p.from.lat, p.from.lon], { icon: divIcon(`<div class="mk-start"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
     L.marker([p.to.lat, p.to.lon], { icon: divIcon(`<div class="mk-end"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
     const pickIds = new Set(p.picks.map((x) => x.camp?.id));
-    for (const c of p.camps) if (!pickIds.has(c.id)) campMarker(c).addTo(tripLayer);
+    const drawn = new Set();
+    for (const c of p.camps) if (!pickIds.has(c.id) && !drawn.has(c.id)) { drawn.add(c.id); campMarker(c).addTo(tripLayer); }
     p.picks.forEach((pk, i) => { if (pk.camp) campMarker(pk.camp, { night: true, label: String(i + 1) }).addTo(tripLayer); });
     for (const poi of poisAlong(p).slice(0, 40)) {
       const m = L.marker([poi.lat, poi.lon], { icon: divIcon(`<div class="mk-poi${seeIds.has(poi.id) ? " on" : ""}">${poi.emoji}</div>`, [30, 30]), title: poi.name, zIndexOffset: 500 });
@@ -1600,7 +1664,7 @@
     return {
       v: 1, made: new Date().toISOString().slice(0, 10),
       from: pt(p.from), to: pt(p.to), km: Math.round(p.route.distance / 1000), hours: Math.round(p.route.duration / 360) / 10,
-      days: totalDays(p), rig: p.opts.rig, leave: p.opts.leave || "",
+      days: totalDays(p), rig: p.opts.rig, leave: p.opts.leave || "", ret: !!p.opts.ret,
       line: sample(p.line, step).map(([la, lo]) => [r(la), r(lo)]),
       nights: p.picks.map((pk, i) => {
         const st = pk.refresh?.options?.[0], c = st || pk.camp, x = c || pointAt(p.line, pk.target);
@@ -2164,7 +2228,7 @@
     viaStops = (t.vias || []).map((v) => ({ ...v })); seeIds.clear(); (t.see || []).forEach((id) => seeIds.add(id)); renderVia();
     pendingStays = t.stays && Object.keys(t.stays).length ? { ...t.stays } : null;
     const pick = (name, v) => { const el = $(`input[name="${name}"][value="${v}"]`); if (el) el.checked = true; };
-    pick("rig", t.opts.rig); pick("cost", t.opts.cost); pick("detour", t.opts.detour);
+    pick("rig", t.opts.rig); pick("cost", t.opts.cost); pick("detour", t.opts.detour); pick("tripType", t.opts.ret ? "ret" : "one");
     $$("#planWants input").forEach((i) => (i.checked = t.opts.wants.includes(i.value)));
     $("#planForm").hidden = false; $("#results").hidden = true;
     $("#planForm").requestSubmit();
@@ -2868,7 +2932,7 @@
       const pts = [0.35, 0.8].map((f) => pointAt(p.line, lo + (hi - lo) * f));
       const found = new Map();
       for (const pt of pts) for (const st of await stationsNear(pt, 25000)) found.set(st.id, st);
-      const cands = [...found.values()].map((st) => ({ ...st, ...project(p.line, st) })).filter((st) => st.off < 6000 && st.along > pos + range * 0.3 && st.along < pos + range * 0.95);
+      const cands = perLeg(p.line, [...found.values()], 6000).filter((st) => st.along > pos + range * 0.3 && st.along < pos + range * 0.95);
       if (!cands.length) {
         out.push({ along: lo, warn: true, options: [], text: `No fuel found between ${km(lo)} and ${km(hi)} from the start. Fill up before this stretch and carry spare fuel.` });
         pos = hi; continue;
@@ -3261,7 +3325,9 @@
   }
   // move "done" forward only: a point counts if it's near the route and not an impossible jump ahead
   function travelAdvance(t, lat, lon, prev) {
-    const pr = project(t.line, { lat, lon });
+    // on a return trip, take the position on whichever leg is just ahead of where you've got to
+    const all = projectAll(t.line, { lat, lon }).filter((q) => q.off <= 1500 && q.along > t.done);
+    const pr = all.sort((a, b) => a.along - b.along)[0] || { off: Infinity, along: 0 };
     if (pr.off > 1500 || pr.along <= t.done) return;
     const step = prev ? hav(prev, [lat, lon]) : 0;
     if (t.done === 0 ? pr.along < 60000 || pr.along < step + 25000 : pr.along - t.done < step * 1.6 + 25000) t.done = pr.along;
@@ -4044,7 +4110,7 @@
   function renderVia() {
     const row = $("#viaRow");
     row.hidden = !viaStops.length;
-    row.innerHTML = viaStops.length ? `<span class="help">Via</span>${viaStops.map((v, k) => `<span class="via-chip">${esc(v.name)}</span>`).join("")}<button type="button" class="via-clear" id="viaClear" aria-label="Remove stops">✕</button>` : "";
+    row.innerHTML = viaStops.length ? `<span class="help">Via</span>${viaStops.map((v, k) => `<span class="via-chip">${esc(v.name)}${v.leg === "back" ? " <small>(back)</small>" : ""}</span>`).join("")}<button type="button" class="via-clear" id="viaClear" aria-label="Remove stops">✕</button>` : "";
     $("#viaClear")?.addEventListener("click", () => { viaStops = []; seeIds.clear(); renderVia(); });
   }
   function renderDiscover() {
@@ -4149,6 +4215,7 @@
   paintCars();
   setTimeout(() => updateBadges(false), 1500);
   ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); if (viaStops.length) { viaStops = []; renderVia(); } }));
+  $("#tripType").addEventListener("change", () => { seeIds.clear(); if (viaStops.some((v) => v.poi)) { viaStops = viaStops.filter((v) => !v.poi); renderVia(); } });
 
   // ================================================================ first-time sign in
   // shows every time the app opens until you're signed in (Skip just closes it for now)

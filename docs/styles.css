@@ -1233,3 +1233,10 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .poi-detail .stop-actions { flex-wrap: wrap; }
 .poi-detail .cta { flex: 1; }
 @media (prefers-color-scheme: dark) { .poi-detail .pd-photo { background: linear-gradient(135deg, #1D3A2B, #3A3324); } }
+
+/* return trips */
+.trip-type { margin: -8px 0 16px; }
+.poi-head { list-style: none; display: flex; justify-content: space-between; align-items: baseline; margin: 14px 2px 6px; font: 800 15px var(--display); }
+.poi-head small { color: var(--sub); font: 600 12.5px var(--text); }
+.plate.turn { background: #E07A1F; color: #fff; font-weight: 900; }
+.via-chip small { color: var(--sub); font-weight: 600; }
