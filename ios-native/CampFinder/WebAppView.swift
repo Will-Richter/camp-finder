@@ -24,7 +24,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route", "journey", "speech", "shareFile"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -166,6 +166,21 @@ struct WebAppView: UIViewRepresentable {
             }
         }
 
+        // MARK: the name of where you are (suburb or town, and state), from Apple Maps
+        private let geocoder = CLGeocoder()
+        private func handleGeocode(_ body: Any) {
+            guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
+                  let lat = dict["lat"] as? Double, let lon = dict["lon"] as? Double else { return }
+            if geocoder.isGeocoding { geocoder.cancelGeocode() }
+            geocoder.reverseGeocodeLocation(CLLocation(latitude: lat, longitude: lon), preferredLocale: Locale(identifier: "en_AU")) { [weak self] marks, err in
+                guard let pm = marks?.first, err == nil else {
+                    self?.reply("__cfGeocodeDone", id, ok: false, err?.localizedDescription ?? "No place"); return
+                }
+                let out: [String: Any] = ["locality": pm.locality ?? "", "sub": pm.subLocality ?? "", "area": pm.administrativeArea ?? "", "name": pm.name ?? ""]
+                self?.reply("__cfGeocodeDone", id, ok: true, out)
+            }
+        }
+
         // MARK: Apple Maps driving directions
         private func handleRoute(_ body: Any) {
             guard let dict = body as? [String: Any], let id = dict["id"] as? Int,
@@ -201,6 +216,7 @@ struct WebAppView: UIViewRepresentable {
             case "nativeFetch": handleFetch(message.body)
             case "places": handlePlaces(message.body)
             case "route": handleRoute(message.body)
+            case "geocode": handleGeocode(message.body)
             case "speech":
                 guard let d = message.body as? [String: Any] else { return }
                 if (d["cmd"] as? String) == "start" {
@@ -295,7 +311,11 @@ struct WebAppView: UIViewRepresentable {
             fixTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
                 guard let self else { return }
                 if let b = self.bestFix ?? self.manager.location { let ids = self.pending; self.pending.removeAll(); self.send(b, to: ids) }
-                else { Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { [weak self] _ in self?.finishAll(error: "Couldn't get your location") } }
+                else { Timer.scheduledTimer(withTimeInterval: 16, repeats: false) { [weak self] _ in
+                    guard let self, !self.pending.isEmpty else { return }
+                    if let l = self.bestFix ?? self.manager.location { let ids = self.pending; self.pending.removeAll(); self.send(l, to: ids) }
+                    else { self.finishAll(error: "Couldn't get your location") }
+                } }
                 if self.watchers.isEmpty && self.pending.isEmpty { self.manager.stopUpdatingLocation() }
             }
         }
@@ -313,7 +333,11 @@ struct WebAppView: UIViewRepresentable {
             }
             if !watchers.isEmpty { send(loc, to: Array(watchers)) }
         }
-        func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { finishAll(error: "Couldn't get your location") }
+        func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+            if (error as? CLError)?.code == .locationUnknown { return }   // still looking; Core Location keeps trying
+            if (error as? CLError)?.code == .denied { finishAll(error: "Location permission is off"); return }
+            finishAll(error: "Couldn't get your location")
+        }
         private func finishAll(error: String) {
             let ids = pending; pending.removeAll()
             for id in ids { webView?.evaluateJavaScript("window.__cfLocation(\(id), false, 0, 0, 0, '\(error)')") }

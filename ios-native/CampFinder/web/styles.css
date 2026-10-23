@@ -90,7 +90,7 @@ a { color: inherit; }
   font: 700 12.5px var(--display); padding: 6px 9px; border-radius: 8px; }
 @media (prefers-color-scheme: dark) { .here { color: var(--free); } }
 .here.busy { display: inline-flex; align-items: center; gap: 6px; color: var(--sub); }
-.here .spinner { width: 12px; height: 12px; }
+.here .spinner { transform: scale(.75); margin: 0 -6px 0 -6px; }
 /* place suggestions always sit on top of the rest of the form */
 .journey, .search { position: relative; }
 .journey:focus-within, .search:focus-within, .place:focus-within { z-index: 60; }
@@ -1240,3 +1240,19 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .poi-head small { color: var(--sub); font: 600 12.5px var(--text); }
 .plate.turn { background: #E07A1F; color: #fff; font-weight: 900; }
 .via-chip small { color: var(--sub); font-weight: 600; }
+
+/* return trip options */
+.ret-opts { background: var(--well); border: 1px solid var(--hair, #E2E6E1); border-radius: 16px; padding: 14px; margin-top: -6px; }
+.ret-opts .group-row + .group-row { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair, #E2E6E1); }
+.ret-way { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair, #E2E6E1); }
+.ret-way .label { margin-bottom: 8px; }
+.ret-way .help { margin-top: 6px; }
+.ret-sum { margin: 12px 0 0; font-weight: 700; font-size: 14px; color: var(--sign, #0E5A3E); }
+@media (prefers-color-scheme: dark) { .ret-sum { color: var(--gold, #F5C518); } }
+.ret-opts .seg { background: var(--sheet); }
+/* "Use my location" while it's working */
+.here.busy { pointer-events: none; }
+#from.locating::placeholder { color: var(--sign); font-weight: 700; animation: cf-pulse 1.2s ease-in-out infinite; }
+@media (prefers-color-scheme: dark) { #from.locating::placeholder { color: var(--free); } }
+@keyframes cf-pulse { 50% { opacity: .45; } }
+.ret-opts .stepper { background: var(--sheet); }

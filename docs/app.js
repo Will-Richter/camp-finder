@@ -107,6 +107,7 @@
   }
   const nativePlaces = nativeCall("places", "__cfPlacesDone");
   const nativeRoute = nativeCall("route", "__cfRouteDone");
+  const nativeGeocode = nativeCall("geocode", "__cfGeocodeDone");
 
   // ---------------------------------------------------------------- data: Overpass
   const CAMP_SEL = 'nwr["tourism"~"^(camp_site|caravan_site)$"]';
@@ -400,6 +401,46 @@
       out.push({ ...x, a: x.a ? { ...x.a } : x.a, along: pr.along, off: pr.off, _leg: pr.leg, ...(idSuffix && pr.leg ? { id: `${x.id}@back` } : {}) });
     }
     return out;
+  }
+  // ---- The road home for return trips: the same road reversed, your own "way back" stops, or a sensible different road
+  function joinRoutes(a, b) {
+    return { distance: (a.distance || 0) + (b.distance || 0), duration: (a.duration || 0) + (b.duration || 0),
+      geometry: { type: "LineString", coordinates: [...a.geometry.coordinates, ...b.geometry.coordinates.slice(1)] },
+      legs: [...(a.legs || [{ distance: a.distance, duration: a.duration }]), ...(b.legs || [{ distance: b.distance, duration: b.duration }])] };
+  }
+  const reverseRoute = (r) => ({ distance: r.distance, duration: r.duration, geometry: { type: "LineString", coordinates: [...r.geometry.coordinates].reverse() }, legs: [{ distance: r.distance, duration: r.duration }] });
+  async function homeRoute(from, to, out, backV, way, say = () => {}) {
+    if (backV.length) return { route: await osrm([to, ...backV, from]), via: backV.map((v) => short(v.name)).slice(0, 2).join(" and ") };
+    if (way !== "diff") return { route: reverseRoute(out) };
+    const same = (note) => ({ route: reverseRoute(out), note });
+    const straight = hav([from.lat, from.lon], [to.lat, to.lon]);
+    if (straight < 60000) return same("It's a short trip, so you'll come home the same way.");
+    say("Finding a different road home");
+    const outLine = buildLine(out);
+    const off = Math.min(350000, Math.max(35000, straight * 0.22));
+    const cands = [], seen = new Set();
+    for (const f of [0.5, 0.35, 0.65]) {
+      const a = pointAt(outLine, outLine.total * (f - 0.05)), b = pointAt(outLine, outLine.total * (f + 0.05)), p = pointAt(outLine, outLine.total * f);
+      const kx = 111000 * Math.cos(p.lat * Math.PI / 180), ky = 111000;
+      let dx = (b.lon - a.lon) * kx, dy = (b.lat - a.lat) * ky; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+      for (const sgn of [1, -1]) for (const m of [1, 0.6]) {   // either side of the road, a long way out then a bit closer
+        const t = campDB.townNear?.(p.lat + sgn * dx * off * m / ky, p.lon - sgn * dy * off * m / kx);
+        if (!t || seen.has(t.name) || project(outLine, t).off < off * m * 0.35) continue;
+        seen.add(t.name); cands.push(t); break;
+      }
+    }
+    const overlap = (r) => { const pts = sample(buildLine(r), 4000).slice(4, -4); if (!pts.length) return 1; let on = 0; for (const q of pts) if (project(outLine, { lat: q[0], lon: q[1] }).off < 3000) on++; return on / pts.length; };
+    let best = null;
+    for (const t of cands.slice(0, 4)) {
+      try {
+        const r = await soon(osrm([to, { lat: t.lat, lon: t.lon }, from]), 25000, null); if (!r) continue;
+        const ratio = r.distance / (out.distance || 1), ov = overlap(r);
+        if (ratio > 1.6 || ov > 0.6) continue;
+        const sc = ov + Math.max(0, ratio - 1.05) * 1.2;
+        if (!best || sc < best.sc) best = { sc, route: r, via: t.name };
+      } catch { /* try the next town */ }
+    }
+    return best ? { route: best.route, via: best.via } : same("There isn't a sensible different road home, so you'll come back the same way.");
   }
   // where on the route you reach your destination and turn for home
   function markTurn(line, route, to, outLegs) {
@@ -855,16 +896,22 @@
     for (let k = 1; k <= nights; k++) {
       // re-balance each night from where the last camp actually is
       let target = prevAlong + (line.total - prevAlong) / (nights - k + 2);
-      if (line.turn) {   // return trip: about half the nights going, the last of them at your destination
+      let legRule = null, isTurn = false;
+      if (line.turn && opts.retBack != null) {   // return trip: nights going, a camp at the destination, nights coming home
+        const outN = opts.retOut, there = opts.retThere > 0 ? 1 : 0;
+        if (k <= outN) { target = prevAlong + (line.turn - prevAlong) / (outN - k + 1 + (there ? 1 : 0.5)); legRule = (c) => c._leg !== "back" && c.along <= line.turn + 2000; }
+        else if (there && k === outN + 1) { target = line.turn; isTurn = true; legRule = (c) => c._leg !== "back"; }
+        else { const j = k - outN - there; target = Math.max(line.turn + 1000, prevAlong + (line.total - prevAlong) / (opts.retBack - j + 2)); legRule = (c) => c._leg === "back"; }
+      } else if (line.turn) {   // older saved trips: about half the nights going, the last of them at your destination
         const outN = Math.max(1, Math.ceil(nights / 2));
         target = k <= outN ? prevAlong + (line.turn - prevAlong) / (outN - k + 1) : Math.max(prevAlong, line.turn) + (line.total - Math.max(prevAlong, line.turn)) / (nights - k + 2);
       }
-      const win = Math.max(25000, seg * 0.45);
+      const win = isTurn ? Math.max(25000, Math.min(60000, seg * 0.45)) : Math.max(25000, seg * 0.45);
       const rank = (list) => list
         .map((c) => ({ c, s: score(c, opts.wants, opts.cost) - Math.abs(c.along - target) / 1500 - c.off / 2500 }))
         .sort((a, b) => b.s - a.s).map((x) => x.c);
       const ukey = (c) => c.id + (c._leg || "");
-      const inWin = usable.filter((c) => Math.abs(c.along - target) <= win && !used.has(ukey(c)));
+      const inWin = usable.filter((c) => Math.abs(c.along - target) <= win && !used.has(ukey(c)) && (!legRule || legRule(c)));
       let strict = rank(inWin.filter((c) => costOK(c, opts.cost) && ruledOut(c, opts.wants).length === 0));
       if (opts.cost === "cheap") { // free or unknown first, paid only if nothing else
         const freeish = strict.filter((c) => c.cost !== "paid");
@@ -881,7 +928,7 @@
         if (list.length) warn = "No free camp found near this stop. Cheapest nearby options shown.";
       }
       if (!list.length) {
-        const wide = usable.filter((c) => !used.has(ukey(c)) && Math.abs(c.along - target) <= seg * 0.9);
+        const wide = usable.filter((c) => !used.has(ukey(c)) && Math.abs(c.along - target) <= seg * 0.9 && (!legRule || legRule(c)));
         list = rank(wide);
         if (list.length) warn = "Nothing close to the ideal stop. Nearest camp shown, so this day will be longer or shorter.";
       }
@@ -894,7 +941,7 @@
       if (camp && !warn) { const u = unrecorded(camp, opts.wants); if (u.length) warn = `Not recorded whether it has ${u.map((w) => SHORT_LABEL[w] || w).join(" or ").toLowerCase()}. Check before you rely on it.`; }
       if (camp) used.add(ukey(camp));
       prevAlong = camp ? camp.along : target;
-      picks.push({ target, camp, alts: list.slice(1, 4), warn: camp ? warn : "No camps found for this night. Try a bigger detour or fewer must-haves." });
+      picks.push({ target, camp, alts: list.slice(1, 4), ...(isTurn ? { turnPick: true } : {}), warn: camp ? warn : "No camps found for this night. Try a bigger detour or fewer must-haves." });
     }
     // "Need a refresh" nights: a real bed instead of camping
     const want = new Set();
@@ -1234,9 +1281,50 @@
     $("#nightsDown").disabled = n === 0; $("#nightsUp").disabled = n === 120;
     $("#nightsHelp").textContent = n === 0 ? "Straight through, no overnight stops" : `One camp for each night, ${n + 1} days of driving`;
   }
-  $("#nightsDown").addEventListener("click", () => setNights(+nightsIn.value - 1));
-  $("#nightsUp").addEventListener("click", () => setNights(+nightsIn.value + 1));
+  $("#nightsDown").addEventListener("click", () => { const b = +$("#backOut").textContent; setNights(+nightsIn.value - 1); if (b === +nightsIn.value + 1) setBack(b - 1); else retSum(); });
+  $("#nightsUp").addEventListener("click", () => { const b = +$("#backOut").textContent; setNights(+nightsIn.value + 1); if (b === +nightsIn.value - 1) setBack(b + 1); else retSum(); });
   setNights(6);
+
+  // ---- Return trips: nights there, nights at the destination, nights home, and which road home
+  const isRet = () => !!$("#retTrip")?.checked;
+  const retThere = () => +$("#thereOut").textContent || 0;
+  const retBack = () => +$("#backOut").textContent || 0;
+  function setThere(n) {
+    n = Math.max(0, Math.min(30, n)); $("#thereOut").textContent = n;
+    $("#thereDown").disabled = n === 0; $("#thereUp").disabled = n === 30;
+    retSum();
+  }
+  function setBack(n) {
+    n = Math.max(0, Math.min(120, n)); $("#backOut").textContent = n;
+    $("#backDown").disabled = n === 0; $("#backUp").disabled = n === 120;
+    retSum();
+  }
+  function retSum() {
+    const ret = isRet();
+    $("#retOpts").hidden = !ret;
+    const out = +nightsIn.value, there = retThere(), back = retBack();
+    const dest = $("#to").value.trim().split(",")[0] || "your destination";
+    $("#nightsLabel").textContent = ret ? "Nights on the way there" : "Nights on the way";
+    if (ret) $("#nightsHelp").textContent = out === 0 ? "Drive straight there" : `${out} camp${out > 1 ? "s" : ""} on the drive up`;
+    else setNightsHelp(out);
+    $("#thereLabel").textContent = `Nights at ${dest}`;
+    $("#thereHelp").textContent = there === 0 ? "Turn straight around and head home" : there === 1 ? "One night there, then head home" : `${there} nights there, then head home`;
+    $("#backHelp").textContent = back === 0 ? "Drive straight home" : `${back} camp${back > 1 ? "s" : ""} on the drive back`;
+    const diff = radio("retWay") !== "same";
+    $("#retWayHelp").textContent = diff ? "See new country on the way back. We'll find a sensible loop, or tell you if the same road is the only good way." : "Come home the way you went. Different camps each night.";
+    const total = out + there + back;
+    $("#retSum").textContent = `${total + 1} day${total ? "s" : ""} in total: ${out} night${out === 1 ? "" : "s"} going, ${there} at ${dest}, ${back} coming home`;
+  }
+  function setNightsHelp(n) { $("#nightsHelp").textContent = n === 0 ? "Straight through, no overnight stops" : `One camp for each night, ${n + 1} days of driving`; }
+  $("#thereDown").addEventListener("click", () => setThere(retThere() - 1));
+  $("#thereUp").addEventListener("click", () => setThere(retThere() + 1));
+  $("#backDown").addEventListener("click", () => setBack(retBack() - 1));
+  $("#backUp").addEventListener("click", () => setBack(retBack() + 1));
+  $("#retWaySeg").addEventListener("change", retSum);
+  $("#tripType").addEventListener("change", retSum);
+  $("#to").addEventListener("input", () => { if (isRet()) retSum(); });
+  setThere(prefs.retThere ?? 1); setBack(prefs.retBack ?? 6);
+  if (prefs.retWay === "same") $("#retWaySeg input[value=same]").checked = true;
   const refreshIn = $("#refreshIn");
   function setRefresh(n) {
     const max = +nightsIn.value;
@@ -1255,25 +1343,62 @@
   (() => { const d = new Date(); $("#leaveDate").value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   $("#detourSeg").addEventListener("change", () => ($("#detourShown").textContent = (+radio("detour") / 1000) + " km"));
 
-  // "Use my location": instant if we already know where you are, named after your town, clear when it can't
-  const myPlaceName = (p) => { const t = campDB.townNear?.(p.lat, p.lon); return t ? `${t.name} (my location)` : "My location"; };
+  // "Use my location": asks permission, shows it's working, then fills in the actual place (e.g. "Bargara, QLD")
+  const STATE_AB = { "Queensland": "QLD", "New South Wales": "NSW", "Victoria": "VIC", "Tasmania": "TAS", "South Australia": "SA", "Western Australia": "WA", "Northern Territory": "NT", "Australian Capital Territory": "ACT" };
+  const myPlaceName = (p) => { const t = campDB.townNear?.(p.lat, p.lon); return t ? (t.d < 3000 ? t.name : `Near ${t.name}`) : "My location"; };
+  async function whereIs(p) {
+    // 1. Apple's own place names (iPhone app)  2. OpenStreetMap  3. the nearest town in the built-in list
+    if (nativeGeocode) {
+      try {
+        const g = await nativeGeocode({ lat: p.lat, lon: p.lon }, 6000);
+        const place = g.locality || g.sub || g.name;
+        if (place) return `${place}${g.area ? ", " + (STATE_AB[g.area] || g.area) : ""}`;
+      } catch { /* next */ }
+    }
+    if (!isOffline()) {
+      try {
+        const j = await fetchJSON(`https://photon.komoot.io/reverse?lat=${p.lat}&lon=${p.lon}&lang=en`, {}, 5000);
+        const q = j.features?.[0]?.properties || {};
+        const place = q.district || q.city || q.town || q.village || q.locality || q.name;
+        if (place) return `${place}${q.state ? ", " + (STATE_AB[q.state] || q.state) : ""}`;
+      } catch { /* next */ }
+    }
+    return myPlaceName(p);
+  }
   let hereBusy = false;
-  $("#useHere").addEventListener("click", () => {
+  function locateFrom() {
     const f = $("#from"), b = $("#useHere");
-    const set = (p) => { f.value = myPlaceName(p); f.dataset.lat = p.lat; f.dataset.lon = p.lon; b.hidden = true; b.classList.remove("busy"); b.textContent = "Use my location"; f.placeholder = "Starting from"; hereBusy = false; };
-    if (me && lastFixAt && Date.now() - lastFixAt < 10 * 60000) return set(me);   // a recent fix: use it straight away
     if (hereBusy) return;
     if (!navigator.geolocation) return toast("Location isn't available on this phone");
-    hereBusy = true; b.classList.add("busy"); b.innerHTML = `<span class="spinner"></span>Finding you`; f.placeholder = "Finding your location…";
-    const fail = (msg) => { hereBusy = false; b.classList.remove("busy"); b.textContent = "Use my location"; f.placeholder = "Starting from"; if (me) return set(me); toast(msg); };
-    const timer = setTimeout(() => fail("Couldn't get a GPS fix. Type your town instead, or try again outside."), 15000);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { clearTimeout(timer); onPosition(pos); store.set("cf-loc-ok", true); startTracking(); set(me); },
-      (err) => { clearTimeout(timer); fail(err && err.code === 1 ? "Location is turned off for Camp Finder. Turn it on in iPhone Settings → Camp Finder → Location." : "Couldn't find your location. Type your town instead."); },
-      { enableHighAccuracy: true, timeout: 14000, maximumAge: 300000 }
+    hereBusy = true;
+    const busy = (t) => { b.hidden = false; b.classList.add("busy"); b.disabled = true; b.innerHTML = `<span class="spinner"></span>${esc(t)}`; f.value = ""; f.placeholder = `${t}…`; f.classList.add("locating"); };
+    const done = () => { hereBusy = false; b.disabled = false; b.classList.remove("busy"); b.textContent = "Use my location"; f.placeholder = "Starting from"; f.classList.remove("locating"); };
+    const set = async (p) => {
+      busy("Finding your town");
+      f.dataset.lat = p.lat; f.dataset.lon = p.lon;
+      const name = await whereIs(p);
+      done(); f.value = name; f.dataset.lat = p.lat; f.dataset.lon = p.lon; f.dataset.here = "1"; b.hidden = true;
+      f.dispatchEvent(new Event("change"));
+    };
+    if (me && lastFixAt && Date.now() - lastFixAt < 5 * 60000) return set(me);   // a recent fix: no GPS wait
+    busy("Finding you");
+    let settled = false, tries = 0;
+    const fail = (msg) => { if (settled) return; settled = true; clearTimeout(timer); done(); if (me) return set(me); toast(msg); };
+    // long enough to cover the "Allow Camp Finder to use your location?" question
+    const timer = setTimeout(() => fail("Couldn't get a GPS fix. Type your town instead, or try again outside."), 45000);
+    const ask = () => navigator.geolocation.getCurrentPosition(
+      (pos) => { if (settled) return; settled = true; clearTimeout(timer); onPosition(pos); store.set("cf-loc-ok", true); startTracking(); set(me); },
+      (err) => {
+        if (err && err.code === 1) return fail("Location is off for Camp Finder. Turn it on in iPhone Settings → Camp Finder → Location → While Using the App.");
+        if (++tries < 3 && !settled) return setTimeout(ask, 1200);   // GPS still warming up: try again by itself
+        fail("Couldn't find your location. Type your town instead.");
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 120000 }
     );
-  });
-  $("#from").addEventListener("input", () => ($("#useHere").hidden = !!$("#from").value));
+    ask();
+  }
+  $("#useHere").addEventListener("click", locateFrom);
+  $("#from").addEventListener("input", () => { $("#useHere").hidden = !!$("#from").value; delete $("#from").dataset.here; });
   attachSuggest($("#from"), () => ($("#useHere").hidden = true));
   attachSuggest($("#to"));
 
@@ -1300,22 +1425,32 @@
     $("#planForm").hidden = true; pl.hidden = false; step(0); $("#sheetScroll").scrollTop = 0;
     try {
       savePrefs();
-      const nights = +nightsIn.value;
+      const ret = isRet();
+      const nights = ret ? +nightsIn.value + (retThere() > 0 ? 1 : 0) + retBack() : +nightsIn.value;
       if (settings.simple) { const r = $("#simpleRefresh").checked ? Math.max(1, Math.round(+nightsIn.value / 3)) : 0; refreshIn.value = Math.min(r, +nightsIn.value); }
-      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "", ret: !!$("#retTrip")?.checked };
+      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "", ret,
+        ...(ret ? { retOut: +nightsIn.value, retThere: retThere(), retBack: retBack(), retWay: radio("retWay") || "diff" } : {}) };
+      if (ret) { prefs.retThere = opts.retThere; prefs.retBack = opts.retBack; prefs.retWay = opts.retWay; store.set("cf-prefs", prefs); }
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
       say("Planning the route");
       // return trip: out via your "there" stops, back via your "back" stops, finishing where you started
       const outV = viaStops.filter((v) => v.leg !== "back"), backV = viaStops.filter((v) => v.leg === "back");
-      const route = await osrm(opts.ret ? [from, ...outV, to, ...backV, from] : [from, ...viaStops, to]);
+      let route, home = null;
+      if (opts.ret) {
+        const out = await osrm([from, ...outV, to]);
+        home = await homeRoute(from, to, out, backV, opts.retWay, say);
+        route = joinRoutes(out, home.route);
+        route._outLegs = (out.legs || []).length || 1;
+      } else route = await osrm([from, ...viaStops, to]);
       say("Looking for camps");
       const data = await campsAlong(route, opts.detour, (t) => say(t.replace("Searching for camps along the route… ", "Looking for camps ")));
-      if (opts.ret) { markTurn(data.line, route, to, outV.length + 1); data.camps = perLeg(data.line, data.camps, opts.detour * 1.15); }
+      if (opts.ret) { markTurn(data.line, route, to, route._outLegs); data.camps = perLeg(data.line, data.camps, opts.detour * 1.15); }
       step(3);
       plan = makePlan({ from, to, route, nights, opts, data });
       plan.offline = data.offline;
       plan.stays = pendingStays || {}; pendingStays = null;
+      if (home) { plan.home = { via: home.via || "", note: home.note || "", same: !home.via }; if (opts.retThere > 1 && !plan.stays[opts.retOut]) plan.stays[opts.retOut] = opts.retThere - 1; }
       msg.textContent = "";
       step(4); await sleep(animOn() ? 450 : 0);
       pl.hidden = true;
@@ -1334,8 +1469,8 @@
   const extraBefore = (i) => { let n = 0; for (let k = 0; k < i; k++) n += extraAt(k); return n; };
   const totalDays = (p = plan) => p.nights + 1 + Object.values(p.stays || {}).reduce((a, n) => a + (+n || 0), 0);
   const dayNo = (i) => i + 1 + extraBefore(i);   // which day of the trip you drive leg i
-  function stayRow(i, maxStay) {
-    const n = 1 + extraAt(i), cap = Math.min(7, maxStay || 7);
+  function stayRow(i, maxStay, most = 7) {
+    const n = 1 + extraAt(i), cap = Math.min(most, maxStay || most);
     if (n === 1) return `<button class="stay-more" type="button" data-act="stay" data-i="${i}" data-d="1"${cap <= 1 ? " disabled" : ""}>🏕️ Stay an extra night</button>`;
     return `<div class="stay-row"><span>🏕️ <b>${n} nights</b> here · rest day${n > 2 ? "s" : ""}</span><button type="button" class="st-step" data-act="stay" data-i="${i}" data-d="-1" aria-label="One night fewer">−</button><button type="button" class="st-step" data-act="stay" data-i="${i}" data-d="1" aria-label="One more night"${n >= cap ? " disabled" : ""}>+</button></div>`;
   }
@@ -1562,6 +1697,12 @@
     return out.slice(0, 40);
   }
 
+  function turnText(p) {
+    const home = short(p.from.name), h = p.home;
+    if (!h) return `Turn around and head home to ${home}`;
+    if (h.via) return `Head home to ${home} a different way, via ${h.via}`;
+    return h.note || `Head home to ${home} the same way`;
+  }
   function renderItinerary() {
     const p = plan; if (!p) return;
     const stops = [];
@@ -1572,7 +1713,7 @@
     p.picks.forEach((pk, i) => {
       if (!turned && (pk.camp?.along ?? pk.target) > p.line.turn + 2000) {
         turned = true;
-        stops.push(`<li class="stop turn"><div class="plate turn" aria-hidden="true">↩</div><div class="stop-body"><div class="stop-place">${esc(short(p.to.name))}</div><p class="help">Turn around and head home to ${esc(short(p.from.name))}</p></div></li>`);
+        stops.push(`<li class="stop turn"><div class="plate turn" aria-hidden="true">↩</div><div class="stop-body"><div class="stop-place">${esc(short(p.to.name))}</div><p class="help">${esc(turnText(p))}</p></div></li>`);
       }
       fuelUpTo(pk.camp?.along ?? pk.target);
       const leg = `<p class="stop-leg">Day ${dayNo(i)}: ${km(nightKm(i))}${legExtra(nightKm(i))}${weatherChip(i)}</p>${daylightLine(i, pk.camp || pointAt(p.line, pk.target))}${seeTodayLine(i)}`;
@@ -1585,7 +1726,7 @@
         ${leg}
         ${pk.warn ? `<p class="note">${esc(pk.warn)}</p>` : ""}
         ${campCard(pk.camp)}
-        ${stayRow(i, maxStayDays(pk.camp))}
+        ${stayRow(i, maxStayDays(pk.camp), pk.turnPick ? 30 : 7)}
         <div class="stop-actions">
           <button class="btn" data-act="leg" data-i="${i}" type="button">${icon("route")}Directions</button>
           <a class="btn line" href="${navUrl(pk.camp, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
@@ -1638,7 +1779,7 @@
       return;
     }
     if (b?.dataset.act === "stay") {
-      const i = +b.dataset.i, n = Math.max(0, Math.min(6, extraAt(i) + +b.dataset.d));
+      const i = +b.dataset.i, n = Math.max(0, Math.min(plan.picks[i]?.turnPick ? 29 : 6, extraAt(i) + +b.dataset.d));
       plan.stays = { ...(plan.stays || {}) }; if (n) plan.stays[i] = n; else delete plan.stays[i];
       const days = totalDays(plan);
       $("#tripMeta").textContent = `${km(plan.route.distance)} and ${hrs(plan.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`;
@@ -1682,7 +1823,7 @@
     return {
       v: 1, made: new Date().toISOString().slice(0, 10),
       from: pt(p.from), to: pt(p.to), km: Math.round(p.route.distance / 1000), hours: Math.round(p.route.duration / 360) / 10,
-      days: totalDays(p), rig: p.opts.rig, leave: p.opts.leave || "", ret: !!p.opts.ret,
+      days: totalDays(p), rig: p.opts.rig, leave: p.opts.leave || "", ret: !!p.opts.ret, via: p.home?.via || "",
       line: sample(p.line, step).map(([la, lo]) => [r(la), r(lo)]),
       nights: p.picks.map((pk, i) => {
         const st = pk.refresh?.options?.[0], c = st || pk.camp, x = c || pointAt(p.line, pk.target);
@@ -2260,11 +2401,11 @@
     const f = $("#from"), to = $("#to");
     f.value = t.from.name; f.dataset.lat = t.from.lat; f.dataset.lon = t.from.lon; $("#useHere").hidden = true;
     to.value = t.to.name; to.dataset.lat = t.to.lat; to.dataset.lon = t.to.lon;
-    setNights(t.nights);
+    setNights(t.opts?.retOut ?? t.nights);
     viaStops = (t.vias || []).map((v) => ({ ...v })); seeIds.clear(); (t.see || []).forEach((id) => seeIds.add(id)); renderVia();
     pendingStays = t.stays && Object.keys(t.stays).length ? { ...t.stays } : null;
     const pick = (name, v) => { const el = $(`input[name="${name}"][value="${v}"]`); if (el) el.checked = true; };
-    pick("rig", t.opts.rig); pick("cost", t.opts.cost); pick("detour", t.opts.detour); pick("tripType", t.opts.ret ? "ret" : "one");
+    pick("rig", t.opts.rig); pick("cost", t.opts.cost); pick("detour", t.opts.detour); pick("tripType", t.opts.ret ? "ret" : "one"); if (t.opts.retBack != null) { setThere(t.opts.retThere); setBack(t.opts.retBack); pick("retWay", t.opts.retWay || "diff"); } retSum();
     $$("#planWants input").forEach((i) => (i.checked = t.opts.wants.includes(i.value)));
     $("#planForm").hidden = false; $("#results").hidden = true;
     $("#planForm").requestSubmit();
@@ -4095,7 +4236,7 @@
     else if (!$("#from").dataset.lat) {
       const f = $("#from");
       const here = me || await new Promise((res) => { locate((p) => res(p)); setTimeout(() => res(null), 12000); });
-      if (here) { f.value = myPlaceName(here); f.dataset.lat = here.lat; f.dataset.lon = here.lon; $("#useHere").hidden = true; }
+      if (here) { f.value = await soon(whereIs(here), 6000, myPlaceName(here)); f.dataset.lat = here.lat; f.dataset.lon = here.lon; $("#useHere").hidden = true; }
       else { voiceResult("I couldn't find where you are. Say where you're starting from too, like \"Bundaberg to Cairns\".", false); return; }
     }
     if (okTo && okFrom) {

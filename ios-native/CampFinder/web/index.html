@@ -344,6 +344,40 @@
             </div>
           </div>
 
+          <div class="group ret-opts" id="retOpts" hidden>
+            <div class="group-row">
+              <div>
+                <div class="label" id="thereLabel">Nights at your destination</div>
+                <div class="help" id="thereHelp">Set up camp there before heading home</div>
+              </div>
+              <div class="stepper" role="group" aria-labelledby="thereLabel">
+                <button type="button" id="thereDown" aria-label="One less night there"><svg class="ic"><use href="#i-minus"/></svg></button>
+                <output id="thereOut" aria-live="polite">1</output>
+                <button type="button" id="thereUp" aria-label="One more night there"><svg class="ic"><use href="#i-plus"/></svg></button>
+              </div>
+            </div>
+            <div class="group-row">
+              <div>
+                <div class="label" id="backLabel">Nights on the way home</div>
+                <div class="help" id="backHelp">Camps on the drive back</div>
+              </div>
+              <div class="stepper" role="group" aria-labelledby="backLabel">
+                <button type="button" id="backDown" aria-label="One less night on the way home"><svg class="ic"><use href="#i-minus"/></svg></button>
+                <output id="backOut" aria-live="polite">6</output>
+                <button type="button" id="backUp" aria-label="One more night on the way home"><svg class="ic"><use href="#i-plus"/></svg></button>
+              </div>
+            </div>
+            <div class="ret-way">
+              <div class="label">Road home</div>
+              <div class="seg" id="retWaySeg" role="radiogroup" aria-label="Road home">
+                <label><input type="radio" name="retWay" value="diff" checked><span>A different road</span></label>
+                <label><input type="radio" name="retWay" value="same"><span>Same road back</span></label>
+              </div>
+              <p class="help" id="retWayHelp">See new country on the way back. We'll find a sensible loop.</p>
+            </div>
+            <p class="ret-sum" id="retSum"></p>
+          </div>
+
           <div class="group" data-adv>
             <div class="group-row">
               <div><label class="label" for="leaveDate">Leaving</label><div class="help">Used for the weather on each night</div></div>

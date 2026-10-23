@@ -73,7 +73,7 @@
     document.title = `${title} · Camp Finder`;
     $("#title").textContent = title;
     const leave = p.leave ? new Date(p.leave + "T00:00").toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" }) : "";
-    $("#meta").innerHTML = [`${p.days} days`, `${(p.km || 0).toLocaleString("en-AU")} km`, p.hours ? `${p.hours} h driving` : "", RIG[p.rig] || "", leave ? `Leaving ${leave}` : "", p.cost ? `About $${p.cost.toLocaleString("en-AU")}` : ""].filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join("");
+    $("#meta").innerHTML = [`${p.days} days`, `${(p.km || 0).toLocaleString("en-AU")} km`, p.via ? `Home via ${p.via}` : "", p.hours ? `${p.hours} h driving` : "", RIG[p.rig] || "", leave ? `Leaving ${leave}` : "", p.cost ? `About $${p.cost.toLocaleString("en-AU")}` : ""].filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join("");
     if (p.line?.length > 1) {
       const pl = L.polyline(p.line, { color: "#fff", weight: 8, opacity: .9 }).addTo(map);
       L.polyline(p.line, { color: "#0E5A3E", weight: 4.5 }).addTo(map);
