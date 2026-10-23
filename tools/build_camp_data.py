@@ -123,7 +123,27 @@ def all_elements():
         time.sleep(2)
     if len(failed) > 4:
         raise RuntimeError(f"{len(failed)} tiles failed")
-    # Towns, fuel and water: one small request each for all of Australia (fast, and nothing gets cut off part way)
+    els += fetch_kinds(tiles)
+    # Low clearances are heavy: tile by tile, as many as time allows
+    started = time.time()
+    for k, t in enumerate(tiles, 1):
+        if time.time() - started > 80 * 60:
+            print("  low clearances: out of time, keeping what we have", file=sys.stderr)
+            FAILED_EXTRA.extend(tiles[k - 1:])
+            break
+        print(f"low clearances {k}/{len(tiles)} {t}", file=sys.stderr)
+        try:
+            els += query(t, "extra", tries=3)
+        except Exception as ex:
+            print(f"  tile skipped: {ex}", file=sys.stderr)
+            FAILED_EXTRA.append(t)
+        time.sleep(2)
+    return els
+
+
+def fetch_kinds(tiles):
+    """Towns, fuel and water: one small request each for all of Australia (fast, and nothing gets cut off part way)"""
+    els = []
     au = "-44.0,112.0,-9.0,160.0"
     for kind, body in (("towns", f'node["place"~"^(city|town|village)$"]["name"]({au});'),
                        ("fuel", f'nwr["amenity"="fuel"]({au});'),
@@ -149,21 +169,48 @@ def all_elements():
                 print(f"{kind}: {len(got)} from tiles", file=sys.stderr)
                 els += got
         time.sleep(20)
-    # Low clearances are heavy: tile by tile, as many as time allows
-    started = time.time()
-    for k, t in enumerate(tiles, 1):
-        if time.time() - started > 80 * 60:
-            print("  low clearances: out of time, keeping what we have", file=sys.stderr)
-            FAILED_EXTRA.extend(tiles[k - 1:])
-            break
-        print(f"low clearances {k}/{len(tiles)} {t}", file=sys.stderr)
-        try:
-            els += query(t, "extra", tries=3)
-        except Exception as ex:
-            print(f"  tile skipped: {ex}", file=sys.stderr)
-            FAILED_EXTRA.append(t)
-        time.sleep(2)
     return els
+
+
+def extras_only(out_path):
+    """Quick refresh of just towns, fuel stations and water points, patched into the existing file."""
+    LATS_, LONS_ = LATS, LONS
+    tiles = [(LATS_[i], LONS_[j], LATS_[i + 1], LONS_[j + 1]) for i in range(len(LATS_) - 1) for j in range(len(LONS_) - 1)]
+    with open(out_path, encoding="utf-8") as f:
+        d = json.load(f)
+    towns, fuel, water = [], [], []
+    seen = set()
+    for el in fetch_kinds(tiles):
+        key = f"{el['type']}/{el['id']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        lat = el.get("lat", el.get("center", {}).get("lat")); lon = el.get("lon", el.get("center", {}).get("lon"))
+        if lat is None or lon is None:
+            continue
+        tags = el.get("tags", {}); pt = [round(lat, 5), round(lon, 5)]
+        if tags.get("place") in ("city", "town", "village") and tags.get("name"):
+            towns.append([round(lat, 3), round(lon, 3), tags["name"][:40], {"city": 3, "town": 2}.get(tags["place"], 1)])
+        elif tags.get("amenity") == "fuel":
+            nm = (tags.get("brand") or tags.get("name") or "Fuel station")[:40]
+            if tags.get("name") and tags.get("brand") and tags["brand"] not in tags["name"]:
+                nm = f'{tags["brand"]} {tags["name"]}'[:50]
+            fuel.append([*pt, nm])
+        elif tags.get("amenity") in ("water_point", "drinking_water"):
+            if tags.get("access") in ("private", "no") or tags.get("drinking_water") == "no":
+                continue
+            water.append([*pt, 1 if tags.get("amenity") == "water_point" else 0])
+    for key, rows in (("towns", towns), ("fuel", fuel), ("water", water)):
+        if key in FAILED_KINDS or len(rows) < len(d.get(key, [])) * 0.8:
+            print(f"  {key}: keeping {len(d.get(key, []))} (got {len(rows)})", file=sys.stderr)
+        else:
+            d[key] = rows
+            print(f"  {key}: {len(rows)}", file=sys.stderr)
+    d["built"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    tmp = out_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, out_path)
 
 
 def parse_height(v):
@@ -257,4 +304,9 @@ def main(out_path):
 
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
-    main(sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "docs", "data", "camps-au.json"))
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    path = args[0] if args else os.path.join(here, "..", "docs", "data", "camps-au.json")
+    if "--extras-only" in sys.argv:
+        extras_only(path)
+    else:
+        main(path)
