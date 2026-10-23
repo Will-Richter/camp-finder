@@ -435,7 +435,7 @@
       try {
         const r = await soon(osrm([to, { lat: t.lat, lon: t.lon }, from]), 25000, null); if (!r) continue;
         const ratio = r.distance / (out.distance || 1), ov = overlap(r);
-        if (ratio > 1.6 || ov > 0.6) continue;
+        if (ratio > (straight < 150000 ? 1.3 : 1.6) || ov > 0.6) continue;   // short trips: only if it's barely longer
         const sc = ov + Math.max(0, ratio - 1.05) * 1.2;
         if (!best || sc < best.sc) best = { sc, route: r, via: t.name };
       } catch { /* try the next town */ }
