@@ -63,14 +63,14 @@ OHSOME = "https://api.ohsome.org/v1/elements/centroid"
 AU = "112,-44,154,-9"
 
 
-def ohsome(filt):
+def ohsome(filt, attempts=4, timeout=600):
     """One request for all of Australia via the ohsome API (HeiGIT), as Overpass-style elements."""
     data = urllib.parse.urlencode({"bboxes": AU, "filter": filt, "properties": "tags"}).encode()
     last = None
-    for attempt in range(4):
+    for attempt in range(attempts):
         try:
             req = urllib.request.Request(OHSOME, data=data, headers={"User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded"})
-            with urllib.request.urlopen(req, timeout=600) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 j = json.load(r)
             out = []
             for f in j.get("features", []):
@@ -151,7 +151,7 @@ def fetch_kinds(tiles):
                        ("fuel", f'nwr["amenity"="fuel"]({au});'),
                        ("water", f'node["amenity"~"^(water_point|drinking_water)$"]({au});')):
         try:   # ohsome first: one quick request, and it doesn't share Overpass's busy servers
-            got = ohsome(OH[kind])
+            got = ohsome(OH[kind], attempts=2, timeout=240)
             if len(got) < 500:
                 raise RuntimeError(f"only {len(got)}")
             print(f"{kind}: {len(got)} from ohsome", file=sys.stderr)
@@ -160,13 +160,15 @@ def fetch_kinds(tiles):
         except Exception as ex:
             print(f"  {kind} from ohsome failed ({ex}); trying Overpass", file=sys.stderr)
         try:
-            got = query_body(body, tries=3)
+            got = query_body(body, tries=3, timeout=240)
             print(f"{kind}: {len(got)} for all of Australia", file=sys.stderr)
             els += got
         except Exception as ex:   # too big or too busy: same request in tiles
             print(f"  {kind} in one go failed ({ex}); trying tiles", file=sys.stderr)
-            got, bad = [], 0
+            got, bad, t0 = [], 0, time.time()
             for t in tiles:
+                if time.time() - t0 > 20 * 60:   # don't let one busy server eat the whole run
+                    bad = 99; break
                 tb = f"{t[0]},{t[1]},{t[2]},{t[3]}"
                 try:
                     got += query_body(body.replace(f"({au})", f"({tb})"), tries=3, timeout=180)
