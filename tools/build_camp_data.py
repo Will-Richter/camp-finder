@@ -35,17 +35,19 @@ def query(bbox, kind="core", tries=6):
     if kind == "core":
         body = f'nwr["tourism"~"^(camp_site|caravan_site)$"]({b});nwr["leisure"="slipway"]({b});nwr["amenity"="sanitary_dump_station"]({b});'
     else:  # extras: fuel, water and low clearances (kept separate so a slow server can't block the camps)
-        body = (f'nwr["amenity"="fuel"]({b});node["amenity"~"^(water_point|drinking_water)$"]({b});'
-                f'node["place"~"^(city|town|village)$"]["name"]({b});'
-                f'way["maxheight"]["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|track)(_link)?$"]({b});node["barrier"="height_restrictor"]({b});')
-    q = f'[out:json][timeout:180];({body});out center tags;'
+        body = (f'way["maxheight"]["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|track)(_link)?$"]({b});node["barrier"="height_restrictor"]({b});')
+    return query_body(body, tries)
+
+
+def query_body(body, tries=6, timeout=300):
+    q = f'[out:json][timeout:{timeout}][maxsize:1073741824];({body});out center tags;'
     data = urllib.parse.urlencode({"data": q}).encode()
     last = None
     for attempt in range(tries):
         url = SERVERS[attempt % len(SERVERS)]
         try:
             req = urllib.request.Request(url, data=data, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=240) as r:
+            with urllib.request.urlopen(req, timeout=timeout + 60) as r:
                 j = json.load(r)
             if "elements" not in j or "runtime error" in j.get("remark", ""):
                 raise RuntimeError(j.get("remark", "bad response"))
@@ -54,7 +56,7 @@ def query(bbox, kind="core", tries=6):
             last = ex
             print(f"  {url.split('/')[2]} failed ({ex}); retrying", file=sys.stderr)
             time.sleep(10 + attempt * 15)
-    raise RuntimeError(f"tile {bbox} failed: {last}")
+    raise RuntimeError(f"query failed: {last}")
 
 
 OHSOME = "https://api.ohsome.org/v1/elements/centroid"
@@ -91,6 +93,7 @@ def ohsome(filt):
 
 
 FAILED_CORE, FAILED_EXTRA = [], []
+FAILED_KINDS = set()   # towns / fuel / water that couldn't be fetched this time
 
 
 def all_elements():
@@ -120,17 +123,31 @@ def all_elements():
         time.sleep(2)
     if len(failed) > 4:
         raise RuntimeError(f"{len(failed)} tiles failed")
+    # Towns, fuel and water: one small request each for all of Australia (fast, and nothing gets cut off part way)
+    au = "-44.0,112.0,-9.0,160.0"
+    for kind, body in (("towns", f'node["place"~"^(city|town|village)$"]["name"]({au});'),
+                       ("fuel", f'nwr["amenity"="fuel"]({au});'),
+                       ("water", f'node["amenity"~"^(water_point|drinking_water)$"]({au});')):
+        try:
+            got = query_body(body, tries=6)
+            print(f"{kind}: {len(got)} for all of Australia", file=sys.stderr)
+            els += got
+        except Exception as ex:
+            print(f"  {kind} failed, keeping last time's: {ex}", file=sys.stderr)
+            FAILED_KINDS.add(kind)
+        time.sleep(5)
+    # Low clearances are heavy: tile by tile, as many as time allows
     started = time.time()
     for k, t in enumerate(tiles, 1):
-        if time.time() - started > 100 * 60:
-            print("  extras: out of time, keeping what we have", file=sys.stderr)
+        if time.time() - started > 80 * 60:
+            print("  low clearances: out of time, keeping what we have", file=sys.stderr)
             FAILED_EXTRA.extend(tiles[k - 1:])
             break
-        print(f"extras {k}/{len(tiles)} {t}", file=sys.stderr)
+        print(f"low clearances {k}/{len(tiles)} {t}", file=sys.stderr)
         try:
             els += query(t, "extra", tries=3)
         except Exception as ex:
-            print(f"  extras tile skipped: {ex}", file=sys.stderr)
+            print(f"  tile skipped: {ex}", file=sys.stderr)
             FAILED_EXTRA.append(t)
         time.sleep(2)
     return els
@@ -201,8 +218,11 @@ def main(out_path):
     keep("camps", camps, FAILED_CORE, lambda r: (r[1], r[2]))
     keep("ramps", ramps, FAILED_CORE, lambda r: (r[0], r[1]))
     keep("dumps", dumps, FAILED_CORE, lambda r: (r[0], r[1]))
-    for key, rows in (("fuel", fuel), ("water", water), ("low", low), ("towns", towns)):
-        keep(key, rows, FAILED_EXTRA, lambda r: (r[0], r[1]))
+    keep("low", low, FAILED_EXTRA, lambda r: (r[0], r[1]))
+    for key, rows in (("fuel", fuel), ("water", water), ("towns", towns)):
+        if key in FAILED_KINDS or (old.get(key) and len(rows) < len(old[key]) * 0.8):   # failed or came back short: keep last time's
+            print(f"  {key}: using last time's {len(old.get(key, []))} (got {len(rows)})", file=sys.stderr)
+            rows[:] = old.get(key, rows)
     if FAILED_CORE or FAILED_EXTRA:
         print(f"kept previous data for {len(FAILED_CORE)} camp tiles and {len(FAILED_EXTRA)} extra tiles", file=sys.stderr)
     if old.get("camps") and len(camps) < len(old["camps"]) * 0.97:
