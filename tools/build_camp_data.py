@@ -145,11 +145,22 @@ def fetch_kinds(tiles):
     """Towns, fuel and water: one small request each for all of Australia (fast, and nothing gets cut off part way)"""
     els = []
     au = "-44.0,112.0,-9.0,160.0"
+    OH = {"towns": "place in (city, town, village) and name=* and type:node", "fuel": "amenity=fuel",
+          "water": "amenity in (water_point, drinking_water) and type:node"}
     for kind, body in (("towns", f'node["place"~"^(city|town|village)$"]["name"]({au});'),
                        ("fuel", f'nwr["amenity"="fuel"]({au});'),
                        ("water", f'node["amenity"~"^(water_point|drinking_water)$"]({au});')):
+        try:   # ohsome first: one quick request, and it doesn't share Overpass's busy servers
+            got = ohsome(OH[kind])
+            if len(got) < 500:
+                raise RuntimeError(f"only {len(got)}")
+            print(f"{kind}: {len(got)} from ohsome", file=sys.stderr)
+            els += got
+            continue
+        except Exception as ex:
+            print(f"  {kind} from ohsome failed ({ex}); trying Overpass", file=sys.stderr)
         try:
-            got = query_body(body, tries=6)
+            got = query_body(body, tries=3)
             print(f"{kind}: {len(got)} for all of Australia", file=sys.stderr)
             els += got
         except Exception as ex:   # too big or too busy: same request in tiles
