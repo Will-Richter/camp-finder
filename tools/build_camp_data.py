@@ -132,10 +132,23 @@ def all_elements():
             got = query_body(body, tries=6)
             print(f"{kind}: {len(got)} for all of Australia", file=sys.stderr)
             els += got
-        except Exception as ex:
-            print(f"  {kind} failed, keeping last time's: {ex}", file=sys.stderr)
-            FAILED_KINDS.add(kind)
-        time.sleep(5)
+        except Exception as ex:   # too big or too busy: same request in tiles
+            print(f"  {kind} in one go failed ({ex}); trying tiles", file=sys.stderr)
+            got, bad = [], 0
+            for t in tiles:
+                tb = f"{t[0]},{t[1]},{t[2]},{t[3]}"
+                try:
+                    got += query_body(body.replace(f"({au})", f"({tb})"), tries=3, timeout=180)
+                except Exception:
+                    bad += 1
+                time.sleep(3)
+            if bad > 3:
+                print(f"  {kind}: {bad} tiles failed, keeping last time's", file=sys.stderr)
+                FAILED_KINDS.add(kind)
+            else:
+                print(f"{kind}: {len(got)} from tiles", file=sys.stderr)
+                els += got
+        time.sleep(20)
     # Low clearances are heavy: tile by tile, as many as time allows
     started = time.time()
     for k, t in enumerate(tiles, 1):
