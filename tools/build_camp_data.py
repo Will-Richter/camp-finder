@@ -147,7 +147,7 @@ def fetch_kinds(tiles):
     au = "-44.0,112.0,-9.0,160.0"
     OH = {"towns": "place in (city, town, village) and name=* and type:node", "fuel": "amenity=fuel",
           "water": "amenity in (water_point, drinking_water) and type:node"}
-    for kind, body in (("towns", f'node["place"~"^(city|town|village)$"]["name"]({au});'),
+    for kind, body in (("towns", f'node["place"="city"]["name"]({au});node["place"="town"]["name"]({au});node["place"="village"]["name"]({au});'),
                        ("fuel", f'nwr["amenity"="fuel"]({au});'),
                        ("water", f'node["amenity"~"^(water_point|drinking_water)$"]({au});')):
         try:   # ohsome first: one quick request, and it doesn't share Overpass's busy servers
