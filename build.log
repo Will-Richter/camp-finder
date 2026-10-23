@@ -1,0 +1,35 @@
+  ohsome failed (HTTP Error 403: Forbidden); retrying
+  towns from ohsome failed (ohsome failed: HTTP Error 403: Forbidden); trying Overpass
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (Remote end closed connection without response); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  towns in one go failed (query failed: HTTP Error 504: Gateway Timeout); trying tiles
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (The read operation timed out); retrying
+  overpass.kumi.systems failed (The read operation timed out); retrying
+  towns: 99 tiles failed, keeping last time's
+  ohsome failed (HTTP Error 403: Forbidden); retrying
+  fuel from ohsome failed (ohsome failed: HTTP Error 403: Forbidden); trying Overpass
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.kumi.systems failed (HTTP Error 502: Bad Gateway); retrying
+  fuel in one go failed (query failed: HTTP Error 502: Bad Gateway); trying tiles
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (The read operation timed out); retrying
+  overpass.kumi.systems failed (The read operation timed out); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  fuel: 99 tiles failed, keeping last time's
+  ohsome failed (HTTP Error 403: Forbidden); retrying
+  water from ohsome failed (ohsome failed: HTTP Error 403: Forbidden); trying Overpass
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
