@@ -1343,6 +1343,10 @@
   (() => { const d = new Date(); $("#leaveDate").value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   $("#detourSeg").addEventListener("change", () => ($("#detourShown").textContent = (+radio("detour") / 1000) + " km"));
 
+  // Panels only scroll up and down: if anything nudges one sideways, put it straight back
+  ["#sheetScroll", "#detail"].forEach((sel) => { const el = $(sel); if (el) el.addEventListener("scroll", () => { if (el.scrollLeft) el.scrollLeft = 0; }, { passive: true }); });
+  window.addEventListener("scroll", () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); }, { passive: true });
+
   // "Use my location": asks permission, shows it's working, then fills in the actual place (e.g. "Bargara, QLD")
   const STATE_AB = { "Queensland": "QLD", "New South Wales": "NSW", "Victoria": "VIC", "Tasmania": "TAS", "South Australia": "SA", "Western Australia": "WA", "Northern Territory": "NT", "Australian Capital Territory": "ACT" };
   const myPlaceName = (p) => { const t = campDB.townNear?.(p.lat, p.lon); return t ? (t.d < 3000 ? t.name : `Near ${t.name}`) : "My location"; };

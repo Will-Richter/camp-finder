@@ -1256,3 +1256,9 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 @media (prefers-color-scheme: dark) { #from.locating::placeholder { color: var(--free); } }
 @keyframes cf-pulse { 50% { opacity: .45; } }
 .ret-opts .stepper { background: var(--sheet); }
+
+/* Scrolling panels move up and down only, never sideways (rows of chips and photos still swipe across) */
+.sheet-scroll, .detail, .suggest, .wl-slide, .login, .welcome { overflow-x: hidden !important; overscroll-behavior-x: none; }
+.sheet-scroll > *, .detail > * { max-width: 100%; }
+.sheet-scroll img, .detail img, .sheet-scroll svg, .detail svg { max-width: 100%; }
+.pills, .gallery, .need-row, .wl-track { overscroll-behavior-x: contain; }
