@@ -1068,6 +1068,10 @@
   // The web view can report its size late on first launch: re-measure so Australia is centred.
   // once you've touched the map it never jumps back to Australia by itself (the keyboard opening used to trigger that)
   let userMovedMap = false;
+  // Opening view: about 300 km around you (all of Australia until we know where you are)
+  let homeAt = null;
+  const aroundMe = (p, r = 300000) => { const dLat = r / 111000, dLon = r / (111000 * Math.cos(p.lat * Math.PI / 180)); return [[p.lat - dLat, p.lon - dLon], [p.lat + dLat, p.lon + dLon]]; };
+  const inAustralia = (p) => p && p.lat > -45 && p.lat < -9 && p.lon > 111 && p.lon < 155;
   map.on("dragstart", () => (userMovedMap = true));
   map.getContainer().addEventListener("touchstart", () => (userMovedMap = true), { passive: true });
   map.getContainer().addEventListener("wheel", () => (userMovedMap = true), { passive: true });
@@ -1078,7 +1082,7 @@
     // you can zoom out to see all of Australia, but not much further
     if (map.getBoundsZoom && map.setMinZoom) { const fp = fitPad(); const pad = L.point(fp.paddingTopLeft).add(fp.paddingBottomRight); map.setMinZoom(Math.max(1.5, map.getBoundsZoom(AU, false, pad) - 0.5)); }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
-    if (!plan && !userMovedMap && !typing && view === "plan" && window.innerHeight > 200) map.fitBounds(AU, fitPad());
+    if (!plan && !userMovedMap && !typing && view === "plan" && window.innerHeight > 200) map.fitBounds(homeAt ? aroundMe(homeAt) : AU, fitPad());
   };
   [60, 400, 1200, 2500].forEach((ms) => setTimeout(fixMapSize, ms));
   // keep Australia in the space above the panel whenever the panel or screen changes size, until you move the map
@@ -1106,7 +1110,8 @@
     const wide = window.innerWidth >= 900;
     // everything from the top of the panel down is covered, so fit things into the space above it
     const top = $("#sheet").getBoundingClientRect().top || window.innerHeight * 0.4;
-    const covered = Math.max(0, window.innerHeight - top);
+    // never more than ~60% of the screen (while the panel is still sliding in it can measure as nearly full height)
+    const covered = Math.min(window.innerHeight * 0.6, Math.max(0, window.innerHeight - top));
     return wide ? { paddingTopLeft: [450, 40], paddingBottomRight: [70, 40] } : { paddingTopLeft: [16, 66], paddingBottomRight: [62, covered + 12] };
   }
 
@@ -4649,12 +4654,27 @@
     if (first) { await showLogin(); fixMapSize(); }
     if (settings.welcomeAlways || !hasCar()) showWelcome();   // keeps coming back until you've picked your car
   }
-  playIntro(true);
+  // Each time the app opens: centre on where you are, about 300 km around (not while a trip or a drive is on screen)
+  async function centreOnMe(ask) {
+    if (!navigator.geolocation || (!ask && !store.get("cf-loc-ok", false))) return;
+    if (journey || (plan && !$("#results").hidden) || view !== "plan") return;
+    const pos = await new Promise((res) => {
+      const t = setTimeout(() => res(null), 20000);
+      navigator.geolocation.getCurrentPosition((p) => { clearTimeout(t); res(p); }, () => { clearTimeout(t); res(null); }, { enableHighAccuracy: false, timeout: 18000, maximumAge: 10 * 60000 });
+    });
+    if (!pos) return;
+    onPosition(pos); store.set("cf-loc-ok", true); startTracking();
+    if (!inAustralia(me) || journey || (plan && !$("#results").hidden) || view !== "plan") return;
+    homeAt = { ...me }; userMovedMap = false;
+    map.fitBounds(aroundMe(homeAt), fitPad());
+  }
+  const centreSoon = centreOnMe(false);   // starts during the opening animation if location is already allowed
+  playIntro(true).then(async () => { await centreSoon; if (!homeAt) centreOnMe(true); });
   // iPhones keep apps open in the background, so replay the intro when you come back after a while
   let hiddenAt = 0;
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { hiddenAt = Date.now(); return; }
-    if (hiddenAt && Date.now() - hiddenAt > 3 * 60 * 1000 && $("#welcome").hidden) playIntro(false);
+    if (hiddenAt && Date.now() - hiddenAt > 3 * 60 * 1000 && $("#welcome").hidden) { playIntro(false); centreOnMe(false); }
   });
 
   const hasCar = () => !!(settings.make && (settings.model || settings.make === "Other"));
