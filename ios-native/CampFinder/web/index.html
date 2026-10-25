@@ -329,6 +329,15 @@
             <label><input type="radio" name="tripType" value="ret" id="retTrip"><span>↩ Return trip</span></label>
           </div>
           <div class="via-row" id="viaRow" hidden></div>
+          <div class="add-stop">
+            <button type="button" class="add-stop-btn" id="addStopBtn"><svg class="ic sm"><use href="#i-plus"/></svg>Places you want to stop at on the way</button>
+            <div class="place add-stop-field" id="addStopField" hidden>
+              <label class="sr" for="stopIn">Add a stop</label>
+              <input id="stopIn" type="text" placeholder="e.g. Uluru, Kings Canyon, a mate's place">
+              <ul class="suggest" id="stopIn-suggest" role="listbox" hidden></ul>
+              <p class="help">Pick from the list. Add as many as you like; we'll route you through them in order of the trip.</p>
+            </div>
+          </div>
           <button type="button" class="try-example" id="tryExample" data-adv>Try an example: Bundaberg to Agnes Water</button>
           <div class="group">
             <div class="group-row">
@@ -459,6 +468,8 @@
           </div>
           <p class="offline-note" id="tripOffline" hidden></p>
           <button class="cta start-journey" type="button" id="startJourney"><svg class="ic"><use href="#i-nav"/></svg>Start journey</button>
+          <button class="btn other-route" type="button" id="otherRoute"><svg class="ic sm"><use href="#i-route"/></svg>Show me a different route</button>
+          <p class="help other-route-note" id="otherRouteNote" hidden></p>
           <div class="need-row" id="needRow">
             <button type="button" class="chip" data-need="water">💧 Need water</button>
             <button type="button" class="chip" data-need="dump">🚐 Dump point</button>

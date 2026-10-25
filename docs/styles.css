@@ -1283,3 +1283,18 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .stay-seg { flex-wrap: wrap; }
 .stay-seg label { flex: 1 1 45%; }
 .pill.stay input:checked + span { background: var(--sign); color: #fff; }
+.via-chip { display: inline-flex; align-items: center; gap: 4px; }
+.via-x { border: 0; background: none; color: var(--sub); font-size: 12px; padding: 0 0 0 4px; line-height: 1; }
+.add-stop { margin: -6px 0 14px; }
+.add-stop-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--sign); font: 800 14px var(--display); padding: 6px 0; }
+@media (prefers-color-scheme: dark) { .add-stop-btn { color: var(--free); } }
+.add-stop-field { position: relative; margin-top: 6px; }
+.add-stop-field input { width: 100%; }
+.add-stop-field .help { margin: 6px 0 0; }
+.add-stop-field input { border: 0; background: var(--well); border-radius: 12px; padding: 12px; font-size: 16px; color: var(--ink); font-family: var(--text); }
+.cc-g { color: #B7791F; font-weight: 800; } .cc-g small { color: var(--sub); font-weight: 600; }
+.cc-chain { font-weight: 800; color: #1D5FA8; }
+@media (prefers-color-scheme: dark) { .cc-chain { color: #7FB2EE; } }
+.add-stop-field .suggest { top: 52px; }
+.other-route { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 8px 0 4px; }
+.other-route-note { margin: 2px 0 10px; text-align: center; }

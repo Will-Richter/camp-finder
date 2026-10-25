@@ -332,6 +332,12 @@
     if (c.website || c.phone) s += 2;
     if (c.desc) s += 2;
     if (c.rampM <= CFG.boatRampKm * 1000) s += 3;
+    // the best-rated places first: Google Maps rating (enough reviews to trust) and Camp Finder travellers' stars
+    const gr = c.rating || (typeof gPlace !== "undefined" && gPlace.get(c.id)?.rating) || 0, gn = c.ratingN || (typeof gPlace !== "undefined" && gPlace.get(c.id)?.count) || 0;
+    if (gr && gn >= 5) s += (gr - 3.8) * (gn >= 50 ? 26 : 16);
+    const ur = typeof ratingCache !== "undefined" ? ratingCache.get(c.id) : null;
+    if (ur?.n) s += (ur.avg - 3.5) * (ur.n >= 3 ? 14 : 8);
+    if (c.chain?.name === "BIG4" && costMode !== "free") s += 12;   // BIG4: the go-to for a lot of caravanners
     return s;
   }
 
@@ -483,6 +489,34 @@
       } catch { /* try the next town */ }
     }
     return best ? { route: best.route, via: best.via } : same("There isn't a sensible different road home, so you'll come back the same way.");
+  }
+  // ---- A different route for the same trip: go through a town off to one side of the current road
+  async function altVia(a, b, base, tried) {
+    const baseLine = buildLine(base);
+    const straight = hav([a.lat, a.lon], [b.lat, b.lon]);
+    if (straight < 40000) return null;
+    const cands = [], seen = new Set(tried);
+    for (const off of [0.18, 0.3, 0.12]) for (const f of [0.5, 0.35, 0.65]) {
+      const d = Math.min(350000, Math.max(25000, straight * off));
+      const p0 = pointAt(baseLine, baseLine.total * (f - 0.05)), p1 = pointAt(baseLine, baseLine.total * (f + 0.05)), p = pointAt(baseLine, baseLine.total * f);
+      const kx = 111000 * Math.cos(p.lat * Math.PI / 180), ky = 111000;
+      let dx = (p1.lon - p0.lon) * kx, dy = (p1.lat - p0.lat) * ky; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+      for (const sgn of [1, -1]) {
+        const t = campDB.townNear?.(p.lat + sgn * dx * d / ky, p.lon - sgn * dy * d / kx);
+        if (!t || seen.has(t.name) || project(baseLine, t).off < d * 0.35) continue;
+        seen.add(t.name); cands.push(t);
+      }
+    }
+    const overlap = (r) => { const pts = sample(buildLine(r), 4000).slice(4, -4); if (!pts.length) return 1; let on = 0; for (const q of pts) if (project(baseLine, { lat: q[0], lon: q[1] }).off < 3000) on++; return on / pts.length; };
+    let best = null;
+    for (const t of cands.slice(0, 5)) {
+      const r = await soon(osrm([a, { lat: t.lat, lon: t.lon }, b]), 25000, null); if (!r) continue;
+      const ratio = r.distance / (base.distance || 1), ov = overlap(r);
+      if (ratio > (straight < 150000 ? 1.35 : 1.5) || ov > 0.7) continue;
+      const sc = ov + Math.max(0, ratio - 1.05) * 1.4;
+      if (!best || sc < best.sc) best = { sc, town: t };
+    }
+    return best?.town || null;
   }
   // where on the route you reach your destination and turn for home
   function markTurn(line, route, to, outLegs) {
@@ -1045,7 +1079,7 @@
   }
   function campCard(c, ctx) {
     return `<button type="button" class="camp-card${c.closed ? " is-closed" : ""}" data-id="${esc(c.id)}">
-      <div class="cc-top"><div><div class="cc-name">${esc(c.name)}</div><div class="cc-meta">${starChip(c.id)}${esc(metaLine(c, ctx))}</div></div>${priceTag(c)}</div>
+      <div class="cc-top"><div><div class="cc-name">${esc(c.name)}</div><div class="cc-meta">${starChip(c.id)}${c.rating && c.ratingN >= 5 ? `<span class="cc-g">★ ${c.rating.toFixed(1)} <small>(${c.ratingN.toLocaleString("en-AU")})</small></span> · ` : ""}${c.chain ? `<span class="cc-chain">${esc(c.chain.name)}</span> · ` : ""}${esc(metaLine(c, ctx))}</div></div>${priceTag(c)}</div>
       ${tagsFor(c)}${amenIcons(c)}
     </button>`;
   }
@@ -1871,6 +1905,26 @@
   function findCamp(id) {
     return (plan?.camps || []).find((c) => c.id === id) || exploreCamps.find((c) => c.id === id) || store.get("cf-camps", []).find((c) => c.id === id) || userCamps().find((c) => c.id === id);
   }
+  // "Show me a different route": same trip, through another town; tap again for another
+  let altTried = [];
+  $("#otherRoute").addEventListener("click", async () => {
+    if (!plan) return;
+    const btn = $("#otherRoute"), note = $("#otherRouteNote");
+    btn.disabled = true; btn.innerHTML = `<span class="spinner"></span>Finding another way`;
+    try {
+      const outLegs = plan.line.turn ? plan.route._outLegs || 1 : 0;
+      const base = plan.line.turn ? { distance: plan.line.turn, geometry: { coordinates: plan.line.pts.filter((_, i) => plan.line.cum[i] <= plan.line.turn).map(([la, lo]) => [lo, la]) } } : plan.route;
+      viaStops.filter((v) => v.alt).forEach((v) => altTried.push(v.name));
+      const town = await altVia(plan.from, plan.to, base, altTried);
+      if (!town) { note.hidden = false; note.textContent = "There isn't another sensible route for this trip. Add a place you want to stop at to change it."; return; }
+      altTried.push(town.name);
+      viaStops = [...viaStops.filter((v) => !v.alt), { name: town.name, lat: town.lat, lon: town.lon, alt: true, mine: true }];
+      orderStops(); renderVia();
+      note.hidden = false; note.textContent = `Now going via ${town.name}. Tap again for another route, or remove it from the stops to go back.`;
+      $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
+    } catch { note.hidden = false; note.textContent = "Couldn't find another route right now. Try again in a moment."; }
+    finally { btn.disabled = false; btn.innerHTML = `${icon("route", "ic sm")}Show me a different route`; }
+  });
   $("#editTrip").addEventListener("click", () => { $("#planForm").hidden = false; $("#results").hidden = true; tripLayer.clearLayers(); legLayer.clearLayers(); try { if (journey) drawTravelled(); } catch {} });
   $("#saveTrip").addEventListener("click", (e) => {
     const trips = store.get("cf-trips", []);
@@ -2410,7 +2464,7 @@
     const out = [];
     for (const g of extra) {
       const dup = list.find((c) => (c.cpark || c.kind === "Caravan / RV site" || c.cost !== "free") && hav([c.lat, c.lon], [g.lat, g.lon]) < 250);
-      if (dup) { if (!dup.gWeb && g.gWeb) dup.gWeb = g.gWeb; if (!dup.phone && g.phone) dup.phone = g.phone; if (!dup.cpark && dup.cost !== "free") { dup.cpark = true; dup.kind = "Caravan park"; } continue; }
+      if (dup) { if (!dup.gWeb && g.gWeb) dup.gWeb = g.gWeb; if (!dup.phone && g.phone) dup.phone = g.phone; if (g.rating && !dup.rating) { dup.rating = g.rating; dup.ratingN = g.ratingN; } if (!dup.gid) dup.gid = g.gid; if (!dup.chain && g.chain) dup.chain = g.chain; if (!dup.cpark && dup.cost !== "free") { dup.cpark = true; dup.kind = "Caravan park"; } continue; }
       out.push(g);
     }
     return out;
@@ -4463,9 +4517,28 @@
   function renderVia() {
     const row = $("#viaRow");
     row.hidden = !viaStops.length;
-    row.innerHTML = viaStops.length ? `<span class="help">Via</span>${viaStops.map((v, k) => `<span class="via-chip">${esc(v.name)}${v.leg === "back" ? " <small>(back)</small>" : ""}</span>`).join("")}<button type="button" class="via-clear" id="viaClear" aria-label="Remove stops">✕</button>` : "";
+    row.innerHTML = viaStops.length ? `<span class="help">Via</span>${viaStops.map((v, k) => `<span class="via-chip">${esc(v.name)}${v.leg === "back" ? " <small>(back)</small>" : ""}<button type="button" class="via-x" data-k="${k}" aria-label="Remove ${esc(v.name)}">✕</button></span>`).join("")}${viaStops.length > 1 ? `<button type="button" class="via-clear" id="viaClear" aria-label="Remove all stops">Clear</button>` : ""}` : "";
     $("#viaClear")?.addEventListener("click", () => { viaStops = []; seeIds.clear(); renderVia(); });
+    row.querySelectorAll(".via-x").forEach((b) => b.addEventListener("click", () => { const v = viaStops[+b.dataset.k]; viaStops.splice(+b.dataset.k, 1); if (v?.poi) seeIds.delete(v.poi); renderVia(); }));
   }
+  // Your own stops: put them in trip order (how far along from your start towards the destination)
+  function orderStops() {
+    const f = $("#from").dataset, t = $("#to").dataset;
+    if (!f.lat || !t.lat) return;
+    const a = [+f.lat, +f.lon], b = [+t.lat, +t.lon], dx = b[1] - a[1], dy = b[0] - a[0], L = dx * dx + dy * dy || 1;
+    const along = (v) => ((v.lon - a[1]) * dx + (v.lat - a[0]) * dy) / L;
+    const out = viaStops.filter((v) => v.leg !== "back").sort((p, q) => along(p) - along(q));
+    const back = viaStops.filter((v) => v.leg === "back").sort((p, q) => along(q) - along(p));
+    viaStops = [...out, ...back];
+  }
+  $("#addStopBtn").addEventListener("click", () => { const fld = $("#addStopField"); fld.hidden = !fld.hidden; if (!fld.hidden) $("#stopIn").focus(); });
+  attachSuggest($("#stopIn"), (r) => {
+    const name = r.name;
+    if (!viaStops.some((v) => Math.abs(v.lat - r.lat) < 0.001 && Math.abs(v.lon - r.lon) < 0.001)) viaStops.push({ name, lat: +r.lat, lon: +r.lon, mine: true });
+    orderStops(); renderVia();
+    const i = $("#stopIn"); i.value = ""; i.dataset.lat = ""; i.dataset.lon = "";
+    toast(`${name} added to your trip`);
+  });
   function renderDiscover() {
     const T = window.CF_TRIPS || [];
     $("#tripGrid").innerHTML = T.map((t) => `<button type="button" class="trip-card" data-trip="${t.id}" style="--a:${t.art[0]};--b:${t.art[1]}">
@@ -4567,7 +4640,8 @@
   renderDiscover();
   paintCars();
   setTimeout(() => updateBadges(false), 1500);
-  ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); if (viaStops.length) { viaStops = []; renderVia(); } }));
+  // changing where you're going drops the suggested sights, but keeps the stops you added yourself
+  ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); altTried = []; $("#otherRouteNote").hidden = true; if (viaStops.some((v) => !v.mine)) { viaStops = viaStops.filter((v) => v.mine); renderVia(); } }));
   $("#tripType").addEventListener("change", () => { seeIds.clear(); if (viaStops.some((v) => v.poi)) { viaStops = viaStops.filter((v) => !v.poi); renderVia(); } });
 
   // ================================================================ first-time sign in
