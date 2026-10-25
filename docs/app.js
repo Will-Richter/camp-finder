@@ -4895,8 +4895,10 @@
         <li><div><b>Tap "Start journey" when you leave</b>Then use the big buttons at the top for water, a dump point or to share where you are with family.</div></li>
       </ol>
       <p class="help" style="margin-top:14px">Tap any camp to see photos and get directions. The ⚙️ Settings tab lets you make the text bigger with Simple mode.</p>
-      <button class="cta" type="button" id="helpMode" style="width:100%;margin-top:12px">${settings.simple ? "Switch to Full mode" : "Switch to Simple mode (bigger and easier)"}</button>
+      <button class="cta" type="button" id="helpTour" style="width:100%;margin-top:14px">▶ Watch the tutorial</button>
+      <button class="btn" type="button" id="helpMode" style="width:100%;margin-top:8px">${settings.simple ? "Switch to Full mode" : "Switch to Simple mode (bigger and easier)"}</button>
     </div>`);
+    $("#helpTour").addEventListener("click", () => { closeDetail(); window.CFTour?.open(); });
     $("#helpMode").addEventListener("click", () => { settings.simple = !settings.simple; saveSettings(); applyMode(); closeDetail(); toast(settings.simple ? "Simple mode on" : "Full mode on"); });
   }
   $("#helpBtn").addEventListener("click", openHelp);
@@ -5028,6 +5030,7 @@
     moveInk(); fixMapSize();
     if (first) { await showLogin(); fixMapSize(); }
     if (settings.welcomeAlways || !hasCar()) showWelcome();   // keeps coming back until you've picked your car
+    else if (first && window.CFTour && !CFTour.seen()) CFTour.open({ onDone: () => fixMapSize() });
   }
   // Each time the app opens: centre on where you are, about 300 km around (not while a trip or a drive is on screen)
   async function centreOnMe(ask) {
@@ -5086,6 +5089,7 @@
       store.set("cf-welcomed", true);
       w.classList.add("out"); await sleep(animOn() ? 560 : 0); w.hidden = true;
       if (plan) showPlan(); else fixMapSize();
+      if (window.CFTour && !CFTour.seen()) CFTour.open({ onDone: () => fixMapSize() });   // the tutorial, once, after setup
     };
     $("#wlNext").onclick = () => { const i = at(); if (i >= slides.length - 1) return done(); track.scrollTo({ left: (i + 1) * track.clientWidth, behavior: animOn() ? "smooth" : "auto" }); };
     $("#wlSkip").onclick = done;
