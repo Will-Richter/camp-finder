@@ -1,0 +1,15 @@
+{
+ "build": "20261025.pmtiles",
+ "maxzoom": 13,
+ "tag": "maps-v1",
+ "base": "https://github.com/Will-Richter/camp-finder/releases/download/maps-v1/",
+ "files": {
+  "nt": 23044787,
+  "nsw": 180145909,
+  "qld": 122379751,
+  "wa": 95005169,
+  "vic": 116565444,
+  "tas": 31196369,
+  "sa": 48116370
+ }
+}
