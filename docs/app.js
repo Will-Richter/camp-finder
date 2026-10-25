@@ -155,6 +155,44 @@
     return `${what}, ${Math.round(town.d / 1000)} km from ${town.name}`;
   }
 
+  // ---- Caravan parks: which places are real parks (not rest areas or dump points), their chain, and a price guide
+  const PARK_RE = /\b(caravan|holiday|tourist|tourism|leisure|lifestyle|motor|van|cabin|camping|beach|river|lakes?|family)\s*(park|village|resort|retreat|haven)s?\b|\bbig ?4\b|discovery parks?|ingenia|reflections|holiday haven|showgrounds?|\bcaravan\b/i;
+  const NOT_PARK_RE = /rest ?area|free camp|dump|overnight (stop|parking)|truck stop|roadside|lookout/i;
+  const CHAINS = [
+    { re: /big ?4/i, name: "BIG4", site: "https://www.big4.com.au", price: 62 },
+    { re: /discovery (parks?|holiday)/i, name: "Discovery Parks", site: "https://www.discoveryholidayparks.com.au", price: 58 },
+    { re: /ingenia/i, name: "Ingenia Holidays", site: "https://www.ingeniaholidays.com.au", price: 60 },
+    { re: /\bnrma\b/i, name: "NRMA Parks and Resorts", site: "https://www.nrmaparksandresorts.com.au", price: 55 },
+    { re: /\brac\b/i, name: "RAC Parks", site: "https://parksandresorts.rac.com.au", price: 60 },
+    { re: /tasman/i, name: "Tasman Holiday Parks", site: "https://www.tasmanholidayparks.com", price: 52 },
+    { re: /reflections/i, name: "Reflections Holiday Parks", site: "https://www.reflectionsholidayparks.com.au", price: 48 },
+    { re: /holiday haven/i, name: "Holiday Haven", site: "https://www.holidayhaven.com.au", price: 45 },
+    { re: /top (tourist )?parks?|top tourism/i, name: "Top Parks", site: "https://www.topparks.com.au", price: 52 },
+    { re: /g'?day/i, name: "G'day Parks", site: "https://www.gdayparks.com.au", price: 48 },
+    { re: /family parks/i, name: "Family Parks", site: "https://www.familyparks.com.au", price: 48 },
+    { re: /\bkui\b/i, name: "Kui Parks", site: "https://www.kuiparks.com.au", price: 42 },
+  ];
+  function parkChain(t, name) { const txt = `${name} ${t.brand || ""} ${t.operator || ""}`; return CHAINS.find((ch) => ch.re.test(txt)) || null; }
+  function isParkTags(t, name, cost) {
+    if (cost === "free" || NOT_PARK_RE.test(name)) return false;
+    if (t.name && PARK_RE.test(t.name)) return true;
+    return t.tourism === "caravan_site" && (cost === "paid" || !!(t.website || t["contact:website"] || t.phone || t["contact:phone"] || t.brand || t.reservation));
+  }
+  // nightly guide for a powered site (2 adults): chain average, cheaper for showgrounds and council reserves
+  function parkPriceGuide(c) {
+    const base = PRICES.stay.caravan_powered || 45;
+    if (c.chain) return { powered: c.chain.price, unpowered: c.chain.price - 12, cabin: Math.max(PRICES.stay.cabin || 135, c.chain.price * 2.4) };
+    if (/showground|recreation reserve|camping reserve|council/i.test(c.name + " " + (c.operator || ""))) return { powered: 32, unpowered: 25, cabin: 0 };
+    return { powered: base, unpowered: PRICES.stay.caravan_unpowered || base - 10, cabin: PRICES.stay.cabin || 135 };
+  }
+  // where to book: the park's own website, else its chain, else a search that finds its booking page
+  function bookUrl(c) {
+    if (c.website && /^https?:\/\//i.test(c.website)) return { url: c.website, label: "Book or check prices" };
+    if (c.gWeb) return { url: c.gWeb, label: "Book or check prices" };
+    if (c.chain) return { url: c.chain.site, label: `Book with ${c.chain.name}` };
+    return { url: `https://www.google.com/search?q=${encodeURIComponent(`${c.name} ${(typeof campDB !== "undefined" && campDB.townNear?.(c.lat, c.lon)?.name) || ""} book`)}`, label: "Find booking and prices" };
+  }
+
   function normalise(p) {
     const t = p.tags;
     let cost = "unknown";
@@ -166,7 +204,10 @@
       ...p,
       name: t.name || t["name:en"] || placeName({ cost, tags: t }, typeof campDB !== "undefined" && campDB.townNear ? campDB.townNear(p.lat, p.lon) : null),
       named: !!t.name,
-      kind: t.tourism === "caravan_site" ? "Caravan / RV site" : (t.backcountry === "yes" ? "Bush camp" : "Campground"),
+      kind: isParkTags(t, t.name || "", cost) ? "Caravan park" : t.tourism === "caravan_site" ? "Caravan / RV site" : (t.backcountry === "yes" ? "Bush camp" : "Campground"),
+      cpark: isParkTags(t, t.name || "", cost),
+      chain: parkChain(t, t.name || ""),
+      email: t.email || t["contact:email"] || "",
       cost,
       donation: /donation/i.test(t.fee || ""),
       charge: t.charge || "",
@@ -258,7 +299,7 @@
     if (c.caravans === false || c.backcountry || c.access === "no" || c.access === "private" || isFourWD(c)) return false;
     if (/(no|not suitable for)\s+(big rigs?|large (rigs?|vehicles|vans|caravans)|caravans)|small (rigs?|vehicles|vans) only/i.test(txt)) return false;
     const len = parseFloat(c.tags?.maxlength); if (len && len < 9) return false;
-    return !!(c.heavy || c.caravans === true || c.motorhome === true || c.kind === "Caravan / RV site" || len >= 9 || /big rigs?|large rigs?|drive.?through|b-?doubles?|road ?trains?|truck parking/i.test(txt));
+    return !!(c.heavy || c.caravans === true || c.motorhome === true || c.kind === "Caravan / RV site" || c.cpark || len >= 9 || /big rigs?|large rigs?|drive.?through|b-?doubles?|road ?trains?|truck parking/i.test(txt));
   }
   function moreOK(c, f) {
     switch (f) {
@@ -276,11 +317,12 @@
   const unknownFor = (c, w) => AMEN_KEY[w] ? c.a[AMEN_KEY[w]] == null : false;
   function ruledOut(c, wants) { return wants.filter((w) => !has(c, w) && !unknownFor(c, w)); }
   function unrecorded(c, wants) { return wants.filter((w) => !has(c, w) && unknownFor(c, w)); }
-  function costOK(c, mode) { return mode === "any" || mode === "cheap" || c.cost === "free"; }
+  function costOK(c, mode) { return mode === "parks" ? !!c.cpark : mode === "any" || mode === "cheap" || c.cost === "free"; }
 
   function score(c, wants, costMode) {
     let s = 0;
-    if (c.cost === "free") s += 40; else if (c.cost === "unknown") s += 14; else s += costMode === "any" ? 20 : 0;
+    if (costMode === "parks") s += c.cpark ? 40 + (c.chain ? 4 : 0) + (c.website || c.gWeb ? 4 : 0) : -60;
+    else if (c.cost === "free") s += 40; else if (c.cost === "unknown") s += 14; else s += costMode === "any" ? 20 : 0;
     for (const id of ["toilets", "water", "showers", "dogs", "power", "fires"]) if (c.a[id] === true) s += 4;
     s += wants.filter((w) => has(c, w)).length * 12;
     s -= wants.filter((w) => unknownFor(c, w)).length * 4;
@@ -590,6 +632,7 @@
     osm: { label: "Community map", by: "OpenStreetMap contributors", url: "https://www.openstreetmap.org/copyright" },
     user: { label: "Added by you", by: "You", url: "" },
     community: { label: "Traveller added", by: "a Camp Finder traveller", url: "" },
+    google: { label: "Google Maps", by: "Google Maps", url: "" },
   };
 
   const YN = (v) => (v === "Y" ? true : v === "N" ? false : null);
@@ -923,6 +966,10 @@
         list = rank(inWin.filter((c) => costOK(c, opts.cost)));
         if (list.length) warn = "No camp here matches every must-have. Best nearby option shown.";
       }
+      if (!list.length && opts.cost === "parks") {
+        list = rank(usable.filter((c) => c.cpark && !used.has(ukey(c)) && Math.abs(c.along - target) <= seg * 0.9 && (!legRule || legRule(c))));
+        if (list.length) warn = "No caravan park close to the ideal stop. Nearest park shown, so this day will be longer or shorter.";
+      }
       if (!list.length && opts.cost === "free") {
         list = rank(inWin);
         if (list.length) warn = "No free camp found near this stop. Cheapest nearby options shown.";
@@ -967,8 +1014,9 @@
 
   function priceTag(c) {
     if (c.cost === "free") return `<span class="price free">${c.donation ? "DONATION" : "FREE"}</span>`;
-    if (c.cost === "paid") {
-      const amt = (c.charge.match(/\$?\s?(\d+(?:\.\d+)?)/) || [])[1];
+    if (c.cost === "paid" || c.cpark) {
+      const amt = ((c.charge || "").match(/\$?\s?(\d+(?:\.\d+)?)/) || [])[1];
+      if (!amt && c.cpark) return `<span class="price paid" title="Estimate for a powered site">~$${Math.round(parkPriceGuide(c).powered)}</span>`;
       return `<span class="price paid">${amt ? "$" + amt : "PAID"}</span>`;
     }
     return `<span class="price unknown">PRICE ?</span>`;
@@ -1099,6 +1147,7 @@
   function campMarker(c, opts = {}) {
     const ic = opts.night
       ? divIcon(`<div class="mk-night">${esc(opts.label)}</div>`, [34, 32])
+      : c.cpark && !c.closed ? divIcon(`<div class="mk park">${icon("caravan", "ic")}</div>`, [22, 22])
       : divIcon(`<div class="mk ${c.closed ? "closed" : c.source === "user" ? "user" : c.source === "rest" ? "rest" : c.cost}"></div>`, [16, 16]);
     const m = L.marker([c.lat, c.lon], { icon: ic, title: c.name, keyboard: true, zIndexOffset: opts.night ? 1000 : 0 });
     m.on("click", () => openDetail(c));
@@ -1267,14 +1316,14 @@
   $("#rigs").innerHTML = RIGS.map((r) => `<label class="rig"><input type="radio" name="rig" value="${r.id}" ${r.id === prefs.rig ? "checked" : ""}><span>${icon(r.id)}${r.label}</span></label>`).join("");
   $("#planWants").innerHTML = AMENITIES.map((a) => `<label><input type="checkbox" value="${a.id}" ${prefs.wants.includes(a.id) ? "checked" : ""}><span>${icon(AMEN_ICON[a.id], "ic sm")}${esc(a.label)}</span></label>`).join("");
   $("#explorePills").innerHTML =
-    `<label class="pill"><input type="checkbox" id="exFree" ${prefs.exFree ? "checked" : ""}><span>Free only</span></label>` +
+    [["all", "All stays"], ["free", "Free camps"], ["parks", "Caravan parks"]].map(([v, l]) => `<label class="pill stay"><input type="radio" name="exType" value="${v}" ${(prefs.exType || (prefs.exFree ? "free" : "all")) === v ? "checked" : ""}><span>${l}</span></label>`).join("") +
     AMENITIES.map((a) => `<label class="pill"><input type="checkbox" value="${a.id}" ${prefs.exWants.includes(a.id) ? "checked" : ""}><span>${icon(AMEN_ICON[a.id])}${SHORT[a.id]}</span></label>`).join("") +
     MORE_FILTERS.map((f) => `<label class="pill more"><input type="checkbox" data-more="${f.id}" ${(prefs.exMore || []).includes(f.id) ? "checked" : ""}><span><i aria-hidden="true">${f.icon}</i>${esc(f.label)}</span></label>`).join("");
   const moreOf = () => $$("#explorePills input[data-more]:checked").map((i) => i.dataset.more);
   const radio = (name) => $(`input[name="${name}"]:checked`)?.value;
   const wantsOf = (el) => $$("input[value]:checked", el).map((i) => i.value).filter((v) => AMENITIES.some((a) => a.id === v));
   function savePrefs() {
-    Object.assign(prefs, { wants: wantsOf($("#planWants")), exWants: wantsOf($("#explorePills")), exMore: moreOf(), rig: radio("rig"), exFree: $("#exFree").checked });
+    Object.assign(prefs, { wants: wantsOf($("#planWants")), exWants: wantsOf($("#explorePills")), exMore: moreOf(), rig: radio("rig"), exType: radio("exType") || "all" });
     store.set("cf-prefs", prefs); paintCars();
   }
   $("#rigs").addEventListener("change", () => { prefs.rig = radio("rig") || prefs.rig; store.set("cf-prefs", prefs); paintCars(); });
@@ -1346,6 +1395,9 @@
   $("#nightsDown").addEventListener("click", () => setRefresh(+refreshIn.value));
   setRefresh(0);
   (() => { const d = new Date(); $("#leaveDate").value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const COST_HELP = { free: "Only free camps and rest areas.", cheap: "Free camps where there are good ones, paid camps and caravan parks where there aren't.", parks: "A caravan or holiday park every night, with prices and booking links.", any: "The best-rated place each night, free or paid." };
+  const costHelp = () => { const h = $("#costHelp"); if (h) h.textContent = COST_HELP[radio("cost")] || ""; };
+  $("#costSeg").addEventListener("change", costHelp); costHelp();
   $("#detourSeg").addEventListener("change", () => ($("#detourShown").textContent = (+radio("detour") / 1000) + " km"));
 
   // Panels only scroll up and down: if anything nudges one sideways, put it straight back
@@ -1455,6 +1507,15 @@
       say("Looking for camps");
       const data = await campsAlong(route, opts.detour, (t) => say(t.replace("Searching for camps along the route… ", "Looking for camps ")));
       if (opts.ret) { markTurn(data.line, route, to, route._outLegs); data.camps = perLeg(data.line, data.camps, opts.detour * 1.15); }
+      if (opts.cost === "parks" || opts.cost === "any") {   // parks Google Maps knows about near each night's stop
+        say("Looking for caravan parks");
+        const n = Math.min(30, nights), pts = [];
+        for (let k = 1; k <= n; k++) pts.push(pointAt(data.line, data.line.total * k / (n + 1)));
+        const found = (await Promise.all(pts.map((pt) => soon(googleParksNear(pt.lat, pt.lon, 40000), 8000, [])))).flat();
+        const uniq = [...new Map(found.map((g) => [g.id, g])).values()];
+        const add = perLeg(data.line, mergeParks(data.camps, uniq), opts.detour * 1.15);
+        data.camps = [...data.camps, ...add];
+      }
       step(3);
       plan = makePlan({ from, to, route, nights, opts, data });
       plan.offline = data.offline;
@@ -1942,6 +2003,32 @@
     const cls = state === true ? "" : state === false ? "no" : "unk";
     return `<div class="${cls}">${icon(AMEN_ICON[id])}<span><b>${SHORT[id]}</b><small>${word}</small></span></div>`;
   }
+  // Caravan park: what a night costs, and buttons to book or call
+  function parkBox(c) {
+    const g = parkPriceGuide(c), bk = bookUrl(c);
+    const listed = /\d/.test(c.charge || "") ? `<div class="pk-price"><b>${esc(c.charge)}</b><small>listed price</small></div>` : "";
+    const guide = listed || `<div class="pk-prices">
+        <div><b>~${money(g.powered)}</b><small>powered site</small></div>
+        ${g.unpowered ? `<div><b>~${money(g.unpowered)}</b><small>unpowered</small></div>` : ""}
+        ${g.cabin ? `<div><b>~${money(g.cabin)}</b><small>cabin</small></div>` : ""}
+      </div><p class="pk-note">A night for 2 adults: ${c.chain ? `${esc(c.chain.name)} average` : "typical Australian park"} (estimate). Prices change with the season, so check the live price when you book.</p>`;
+    const tel = (c.phone || "").replace(/[^\d+]/g, "");
+    return `<section class="park-box" id="parkBox" aria-label="Prices and booking">
+      <div class="pk-head"><b>${icon("caravan")}Caravan park</b>${c.chain ? `<span class="pk-chain">${esc(c.chain.name)}</span>` : ""}</div>
+      ${guide}
+      <div class="pk-actions">
+        <a class="cta" id="pkBook" href="${esc(bk.url)}" target="_blank" rel="noopener">${esc(bk.label)}</a>
+        <a class="btn" id="pkCall" href="tel:${esc(tel)}" ${tel ? "" : "hidden"}>${icon("phone")}Call</a>
+      </div>
+    </section>`;
+  }
+  // Google filled in a park's website or phone: update the buttons (kept in memory only)
+  function parkContactFromGoogle(c, web, phone) {
+    if (web && !c.website) c.gWeb = web;
+    if (phone && !c.phone) c.phone = phone;
+    const b = $("#pkBook"); if (b) { const bk = bookUrl(c); b.href = bk.url; b.textContent = bk.label; }
+    const t = $("#pkCall"), tel = (c.phone || "").replace(/[^\d+]/g, ""); if (t && tel) { t.href = `tel:${tel}`; t.hidden = false; }
+  }
   async function openDetail(c) {
     if (!c) return;
     const saved = store.get("cf-camps", []).some((x) => x.id === c.id);
@@ -1962,6 +2049,7 @@
           <a class="icon-btn" style="width:48px;height:48px" id="learnMore" href="${esc(learnUrl(c))}" target="_blank" rel="noopener" aria-label="Learn more on Google">${icon("search")}</a>
           <button class="icon-btn ${saved ? "is-on" : ""}" style="width:48px;height:48px" id="saveCamp" type="button" aria-label="${saved ? "Saved" : "Save camp"}" aria-pressed="${saved}">${icon("bookmark")}</button>
         </div>
+        ${c.cpark ? parkBox(c) : ""}
         <section class="rate" id="rateBox" aria-label="Ratings and reviews">
           <div class="rate-sum"><span class="stars-lg" id="rateStars">${starsHtml(0)}</span><b id="rateAvg"></b><span class="help" id="rateCount">Loading ratings</span></div>
         </section>
@@ -2104,6 +2192,7 @@
   }
   const gCache = new Map(), gPlace = new Map();
   async function googlePlaceId(c) {
+    if (c.gid) return c.gid;   // a park that came from Google Maps in the first place
     let id = gIds[c.id];
     if (id === undefined || (id === "" && Date.now() - (gIds[c.id + "@t"] || 0) > 14 * 864e5)) {
       let hit = null;
@@ -2138,8 +2227,10 @@
     if (!id) { const e = []; e.done = true; gCache.set(c.id, e); return []; }
     let names = gPhotoNames.get(c.id);
     if (!names) {
-      const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: (CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos") + (c.named ? "" : ",displayName") });
+      const wantContact = c.cpark && (!c.website || !c.phone) && !c.gWeb;
+      const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: (CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos") + (c.named ? "" : ",displayName") + (wantContact ? ",websiteUri,nationalPhoneNumber" : "") });
       if (!c.named && det.displayName?.text) nameFromGoogle(c, det.displayName.text);
+      if (wantContact && (det.websiteUri || det.nationalPhoneNumber)) parkContactFromGoogle(c, det.websiteUri || "", det.nationalPhoneNumber || "");
       if (det.rating) { gPlace.set(c.id, { rating: det.rating, count: det.userRatingCount || 0, reviews: det.reviews || [], uri: det.googleMapsUri || "" }); renderGoogleRating(c, gPlace.get(c.id)); }
       names = det.photos || []; gPhotoNames.set(c.id, names);
     }
@@ -2286,6 +2377,55 @@
   }
 
   // ---------------------------------------------------------------- EXPLORE
+  // ---- Caravan parks Google Maps knows about but OpenStreetMap doesn't (checked once per area, kept a week)
+  const gParkCache = new Map(Object.entries(store.get("cf-gparks", {})).filter(([, v]) => Date.now() - v.t < 7 * 864e5));
+  function gParkToCamp(g) {
+    const name = g.displayName?.text || "Caravan park";
+    const t = { name };
+    return { id: `g:${g.id}`, gid: g.id, lat: g.location.latitude, lon: g.location.longitude, tags: t, name, named: true, kind: "Caravan park", cpark: true,
+      chain: parkChain({}, name), cost: "paid", charge: "", donation: false, source: "google",
+      a: { toilets: null, water: null, showers: null, dogs: null, power: null, fires: null, dumpOnSite: null },
+      tents: null, caravans: null, motorhome: null, backcountry: false, maxstay: "", access: "",
+      website: g.websiteUri || "", gWeb: g.websiteUri || "", phone: g.nationalPhoneNumber || "", operator: "", desc: g.formattedAddress || "",
+      image: "", commons: "", hours: "", rating: g.rating || 0, ratingN: g.userRatingCount || 0, gUri: g.googleMapsUri || "", rampM: Infinity, dumpM: Infinity };
+  }
+  async function googleParksNear(lat, lon, radius) {
+    if (!CFG.googleKey || isOffline()) return [];
+    const key = `${lat.toFixed(2)},${lon.toFixed(2)},${Math.round(radius / 5000)}`;
+    const hit = gParkCache.get(key); if (hit) return hit.list;
+    try {
+      const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
+        method: "POST", fieldMask: "places.id,places.displayName,places.location,places.types,places.websiteUri,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.googleMapsUri,places.formattedAddress,places.businessStatus",
+        body: { includedTypes: ["rv_park", "campground"], maxResultCount: 20, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius: Math.min(50000, radius) } } },
+      });
+      const list = (j.places || []).filter((g) => g.businessStatus !== "CLOSED_PERMANENTLY" && g.location && ((g.types || []).includes("rv_park") || PARK_RE.test(g.displayName?.text || "")))
+        .filter((g) => !NOT_PARK_RE.test(g.displayName?.text || "")).map(gParkToCamp);
+      gParkCache.set(key, { t: Date.now(), list });
+      try { store.set("cf-gparks", Object.fromEntries([...gParkCache.entries()].slice(-150))); } catch { /* full */ }
+      return list;
+    } catch { return []; }
+  }
+  // add Google parks that aren't already on the map (same place within ~250 m)
+  function mergeParks(list, extra) {
+    const out = [];
+    for (const g of extra) {
+      const dup = list.find((c) => (c.cpark || c.kind === "Caravan / RV site" || c.cost !== "free") && hav([c.lat, c.lon], [g.lat, g.lon]) < 250);
+      if (dup) { if (!dup.gWeb && g.gWeb) dup.gWeb = g.gWeb; if (!dup.phone && g.phone) dup.phone = g.phone; if (!dup.cpark && dup.cost !== "free") { dup.cpark = true; dup.kind = "Caravan park"; } continue; }
+      out.push(g);
+    }
+    return out;
+  }
+  let topUpT = 0;
+  function topUpParks(b) {
+    clearTimeout(topUpT);
+    topUpT = setTimeout(async () => {
+      const ctr = b.getCenter ? b.getCenter() : map.getCenter();
+      const r = Math.min(50000, hav([b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]) / 2);
+      const got = await googleParksNear(ctr.lat, ctr.lng, Math.max(8000, r));
+      const add = mergeParks(exploreCamps, got);
+      if (add.length) { exploreCamps = [...exploreCamps, ...add]; renderExplore(); }
+    }, 700);
+  }
   let exploreCamps = [];
   let exploreOffline = false;
   const exCache = new Map();
@@ -2363,17 +2503,19 @@
   }
   function renderExplore() {
     if (view !== "explore" || map.getZoom() < CFG.exploreMinZoom) return;
-    const freeOnly = $("#exFree").checked, rig = prefs.rig, wants = wantsOf($("#explorePills")), more = moreOf();
+    const exType = radio("exType") || "all", freeOnly = exType === "free", parksOnly = exType === "parks", rig = prefs.rig, wants = wantsOf($("#explorePills")), more = moreOf();
     const b = map.getBounds(), ctr = map.getCenter();
     const inView = exploreCamps.filter((c) => b.contains([c.lat, c.lon]));
-    const shown = inView.filter((c) => (!freeOnly || c.cost === "free") && rigOK(c, rig) && missing(c, wants).length === 0 && more.every((f) => moreOK(c, f)));
+    if (parksOnly) topUpParks(b);   // ask Google Maps for any park we don't already know about
+    const shown = inView.filter((c) => (!freeOnly || c.cost === "free") && (!parksOnly || c.cpark) && rigOK(c, rig) && missing(c, wants).length === 0 && more.every((f) => moreOK(c, f)));
     shown.forEach((c) => (c._d = hav([ctr.lat, ctr.lng], [c.lat, c.lon])));
-    shown.sort((a, b2) => score(b2, wants, freeOnly ? "free" : "any") - score(a, wants, freeOnly ? "free" : "any") || a._d - b2._d);
+    const mode = parksOnly ? "parks" : freeOnly ? "free" : "any";
+    shown.sort((a, b2) => score(b2, wants, mode) - score(a, wants, mode) || a._d - b2._d);
     cluster.clearLayers();
     cluster.addLayers(shown.map((c) => campMarker(c)));
     const hidden = inView.length - shown.length;
     $("#exploreCount").textContent = shown.length
-      ? `${shown.length} ${freeOnly ? "free " : ""}camp${shown.length === 1 ? "" : "s"} on the map${hidden ? `, ${hidden} more hidden by your filters` : ""}`
+      ? `${shown.length} ${parksOnly ? `caravan park${shown.length === 1 ? "" : "s"}` : `${freeOnly ? "free " : ""}camp${shown.length === 1 ? "" : "s"}`} on the map${hidden ? `, ${hidden} more hidden by your filters` : ""}`
       : inView.length ? `${inView.length} camp${inView.length === 1 ? "" : "s"} here, but none match your filters.` : "No camps recorded in this area yet.";
     const gNear = guidesNear([[ctr.lat, ctr.lng]]);
     const rc = rulesNear(ctr.lat, ctr.lng);
@@ -2995,6 +3137,7 @@
       return { v, known: true, why: pp ? `Listed price for 2 people (${c.charge})` : `Listed price (${c.charge})` };
     }
     if (c.park) return { v: (PRICES.stay.national_park_person || 7.75) * 2, known: false, why: `National park permit, about ${money(PRICES.stay.national_park_person || 7.75)} per person (2 people)` };
+    if (c.cpark) { const g = parkPriceGuide(c); return { v: g.powered, known: false, why: `Price not listed: ${c.chain ? c.chain.name + " average" : "average"} powered site (estimate)` }; }
     if (c.kind === "Caravan / RV site") return { v: PRICES.stay.caravan_powered, known: false, why: "Price not listed: average powered site" };
     if (c.cost === "unknown") return { v: 0, known: false, why: "Price not recorded, likely free" };
     return { v: settings.campUnknown || PRICES.stay.camp_paid, known: false, why: "Paid camp, price not listed (your estimate)" };
@@ -3198,7 +3341,7 @@
       } catch { /* fall back */ }
     }
     // offline: caravan parks from the built-in camp list (most have cabins)
-    return p.camps.filter((c) => c.kind === "Caravan / RV site" && Math.abs(c.along - pk.target) < 60000)
+    return p.camps.filter((c) => (c.cpark || c.kind === "Caravan / RV site") && Math.abs(c.along - pk.target) < 60000)
       .sort((a, b) => Math.abs(a.along - pk.target) - Math.abs(b.along - pk.target)).slice(0, 4)
       .map((c) => ({ id: c.id, name: c.name, lat: c.lat, lon: c.lon, rating: 0, count: 0, addr: "", uri: "", web: c.website, phone: c.phone, kind: "Caravan park (cabins usually available)", along: c.along, off: c.off }));
   }

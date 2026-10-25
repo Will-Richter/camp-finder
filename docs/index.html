@@ -55,6 +55,7 @@
     <symbol id="i-tent" viewBox="0 0 24 24"><path d="M2 20h20"/><path d="M4.5 20 12 5l7.5 15"/><path d="M12 12.5 9.5 20h5z"/></symbol>
     <symbol id="i-rooftop" viewBox="0 0 24 24"><path d="M3 17v-3.5L5.5 9h11l3 4.5H21V17z"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/><path d="M6 9V6.5l9-1.5V9"/></symbol>
     <symbol id="i-camper" viewBox="0 0 24 24"><path d="M2.5 8.5h13v8h-13z"/><path d="M15.5 14.5H21.5"/><circle cx="8" cy="17.5" r="1.8"/><path d="M2.5 8.5 5 5.5h8l2.5 3"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 3.5h3l1.5 4.2-2 1.3a12 12 0 0 0 5.9 5.9l1.3-2 4.2 1.5v3a2 2 0 0 1-2.1 2A16.5 16.5 0 0 1 4.6 5.6a2 2 0 0 1 2-2.1z"/></symbol>
     <symbol id="i-caravan" viewBox="0 0 24 24"><path d="M2.5 16.5V6.5h12a5.5 5.5 0 0 1 5.5 5.5v4.5z"/><path d="M5.5 9h4v3.5h-4z"/><path d="M20 15.5h2"/><circle cx="10" cy="17.5" r="1.8"/></symbol>
     <symbol id="i-motorhome" viewBox="0 0 24 24"><path d="M2 17V6.5h14l5 5V17z"/><path d="M16 7.5l3.5 4H16z"/><path d="M5 9.5h7"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></symbol>
     <!-- manoeuvres -->
@@ -390,13 +391,15 @@
             <div class="rigs" id="rigs"></div>
           </fieldset>
 
-          <fieldset class="group" data-adv>
-            <legend class="label">Price</legend>
-            <div class="seg" id="costSeg">
-              <label><input type="radio" name="cost" value="free"><span>Free only</span></label>
+          <fieldset class="group">
+            <legend class="label">Where to stay</legend>
+            <div class="seg stay-seg" id="costSeg">
+              <label><input type="radio" name="cost" value="free"><span>Free camps</span></label>
               <label><input type="radio" name="cost" value="cheap" checked><span>Free first</span></label>
-              <label><input type="radio" name="cost" value="any"><span>Any price</span></label>
+              <label><input type="radio" name="cost" value="parks"><span>Caravan parks</span></label>
+              <label><input type="radio" name="cost" value="any"><span>Anything</span></label>
             </div>
+            <p class="help" id="costHelp">Free camps where there are good ones, paid camps and caravan parks where there aren't.</p>
           </fieldset>
 
           <fieldset class="group" data-adv>

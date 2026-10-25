@@ -1262,3 +1262,24 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .sheet-scroll > *, .detail > * { max-width: 100%; }
 .sheet-scroll img, .detail img, .sheet-scroll svg, .detail svg { max-width: 100%; }
 .pills, .gallery, .need-row, .wl-track { overscroll-behavior-x: contain; }
+
+/* caravan parks */
+.mk.park { width: 22px; height: 22px; border-radius: 7px; background: #1D5FA8; }
+.mk.park .ic { width: 14px; height: 14px; stroke: #fff; fill: none; stroke-width: 2.2; }
+.park-box { margin: 14px 0 6px; padding: 14px; border-radius: 16px; background: var(--well); }
+.pk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.pk-head b { display: inline-flex; align-items: center; gap: 6px; font: 800 15px var(--display); }
+.pk-head .ic { width: 18px; height: 18px; }
+.pk-chain { font: 800 12px var(--display); color: #fff; background: #1D5FA8; padding: 4px 9px; border-radius: 999px; }
+.pk-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; }
+.pk-prices > div, .pk-price { background: var(--sheet); border-radius: 12px; padding: 10px; text-align: center; }
+.pk-prices b, .pk-price b { display: block; font: 900 20px var(--display); }
+.pk-prices small, .pk-price small { color: var(--sub); font-size: 12px; }
+.pk-note { margin: 8px 0 0; color: var(--sub); font-size: 12.5px; line-height: 1.4; }
+.pk-actions { display: flex; gap: 8px; margin-top: 12px; }
+.pk-actions .cta { flex: 1; justify-content: center; text-align: center; }
+.pk-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.pk-actions .ic { width: 16px; height: 16px; }
+.stay-seg { flex-wrap: wrap; }
+.stay-seg label { flex: 1 1 45%; }
+.pill.stay input:checked + span { background: var(--sign); color: #fff; }

@@ -23,6 +23,7 @@ KEEP = {
     "sanitary_dump_station", "tents", "caravans", "motorhome", "maxstay", "access", "website",
     "contact:website", "url", "phone", "contact:phone", "operator", "description", "note", "image",
     "wikimedia_commons", "opening_hours", "is_in", "capacity", "reservation", "4wd_only", "maxlength",
+    "brand", "email", "contact:email", "addr:city", "addr:suburb", "stars",
 }
 # Australia split into tiles (south, west, north, east) small enough for Overpass to answer
 LATS = [-44.0, -38.0, -34.0, -30.0, -26.0, -20.0, -9.0]
