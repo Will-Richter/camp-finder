@@ -1,0 +1,72 @@
+name: Offline state maps
+
+# Builds one offline map file per state (Protomaps vector tiles, OpenStreetMap data) and publishes them
+# as release downloads the app fetches when you tap "Download Queensland" etc.
+on:
+  workflow_dispatch:
+    inputs:
+      maxzoom:
+        description: "Most detailed zoom level"
+        default: "13"
+  push:
+    paths: ["tools/maps.trigger"]
+
+permissions:
+  contents: write
+
+jobs:
+  maps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get pmtiles
+        run: |
+          set -e
+          U=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/protomaps/go-pmtiles/releases/latest | python3 -c "import json,sys; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].endswith('Linux_x86_64.tar.gz')][0])")
+          echo "$U"; curl -sSL -o /tmp/p.tgz "$U"
+          tar -xzf /tmp/p.tgz -C /tmp && /tmp/pmtiles version || true
+      - name: Extract states
+        env:
+          MAXZOOM: ${{ github.event.inputs.maxzoom || '' }}
+        run: |
+          set -e
+          Z="${MAXZOOM:-$(sed -n 's/^maxzoom=//p' tools/maps.trigger)}"; Z="${Z:-13}"
+          B=$(curl -sS https://build-metadata.protomaps.dev/builds.json | python3 -c "import json,sys; b=json.load(sys.stdin); print(sorted(x['key'] for x in b)[-1])")
+          echo "Build $B, maxzoom $Z"
+          mkdir -p out
+          while read st bbox; do
+            [ -z "$st" ] && continue
+            /tmp/pmtiles extract "https://build.protomaps.com/$B" "out/$st.pmtiles" --bbox="$bbox" --maxzoom="$Z" --download-threads=8
+            ls -la "out/$st.pmtiles"
+          done <<'LIST'
+          qld 137.99,-29.18,153.56,-9.14
+          nsw 140.99,-37.51,153.64,-28.15
+          vic 140.96,-39.16,149.98,-33.98
+          tas 143.80,-43.70,148.50,-39.45
+          sa 129.00,-38.10,141.00,-25.99
+          wa 112.90,-35.20,129.00,-13.70
+          nt 129.00,-26.00,138.00,-10.90
+          LIST
+          python3 - "$B" "$Z" <<'PY'
+          import json, os, sys
+          files = {f[:-8]: os.path.getsize("out/" + f) for f in os.listdir("out") if f.endswith(".pmtiles")}
+          json.dump({"build": sys.argv[1], "maxzoom": int(sys.argv[2]), "tag": "maps-v1",
+                     "base": "https://github.com/Will-Richter/camp-finder/releases/download/maps-v1/",
+                     "files": files}, open("docs/data/maps.json", "w"), indent=1)
+          print(open("docs/data/maps.json").read())
+          PY
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view maps-v1 >/dev/null 2>&1 || gh release create maps-v1 --title "Offline state maps" --notes "Map files for offline use in Camp Finder. Map data © OpenStreetMap contributors, tiles by Protomaps."
+          gh release upload maps-v1 out/*.pmtiles --clobber
+      - name: Commit sizes
+        run: |
+          cp docs/data/maps.json ios-native/CampFinder/web/data/maps.json || true
+          git config user.name "camp-data-bot"
+          git config user.email "camp-data-bot@users.noreply.github.com"
+          git add docs/data/maps.json ios-native/CampFinder/web/data/maps.json
+          git diff --cached --quiet || git commit -m "Offline state maps: sizes"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
