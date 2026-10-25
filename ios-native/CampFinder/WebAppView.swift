@@ -24,7 +24,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile", "offlineMap"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -217,6 +217,13 @@ struct WebAppView: UIViewRepresentable {
             case "places": handlePlaces(message.body)
             case "route": handleRoute(message.body)
             case "geocode": handleGeocode(message.body)
+            case "offlineMap":
+                // state map downloads: {cmd: "download"|"cancel"|"delete"|"list", state, url}
+                OfflineMaps.shared.send = { [weak self] payload in
+                    guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+                    DispatchQueue.main.async { self?.webView?.evaluateJavaScript("window.__cfMapEvent && window.__cfMapEvent(\(String(decoding: data, as: UTF8.self)))") }
+                }
+                OfflineMaps.shared.handle(message.body)
             case "speech":
                 guard let d = message.body as? [String: Any] else { return }
                 if (d["cmd"] as? String) == "start" {
@@ -381,12 +388,123 @@ struct WebAppView: UIViewRepresentable {
     }
 }
 
-/// Serves files from the app bundle's `web` folder for campfinder://app/<path>.
+/// Offline state maps: one Protomaps file per state, downloaded in the background and kept in Application Support.
+final class OfflineMaps: NSObject, URLSessionDownloadDelegate {
+    static let shared = OfflineMaps()
+    var send: (([String: Any]) -> Void)?
+    let dir: URL = {
+        let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("maps", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        var v = d; var rv = URLResourceValues(); rv.isExcludedFromBackup = true; try? v.setResourceValues(rv)
+        return d
+    }()
+    private lazy var session: URLSession = {
+        let c = URLSessionConfiguration.background(withIdentifier: "au.campfinder.maps")
+        c.isDiscretionary = false
+        c.sessionSendsLaunchEvents = true
+        return URLSession(configuration: c, delegate: self, delegateQueue: nil)
+    }()
+    private var lastSent: [String: Date] = [:]
+
+    func file(_ state: String) -> URL { dir.appendingPathComponent("\(state).pmtiles") }
+    private func clean(_ s: Any?) -> String? {
+        guard let s = s as? String, !s.isEmpty, s.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
+        return s.lowercased()
+    }
+    func handle(_ body: Any) {
+        guard let d = body as? [String: Any], let cmd = d["cmd"] as? String else { return }
+        switch cmd {
+        case "list": list()
+        case "download":
+            guard let st = clean(d["state"]), let u = d["url"] as? String, let url = URL(string: u), url.scheme == "https" else { return }
+            session.getAllTasks { tasks in
+                if tasks.contains(where: { $0.taskDescription == st }) { return }
+                let t = self.session.downloadTask(with: url); t.taskDescription = st; t.resume()
+                self.send?(["type": "progress", "state": st, "done": 0, "total": (d["bytes"] as? Double) ?? 0])
+            }
+        case "cancel":
+            guard let st = clean(d["state"]) else { return }
+            session.getAllTasks { tasks in tasks.filter { $0.taskDescription == st }.forEach { $0.cancel() }; self.list() }
+        case "delete":
+            guard let st = clean(d["state"]) else { return }
+            try? FileManager.default.removeItem(at: file(st)); list()
+        default: break
+        }
+    }
+    func list() {
+        session.getAllTasks { tasks in
+            var have: [[String: Any]] = []
+            for f in (try? FileManager.default.contentsOfDirectory(at: self.dir, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])) ?? [] where f.pathExtension == "pmtiles" {
+                let v = try? f.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                have.append(["state": f.deletingPathExtension().lastPathComponent, "bytes": v?.fileSize ?? 0, "date": (v?.contentModificationDate ?? Date()).timeIntervalSince1970 * 1000])
+            }
+            let busy = tasks.compactMap { t -> [String: Any]? in
+                guard let st = t.taskDescription, t.state == .running || t.state == .suspended else { return nil }
+                return ["state": st, "done": t.countOfBytesReceived, "total": t.countOfBytesExpectedToReceive]
+            }
+            self.send?(["type": "list", "have": have, "busy": busy])
+        }
+    }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        guard let st = downloadTask.taskDescription else { return }
+        if let t = lastSent[st], Date().timeIntervalSince(t) < 0.5 { return }
+        lastSent[st] = Date()
+        send?(["type": "progress", "state": st, "done": totalBytesWritten, "total": totalBytesExpectedToWrite])
+    }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let st = downloadTask.taskDescription else { return }
+        let code = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0
+        guard code == 200 else { send?(["type": "error", "state": st, "message": "The map server said \(code)"]); return }
+        let dest = file(st)
+        try? FileManager.default.removeItem(at: dest)
+        do { try FileManager.default.moveItem(at: location, to: dest); send?(["type": "done", "state": st]) }
+        catch { send?(["type": "error", "state": st, "message": "Not enough space on your phone"]) }
+        list()
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let error = error, let st = task.taskDescription else { return }
+        if (error as NSError).code == NSURLErrorCancelled { send?(["type": "cancelled", "state": st]); return }
+        send?(["type": "error", "state": st, "message": error.localizedDescription])
+    }
+}
+
+/// Serves files from the app bundle's `web` folder for campfinder://app/<path>,
+/// and downloaded state maps for campfinder://app/maps/<state>.pmtiles (with byte ranges, which the map reader uses).
 final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
     private let root = Bundle.main.resourceURL!.appendingPathComponent("web")
 
+    private func serveMap(_ task: WKURLSchemeTask, _ url: URL) {
+        let name = url.lastPathComponent
+        guard name.hasSuffix(".pmtiles"), !name.contains("/"), !name.hasPrefix(".") else { task.didFailWithError(URLError(.fileDoesNotExist)); return }
+        let f = OfflineMaps.shared.dir.appendingPathComponent(name)
+        guard let h = try? FileHandle(forReadingFrom: f), let size = (try? FileManager.default.attributesOfItem(atPath: f.path)[.size] as? NSNumber)?.int64Value else {
+            task.didFailWithError(URLError(.fileDoesNotExist)); return
+        }
+        defer { try? h.close() }
+        var start: Int64 = 0, end: Int64 = size - 1, partial = false
+        if let r = task.request.value(forHTTPHeaderField: "Range"), r.hasPrefix("bytes=") {
+            let parts = r.dropFirst(6).split(separator: "-", omittingEmptySubsequences: false)
+            if parts.count == 2 {
+                if let a = Int64(parts[0]) { start = a; if let b = Int64(parts[1]) { end = min(b, size - 1) } }
+                else if let n = Int64(parts[1]) { start = max(0, size - n) }
+                partial = true
+            }
+        }
+        if start > end || start >= size { start = 0; end = -1 }
+        let len = max(0, end - start + 1)
+        try? h.seek(toOffset: UInt64(start))
+        let data = (try? h.read(upToCount: Int(len))) ?? Data()
+        var headers = ["Content-Type": "application/octet-stream", "Content-Length": "\(data.count)", "Accept-Ranges": "bytes", "Cache-Control": "no-cache"]
+        if partial { headers["Content-Range"] = "bytes \(start)-\(start + Int64(data.count) - 1)/\(size)" }
+        let response = HTTPURLResponse(url: url, statusCode: partial ? 206 : 200, httpVersion: "HTTP/1.1", headerFields: headers)!
+        task.didReceive(response)
+        task.didReceive(data)
+        task.didFinish()
+    }
+
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let url = task.request.url else { return }
+        if url.path.hasPrefix("/maps/") { serveMap(task, url); return }
         var path = url.path
         if path.isEmpty || path == "/" { path = "/index.html" }
         let file = root.appendingPathComponent(String(path.dropFirst())).standardizedFileURL

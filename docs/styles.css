@@ -1367,6 +1367,24 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .ic-list li.is-using { box-shadow: inset 0 0 0 2px #1D7FB8; }
 .ic-list .btn { padding: 8px 12px; }
 .barge-pick { display: grid; gap: 8px; }
-.barge-pick .btn { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
-.barge-pick .btn small { color: var(--sub); font-weight: 600; font-size: 12.5px; }
+.barge-pick .btn { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; text-align: left; width: 100%; height: auto; min-height: 62px; padding: 12px 16px; white-space: normal; overflow: visible; line-height: 1.25; font-size: 16px; gap: 3px; }
+.barge-pick .btn small { display: block; color: var(--sub); font-weight: 600; font-size: 13.5px; white-space: normal; line-height: 1.3; }
 .barge-pick .btn.is-on { box-shadow: inset 0 0 0 2px #1D7FB8; }
+
+/* island card: rows wrap on narrow phones so the barge buttons never get cut off; must-see chips */
+.ic-list li { flex-wrap: wrap; }
+.ic-list li > div { flex: 1 1 180px; }
+.ic-list .btn { white-space: nowrap; height: auto; min-height: 40px; }
+.ic-see { display: flex; flex-wrap: wrap; gap: 6px; }
+.ic-see .chip { font-size: 13.5px; padding: 7px 11px; border-radius: 999px; background: var(--sheet); border: 1px solid var(--line, #ddd); font-weight: 700; color: inherit; cursor: pointer; }
+/* offline: download a state */
+.sm-list { list-style: none; padding: 0; margin: 8px 0 14px; display: grid; gap: 8px; }
+.sm-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--well); }
+.sm-row.focus { box-shadow: inset 0 0 0 2px var(--gold); }
+.sm-row > div { flex: 1; min-width: 0; }
+.sm-row b { display: block; font: 800 15.5px var(--display); }
+.sm-row small { display: block; color: var(--sub); font-size: 13px; margin-top: 2px; line-height: 1.3; }
+.sm-ok { font-size: 20px; }
+.sm-row .btn { flex: none; }
+.sm-bar { display: block; height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 12%, transparent); margin-top: 7px; overflow: hidden; }
+.sm-bar > i { display: block; height: 100%; background: #1F8A4C; border-radius: 99px; transition: width .4s; }

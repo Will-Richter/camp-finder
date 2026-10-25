@@ -13,6 +13,9 @@
       "https://overpass.kumi.systems/api/interpreter",
       "https://overpass.private.coffee/api/interpreter",
     ],
+    valhalla: "https://valhalla1.openstreetmap.de/route",
+    mapsIndex: "data/maps.json",   // offline state map files (built by .github/workflows/offline-maps.yml)
+    mapsIndexLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/maps.json",
     osrm: [
       "https://router.project-osrm.org/route/v1/driving/",
       "https://routing.openstreetmap.de/routed-car/route/v1/driving/",
@@ -349,8 +352,9 @@
     { id: "kgari", name: "K'gari (Fraser Island)", fourWD: true,
       poly: [[-24.67, 153.26], [-24.75, 153.32], [-25.0, 153.36], [-25.3, 153.24], [-25.6, 153.13], [-25.795, 153.1], [-25.8, 153.05], [-25.7, 152.98], [-25.45, 153.02], [-25.2, 152.95], [-25.0, 153.05], [-24.8, 153.15]],
       crossings: [
-        { name: "Inskip Point to Hook Point", who: "Manta Ray barge", from: { name: "Inskip Point barge", lat: -25.8156, lon: 153.0614 }, to: { name: "Hook Point", lat: -25.7956, lon: 153.0756 }, mins: 10, book: "No booking needed, runs all day (about 6am to 5:30pm)", url: "https://mantarayfraserislandbarge.com.au/bookings-fares" },
-        { name: "River Heads to Kingfisher Bay", who: "SeaLink K'gari", from: { name: "River Heads barge", lat: -25.4176, lon: 152.9131 }, to: { name: "Kingfisher Bay", lat: -25.3876, lon: 153.0244 }, mins: 50, book: "Booking required", url: "https://www.islandconnections.com.au/kgari-fraser-island/getting-to-kgari" },
+        { name: "Inskip Point to Hook Point", who: "Manta Ray barge", from: { name: "Inskip Point barge", lat: -25.8156, lon: 153.0614 }, to: { name: "Hook Point", lat: -25.7956, lon: 153.0756 }, mins: 10, book: "No booking needed, runs all day (first about 6am, last from Inskip about 4:45pm)", url: "https://mantarayfraserislandbarge.com.au/tickets/#timetable-fares" },
+        { name: "River Heads to Kingfisher Bay", who: "SeaLink K'gari", from: { name: "River Heads barge", lat: -25.4176, lon: 152.9131 }, to: { name: "Kingfisher Bay", lat: -25.3876, lon: 153.0244 }, mins: 50, book: "Booking required", url: "https://www.islandconnections.com.au/kgari-fraser-island/ferry-information/ferry-timetable" },
+        { name: "River Heads to Wanggoolba Creek", who: "SeaLink K'gari", from: { name: "River Heads barge", lat: -25.4176, lon: 152.9131 }, to: { name: "Wanggoolba Creek", lat: -25.4612, lon: 153.0289 }, mins: 30, book: "Booking required", url: "https://www.islandconnections.com.au/kgari-fraser-island/ferry-information/ferry-timetable" },
       ],
       permits: [{ label: "Vehicle access permit (required)", url: "https://book.parks.qld.gov.au/vehicle-access-permit-kgari-fraser-island" }, { label: "Camping permits and rules", url: "https://parks.qld.gov.au/parks/kgari-fraser/camping/camping-permits-and-requirements" }, QLD_CAMPING],
       note: "4WD only: no caravans or motorhomes. Drive the beach around low tide, and keep food and kids dingo-safe (use the fenced campgrounds with young children)." },
@@ -397,6 +401,31 @@
     const d = hav([cr.from.lat, cr.from.lon], [cr.to.lat, cr.to.lon]);
     return { distance: d, duration: (cr.mins || 30) * 60 + 1200, ferry: cr, geometry: { type: "LineString", coordinates: [[cr.from.lon, cr.from.lat], [cr.to.lon, cr.to.lat]] }, legs: [{ distance: d, duration: (cr.mins || 30) * 60 + 1200, steps: [] }] };
   }
+  // 4WD tracks: Valhalla will use sand and dirt tracks a normal road router skips (K'gari, Moreton, Bribie beach...)
+  function poly6(str) {
+    const out = []; let i = 0, lat = 0, lon = 0;
+    while (i < str.length) {
+      for (const k of [0, 1]) {
+        let b, shift = 0, res = 0;
+        do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        const d = res & 1 ? ~(res >> 1) : res >> 1;
+        if (k) lon += d; else lat += d;
+      }
+      out.push([lon / 1e6, lat / 1e6]);
+    }
+    return out;
+  }
+  async function trackRoute(points) {
+    const body = { locations: points.map((p) => ({ lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), costing: "auto", costing_options: { auto: { use_tracks: 1, use_highways: 0.5 } }, units: "kilometers", directions_type: "none" };
+    const url = `${CFG.valhalla}?json=${encodeURIComponent(JSON.stringify(body))}`;
+    const j = nativeFetch ? JSON.parse(await nativeFetch(url)) : await fetchJSON(url, {}, 25000);
+    const legs = j?.trip?.legs; if (!legs?.length) throw new Error("No track route");
+    const coordinates = [], outLegs = [];
+    legs.forEach((l, k) => { const c = poly6(l.shape); coordinates.push(...(k ? c.slice(1) : c)); const dist = l.summary.length * 1000; outLegs.push({ distance: dist, duration: dist / (30 / 3.6), steps: []  /* sand: about 30 km/h average (Valhalla's own guess is far too slow) */ }); });
+    const distance = outLegs.reduce((a, l) => a + l.distance, 0), duration = outLegs.reduce((a, l) => a + l.duration, 0);
+    return { distance, duration, track: true, geometry: { type: "LineString", coordinates }, legs: outLegs };
+  }
+  const onTrackIsland = (pts) => pts.length > 1 && pts.every((q) => islandAt(q.lat, q.lon)?.fourWD);
   async function osrm(points, steps = false) {
     const hops = [];
     for (let i = 1; i < points.length; i++) {
@@ -412,7 +441,10 @@
       legs.push([cur, b]);
       hops.push(...legs);
     }
-    if (!hops.some((h) => h.ferry)) return osrmRaw(points, steps);
+    if (!hops.some((h) => h.ferry)) {
+      if (onTrackIsland(points)) { try { return await trackRoute(points); } catch (e) { /* fall back to the road routers */ } }
+      return osrmRaw(points, steps);
+    }
     // route each road part, add the crossings, and join them into one route
     const parts = [];
     let road = [];
@@ -422,7 +454,10 @@
     const flush = async () => {
       if (road.length > 1) {
         const onIsland = road.every((q) => islandAt(q.lat, q.lon));
-        try { parts.push(await osrmRaw(road, steps)); } catch (e) { if (!onIsland) throw e; parts.push(trackLeg(road)); }
+        let r = null;
+        if (onTrackIsland(road)) r = await trackRoute(road).catch(() => null);
+        if (!r) { try { r = await osrmRaw(road, steps); } catch (e) { if (!onIsland) throw e; r = trackLeg(road); } }
+        parts.push(r);
       }
       road = [];
     };
@@ -871,7 +906,45 @@
       return { get: (k) => run("readonly", (s) => s.get(k)), set: (k, v) => run("readwrite", (s) => s.put(v, k)) };
     })();
     const valid = (d) => d && Array.isArray(d.camps) && d.camps.length > 500;
+    // Queensland Parks island and beach campgrounds (islands.js): official names, access and facilities, linked to each camp's page
+    function qpwsCamp([park, slug, name, lat, lon, f]) {
+      const hasF = (ch) => f.includes(ch);
+      const drive = /[H4KCVM]/.test(f), boatOnly = !drive;
+      const t = { name, tourism: "camp_site", operator: "Queensland Parks and Wildlife Service", fee: "yes", reservation: "required", tents: "yes",
+        website: `https://parks.qld.gov.au/parks/${park}/camping/${slug}`, qpws: "yes" };
+      if (hasF("T") || hasF("t")) t.toilets = "yes";
+      if (hasF("S") || hasF("s")) t.shower = "yes";
+      if (hasF("F")) t.openfire = "yes";
+      if (hasF("W")) t.wheelchair = "yes";
+      if (hasF("V")) t.caravans = "yes"; else if (drive) t.caravans = "no";
+      if (hasF("M")) t.motorhome = "yes"; else if (drive) t.motorhome = "no";
+      if (/[H4]/.test(f) && !hasF("V") && !hasF("M")) t["4wd_only"] = "yes";
+      if (boatOnly) t.backcountry = "yes";
+      const bits = [];
+      bits.push(boatOnly ? (hasF("B") ? "Boat or walk-in access only, no vehicles." : "Walk-in only, no vehicles.") : hasF("H") ? "High-clearance 4WD access." : hasF("4") ? "4WD access." : "");
+      if (hasF("C")) bits.push("Camper trailers OK."); if (hasF("V")) bits.push("Caravans OK.");
+      if (hasF("K")) bits.push("Camp beside your car.");
+      if (/fenced/i.test(name)) bits.push("Fenced against dingoes, good with young kids.");
+      if (hasF("S")) bits.push("Hot showers (coin)."); else if (hasF("s")) bits.push("Cold showers.");
+      if (hasF("G")) bits.push("Generators allowed (conditions apply).");
+      bits.push("Book a QPWS camping permit before you go.");
+      t.description = bits.filter(Boolean).join(" ");
+      return [`qpws/${slug}`, lat, lon, t];
+    }
+    function addQpws(d) {
+      const list = window.CF_QPWS_CAMPS || []; if (!list.length || d._qpws) return;
+      d._qpws = true;
+      const words = (n) => String(n || "").toLowerCase().replace(/camp(ing)? ?(area|ground|site|zone)?s?|\(.*?\)|great walk|fenced/g, " ").split(/[^a-z']+/).filter((w) => w.length > 2);
+      for (const row of list) {
+        const q = qpwsCamp(row), qw = words(q[3].name);
+        // an OpenStreetMap twin within 400 m with a shared name word: give it the official details instead of doubling up
+        const twin = d.camps.find((c) => Math.abs(c[1] - q[1]) < 0.005 && Math.abs(c[2] - q[2]) < 0.005 && hav([c[1], c[2]], [q[1], q[2]]) < 400 && words(c[3].name).some((w) => qw.includes(w)));
+        if (twin) { twin[3] = { ...q[3], ...Object.fromEntries(Object.entries(twin[3]).filter(([k]) => !(k in q[3]) || k === "name")), name: q[3].name, website: q[3].website, description: q[3].description }; }
+        else d.camps.push(q);
+      }
+    }
     function use(d) {
+      addQpws(d);
       raw = d; norm.clear(); grid = new Map();
       const put = (kind, la, lo, item) => {
         const k = cellOf(la, lo); let g = grid.get(k);
@@ -1163,6 +1236,7 @@
   // ---------------------------------------------------------------- lock the screen
   // Pinching anywhere except the map does nothing (stops the whole app zooming); the map handles its own pinch.
   ["gesturestart", "gesturechange", "gestureend"].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener("click", (e) => { const b = e.target.closest(".ic-see [data-poi]"); if (b) { e.stopPropagation(); openPoi(b.dataset.poi); } }, true);
   document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 && !e.target.closest?.("#map")) e.preventDefault(); }, { passive: false });
   let lastTouchEnd = 0;
   document.addEventListener("touchend", (e) => { const now = Date.now(); if (now - lastTouchEnd < 300 && !e.target.closest?.("#map, input, textarea, button, a, select, label")) e.preventDefault(); lastTouchEnd = now; }, { passive: false });
@@ -1220,6 +1294,105 @@
     if (onSat) { map.removeLayer(street); map.removeLayer(streetBase); satBase.addTo(map); sat.addTo(map); }
     else { map.removeLayer(sat); map.removeLayer(satBase); streetBase.addTo(map); street.addTo(map); }
   });
+  // ---------------------------------------------------------------- offline state maps (iPhone app)
+  // "Download Queensland": the app downloads the state's map file (OpenStreetMap roads, tracks, towns, parks and water,
+  // as Protomaps vector tiles) and draws it on the phone whenever there's no signal.
+  const STATE_MAPS = [
+    { id: "qld", name: "Queensland", short: "QLD", bbox: [-29.18, 137.99, -9.14, 153.56] },
+    { id: "nsw", name: "New South Wales and ACT", short: "NSW", bbox: [-37.51, 140.99, -28.15, 153.64] },
+    { id: "vic", name: "Victoria", short: "VIC", bbox: [-39.16, 140.96, -33.98, 149.98] },
+    { id: "tas", name: "Tasmania", short: "TAS", bbox: [-43.7, 143.8, -39.45, 148.5] },
+    { id: "sa", name: "South Australia", short: "SA", bbox: [-38.1, 129.0, -25.99, 141.0] },
+    { id: "wa", name: "Western Australia", short: "WA", bbox: [-35.2, 112.9, -13.7, 129.0] },
+    { id: "nt", name: "Northern Territory", short: "NT", bbox: [-26.0, 129.0, -10.9, 138.0] },
+  ];
+  const nativeMaps = window.webkit?.messageHandlers?.offlineMap || null;
+  const mapsState = { index: null, have: new Map(), busy: new Map(), err: {} };
+  const stateMapById = (id) => STATE_MAPS.find((x) => x.id === id);
+  function stateMapAt(lat, lon) {
+    const code = window.CFGeo ? CFGeo.stateAt(lat, lon) : null;
+    const byCode = code && stateMapById(code === "ACT" ? "nsw" : String(code).toLowerCase());
+    return byCode || STATE_MAPS.find((x) => lat >= x.bbox[0] && lat <= x.bbox[2] && lon >= x.bbox[1] && lon <= x.bbox[3]) || null;
+  }
+  async function mapsIndex() {
+    if (mapsState.index?.files) return mapsState.index;
+    try { mapsState.index = await fetchJSON(CFG.mapsIndex, {}, 8000); } catch { /* not bundled yet */ }
+    if (!mapsState.index?.files && !isOffline()) {
+      try { mapsState.index = nativeFetch ? JSON.parse(await nativeFetch(CFG.mapsIndexLive)) : await fetchJSON(CFG.mapsIndexLive, {}, 10000); } catch { /* try later */ }
+    }
+    return mapsState.index;
+  }
+  const mb = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1e6))} MB`;
+  window.__cfMapEvent = (e) => {
+    const nm = stateMapById(e.state)?.name || "state";
+    if (e.type === "list") {
+      mapsState.have = new Map((e.have || []).map((h) => [h.state, h]));
+      mapsState.busy = new Map((e.busy || []).map((b) => [b.state, b]));
+      refreshOfflineMapLayer();
+    } else if (e.type === "progress") { mapsState.busy.set(e.state, e); delete mapsState.err[e.state]; }
+    else if (e.type === "done") { mapsState.busy.delete(e.state); toast(`${nm} map downloaded. It shows with no signal.`, 4000); nativeMaps?.postMessage({ cmd: "list" }); }
+    else if (e.type === "error") { mapsState.busy.delete(e.state); mapsState.err[e.state] = e.message; toast(`Couldn't download the ${nm} map. ${e.message || ""}`, 5000); }
+    else if (e.type === "cancelled") mapsState.busy.delete(e.state);
+    renderStateMaps(); exploreDownloadLabel?.(); refreshOfflinePill?.();
+  };
+  function renderStateMaps(focus) {
+    const ul = $("#stateMaps"); if (!ul) return;
+    const saved = [...mapsState.have.keys()].map((id) => stateMapById(id)?.short).filter(Boolean), stat = $("#smStatus");
+    if (stat) { stat.querySelector(".ok").textContent = saved.length ? "✅" : "⬜"; stat.querySelector("b").textContent = saved.length ? `Maps saved: ${saved.join(", ")}` : "No state maps saved yet"; }
+    const files = mapsState.index?.files || {};
+    ul.innerHTML = STATE_MAPS.map((st) => {
+      const have = mapsState.have.get(st.id), busy = mapsState.busy.get(st.id), size = files[st.id];
+      const pct = busy && busy.total > 0 ? Math.min(100, Math.round((busy.done / busy.total) * 100)) : 0;
+      const sub = busy ? `Downloading… ${pct}%${busy.total > 0 ? ` of ${mb(busy.total)}` : ""}`
+        : have ? `Saved on this phone · ${mb(have.bytes)}`
+        : mapsState.err[st.id] ? `Didn't finish: ${mapsState.err[st.id]}`
+        : size ? `About ${mb(size)} · best on Wi-Fi` : "Map file coming soon";
+      const btn = busy ? `<button type="button" class="btn line" data-sm-cancel="${st.id}">Cancel</button>`
+        : have ? `<button type="button" class="icon-btn" data-sm-del="${st.id}" aria-label="Delete the ${esc(st.name)} map">${icon("close")}</button>`
+        : `<button type="button" class="btn${focus === st.id ? " gold" : ""}" data-sm-get="${st.id}"${size ? "" : " disabled"}>${icon("download")}Download</button>`;
+      return `<li class="sm-row${have ? " have" : ""}${focus === st.id ? " focus" : ""}"><span class="sm-ok">${have ? "✅" : busy ? "⏬" : "🗺️"}</span><div><b>${esc(st.name)}</b><small>${esc(sub)}</small>${busy ? `<i class="sm-bar"><i style="width:${pct}%"></i></i>` : ""}</div>${btn}</li>`;
+    }).join("");
+  }
+  async function stateMapAction(e) {
+    const b = e.target.closest("[data-sm-get],[data-sm-cancel],[data-sm-del]"); if (!b || !nativeMaps) return;
+    if (b.dataset.smGet) {
+      const idx = await mapsIndex(), id = b.dataset.smGet;
+      if (!idx?.files?.[id]) { toast("That map isn't ready to download yet"); return; }
+      mapsState.busy.set(id, { state: id, done: 0, total: idx.files[id] }); renderStateMaps();
+      nativeMaps.postMessage({ cmd: "download", state: id, url: `${idx.base}${id}.pmtiles`, bytes: idx.files[id] });
+    } else if (b.dataset.smCancel) nativeMaps.postMessage({ cmd: "cancel", state: b.dataset.smCancel });
+    else if (b.dataset.smDel) { const st = stateMapById(b.dataset.smDel); if (confirmDelete(st)) nativeMaps.postMessage({ cmd: "delete", state: st.id }); }
+  }
+  const confirmDelete = (st) => { const k = `sm-del-${st.id}`; if (confirmDelete[k] && Date.now() - confirmDelete[k] < 4000) return true; confirmDelete[k] = Date.now(); toast(`Tap ✕ again to delete the ${st.name} map`); return false; };
+  // draw the downloaded map when there's no signal (raster tiles need the internet)
+  let offLayers = [], offOn = false, tileFails = [];
+  function setOfflineMap(on) {
+    on = !!on && mapsState.have.size > 0 && !!window.protomapsL;
+    if (on === offOn) return;
+    offOn = on;
+    if (on) {
+      const maxz = mapsState.index?.maxzoom || 13;
+      offLayers = [...mapsState.have.keys()].map((id) => {
+        try { return protomapsL.leafletLayer({ url: `maps/${id}.pmtiles`, flavor: "light", theme: "light", lang: "en", maxDataZoom: maxz, maxZoom: 19, attribution: "© OpenStreetMap · Protomaps" }); } catch { return null; }
+      }).filter(Boolean);
+      [street, streetBase, sat, satBase].forEach((l) => map.hasLayer(l) && map.removeLayer(l));
+      offLayers.forEach((l) => l.addTo(map));
+      $("#map")?.classList.add("offline-map");
+    } else {
+      offLayers.forEach((l) => map.removeLayer(l)); offLayers = [];
+      if (onSat) { satBase.addTo(map); sat.addTo(map); } else { streetBase.addTo(map); street.addTo(map); }
+      $("#map")?.classList.remove("offline-map");
+    }
+  }
+  function refreshOfflineMapLayer() {   // the list of saved states changed: redraw with the new set
+    const want = isOffline() || tileFails.length >= 6;
+    try { if (offOn) setOfflineMap(false); setOfflineMap(want); } catch { /* map not ready */ }
+  }
+  street.on("tileerror", () => { const now = Date.now(); tileFails = tileFails.filter((t) => now - t < 15000); tileFails.push(now); if (tileFails.length >= 6 && mapsState.have.size) setOfflineMap(true); });
+  window.addEventListener("offline", () => setOfflineMap(true));
+  window.addEventListener("online", () => { tileFails = []; setOfflineMap(false); });
+  if (nativeMaps) { mapsIndex(); setTimeout(() => nativeMaps.postMessage({ cmd: "list" }), 400); }
+
   // markers shouldn't slide around while you pinch
   map.on("zoomstart", () => map.getContainer().classList.add("is-zooming"));
   map.on("zoomend", () => setTimeout(() => map.getContainer().classList.remove("is-zooming"), 60));
@@ -1251,8 +1424,14 @@
   const tripLayer = L.layerGroup().addTo(map);
   const legLayer = L.layerGroup().addTo(map);
   const travelLayer = L.layerGroup().addTo(map);   // the part of your route you've already driven
-  const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true, animate: false });
-  map.addLayer(cluster);
+  // Explore camps: every camp shown as its own dot (no tap-to-open clusters). Dots are drawn on the map canvas, so even
+  // thousands stay smooth; caravan parks keep their little caravan badge.
+  const cluster = (() => {
+    const g = L.layerGroup().addTo(map);
+    g.addLayers = (ms) => ms.forEach((m) => g.addLayer(m));
+    g.removeLayers = (ms) => ms.forEach((m) => g.removeLayer(m));
+    return g;
+  })();
   // Explore markers are kept and reused: moving the map only adds or removes the ones that changed (it used to rebuild them all)
   const exMarkers = new Map(), exShown = new Map();
   function clearExplore() { cluster.clearLayers(); exShown.clear(); }
@@ -1273,12 +1452,14 @@
   }
 
   const divIcon = (html, size) => L.divIcon({ className: "", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] });
+  const DOT = { free: "#1F8A4C", paid: "#A9521C", unknown: "#66746D", user: "#5B3FA8", rest: "#2F6FD6", closed: "#9AA19D" };
   function campMarker(c, opts = {}) {
     const ic = opts.night
       ? divIcon(`<div class="mk-night">${esc(opts.label)}</div>`, [34, 32])
       : c.cpark && !c.closed ? divIcon(`<div class="mk park">${icon("caravan", "ic")}</div>`, [22, 22])
-      : divIcon(`<div class="mk ${c.closed ? "closed" : c.source === "user" ? "user" : c.source === "rest" ? "rest" : c.cost}"></div>`, [16, 16]);
-    const m = L.marker([c.lat, c.lon], { icon: ic, title: c.name, keyboard: true, zIndexOffset: opts.night ? 1000 : 0 });
+      : null;
+    const m = ic ? L.marker([c.lat, c.lon], { icon: ic, title: c.name, keyboard: true, zIndexOffset: opts.night ? 1000 : 0 })
+      : L.circleMarker([c.lat, c.lon], { radius: 7, color: "#fff", weight: 2.5, opacity: 1, fillOpacity: 1, fillColor: DOT[c.closed ? "closed" : c.source === "user" ? "user" : c.source === "rest" ? "rest" : c.cost] || DOT.unknown });
     m.on("click", () => openDetail(c));
     return m;
   }
@@ -1839,30 +2020,31 @@
   }
   // One sight, opened straight from the map or the day it's on
   async function openPoi(id) {
-    const p = plan; if (!p) return;
-    const x = poisAlong(p).find((q) => q.id === id) || POIS.find((q) => q.id === String(id).replace(/@back$/, "")); if (!x) return openPois();
-    const along = x.along ?? project(p.line, x).along, off = x.off ?? project(p.line, x).off;
-    const day = dayOfAlong(p, along) + 1, on = seeIds.has(x.id);
-    const detour = off < 1500 ? "Right on your route" : `${km(off)} off your route · about ${hrs((off * 2) / 22)} there and back`;
+    const p = plan?.line ? plan : null;
+    const x = (p && poisAlong(p).find((q) => q.id === id)) || POIS.find((q) => q.id === String(id).replace(/@back$/, "")); if (!x) return p ? openPois() : null;
+    const along = p ? x.along ?? project(p.line, x).along : 0, off = p ? x.off ?? project(p.line, x).off : 0;
+    const day = p ? dayOfAlong(p, along) + 1 : 0, on = seeIds.has(x.id);
+    const isl = islandAt(x.lat, x.lon);
+    const detour = !p ? (isl ? `On ${isl.name}` : stateOf(x.lat, x.lon)) : off < 1500 ? "Right on your route" : `${km(off)} off your route · about ${hrs((off * 2) / 22)} there and back`;
     const learn = x.uri || `https://www.google.com/search?q=${encodeURIComponent(`${x.name} ${stateOf(x.lat, x.lon)}`)}`;
     showDetail(`<div class="poi-detail"><div class="pd-photo" id="pdPhoto"><span class="pd-emoji">${x.emoji}</span></div>
       <div class="d-pad" style="padding-top:14px">
         <h2 class="d-title">${esc(x.name)}${x.star >= 3 ? ` <i class="must">Must see</i>` : ""}</h2>
-        <p class="d-kind">${p.line.turn ? (x._leg === "back" ? "Way back · " : "Way there · ") : ""}Day ${day} · ${detour}${x.rating ? ` · ★ ${x.rating.toFixed(1)} on Google (${x.count.toLocaleString("en-AU")})` : ""}</p>
+        <p class="d-kind">${p?.line.turn ? (x._leg === "back" ? "Way back · " : "Way there · ") : ""}${p ? `Day ${day} · ` : ""}${detour}${x.rating ? ` · ★ ${x.rating.toFixed(1)} on Google (${x.count.toLocaleString("en-AU")})` : ""}</p>
         <p class="pd-blurb">${esc(x.blurb || "")}</p>
-        <div class="stop-actions">
+        ${p ? `<div class="stop-actions">
           <button class="cta" type="button" id="pdToggle">${on ? "Remove from my trip" : "➕ Add to my trip"}</button>
-        </div>
+        </div>` : ""}
         <div class="stop-actions">
           <a class="btn line" href="https://maps.apple.com/?daddr=${x.lat},${x.lon}&dirflg=d&q=${encodeURIComponent(x.name)}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
           <a class="btn line" href="${esc(learn)}" target="_blank" rel="noopener">${icon("search")}Learn more</a>
-          <button class="btn line" type="button" id="pdAll">All sights</button>
+          ${p ? `<button class="btn line" type="button" id="pdAll">All sights</button>` : ""}
         </div>
         <p class="caveat" id="pdCredit"></p>
       </div></div>`);
     if (window.innerWidth < 900) map.setView([x.lat, x.lon], Math.max(map.getZoom(), 10));
-    $("#pdToggle").addEventListener("click", () => { const ids = new Set(seeIds); on ? ids.delete(x.id) : ids.add(x.id); applySights(ids); });
-    $("#pdAll").addEventListener("click", () => openPois(x.id));
+    $("#pdToggle")?.addEventListener("click", () => { const ids = new Set(seeIds); on ? ids.delete(x.id) : ids.add(x.id); applySights(ids); });
+    $("#pdAll")?.addEventListener("click", () => openPois(x.id));
     try {
       const ph = (await soon(googlePhotos({ id: `poi:${x.id}`, name: x.name, named: true, lat: x.lat, lon: x.lon }, 1), 8000, []))[0];
       if (ph && $("#pdPhoto")) { $("#pdPhoto").innerHTML = `<img src="${esc(ph.src)}" alt="">`; $("#pdCredit").textContent = `Photo: ${ph.credit}`; }
@@ -1992,9 +2174,8 @@
     const pickIds = new Set(p.picks.map((x) => x.camp?.id));
     const drawn = new Set(), others = [];
     for (const c of p.camps) if (!pickIds.has(c.id) && !drawn.has(c.id)) { drawn.add(c.id); others.push(campMarker(c)); }
-    // the other camps along the way, clustered so a long trip doesn't put thousands of markers on the map
-    if (L.markerClusterGroup) { const cg = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 38, chunkedLoading: true, animate: false, disableClusteringAtZoom: 12 }); cg.addLayers(others); tripLayer.addLayer(cg); }
-    else others.forEach((m) => m.addTo(tripLayer));
+    // the other camps along the way, each as its own dot (canvas-drawn, so long trips stay smooth)
+    others.forEach((m) => m.addTo(tripLayer));
     for (const f of p.route?.ferries || []) {
       L.polyline([[f.from.lat, f.from.lon], [f.to.lat, f.to.lon]], { color: "#1D7FB8", weight: 5, opacity: .95, dashArray: "8 9" }).addTo(tripLayer);
       const bm = L.marker([f.from.lat, f.from.lon], { icon: divIcon(`<div class="mk-barge" title="Catch the barge">⛴️</div>`, [34, 34]), title: `Barge: ${f.name}`, zIndexOffset: 1500 });
@@ -2759,7 +2940,8 @@
     const gNear = guidesNear([[ctr.lat, ctr.lng]]);
     const rc = rulesNear(ctr.lat, ctr.lng);
     $("#exploreRule").innerHTML = gNear.map((g) => guideCard(g, tripKey(plan))).join("") + rc.map((r) => `<div class="notice warn"><b>Local rule: ${esc(r.place)}</b><span>${esc(r.text)}</span><a href="${esc(r.src)}" target="_blank" rel="noopener">Source</a></div>`).join("");
-    $("#offlineArea").hidden = exploreOffline || !inView.length;
+    $("#offlineArea").hidden = exploreOffline || (!inView.length && !nativeMaps);
+    exploreDownloadLabel();
     if (exploreOffline) $("#exploreCount").textContent = `Offline: showing ${shown.length} downloaded camp${shown.length === 1 ? "" : "s"}`;
     // the list only redraws when what's in it changes (distances update once you stop moving)
     const top = shown.slice(0, 60), sig = top.map((c) => c.id).join(",") + "|" + Math.round(ctr.lat * 50) + "," + Math.round(ctr.lng * 50);
@@ -3003,7 +3185,15 @@
   }
   $("#offlineTrip").addEventListener("click", saveTripOffline);
 
+  // Explore's download button: the whole state's map (camps, fuel and water are always on the phone already)
+  function exploreDownloadLabel() {
+    const st = stateMapAt(map.getCenter().lat, map.getCenter().lng);
+    const btn = $("#offlineArea"); if (!btn) return;
+    btn.textContent = !st ? "Download area" : mapsState.have.has(st.id) ? `${st.short} map saved ✓` : mapsState.busy.has(st.id) ? `Downloading ${st.short}…` : `Download ${st.short} map`;
+  }
   async function saveAreaOffline() {
+    const st = stateMapAt(map.getCenter().lat, map.getCenter().lng);
+    if (st && nativeMaps) { openOffline(st.id); return; }
     const b = map.getBounds(), btn = $("#offlineArea");
     const inView = exploreCamps.filter((c) => b.contains([c.lat, c.lon]));
     if (!inView.length) return toast("No camps here to download");
@@ -3221,6 +3411,7 @@
       <div class="ic-head"><span aria-hidden="true">⛴️</span><b>${trip ? `This trip goes to ${esc(isl.name)}` : `On ${esc(isl.name)}`}</b>${isl.fourWD ? `<span class="ic-4wd">4WD only</span>` : isl.noCars ? `<span class="ic-4wd">No vehicles</span>` : ""}</div>
       ${cr ? `<p class="ic-sub">${isl.crossings.length > 1 ? (trip ? "Barges: you're booked through the one marked ⛴️ on the map. Tap Use to switch" : "Getting there: pick a barge") : "Getting there"}</p><ul class="ic-list">${cr}</ul>` : ""}
       ${isl.note ? `<p class="ic-note">${esc(isl.note)}</p>` : ""}
+      ${(() => { const see = POIS.filter((x) => islandAt(x.lat, x.lon)?.id === isl.id).sort((a, b) => b.star - a.star); return see.length ? `<p class="ic-sub">Must-sees on ${esc(isl.name.replace(/ \(.*\)$/, ""))}</p><div class="ic-see">${see.map((x) => `<button type="button" class="chip" data-poi="${esc(x.id)}">${x.emoji} ${esc(x.name)}</button>`).join("")}</div>` : ""; })()}
       ${isl.permits?.length ? `<div class="ic-permits">${isl.permits.map((pm) => `<a href="${esc(pm.url)}" target="_blank" rel="noopener">${esc(pm.label)}</a>`).join("")}</div>` : ""}
     </div>`;
   }
@@ -3236,7 +3427,7 @@
         <a class="cta" href="${esc(f.url)}" target="_blank" rel="noopener">${/no booking/i.test(f.book) ? "Times and fares" : "Book the barge"}</a>
         <a class="btn" href="${navUrl({ lat: f.from.lat, lon: f.from.lon, name: f.from.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
       </div>
-      ${all.length > 1 && !f.back ? `<p class="ic-sub" style="margin-top:16px">Leave from somewhere else?</p><div class="barge-pick">${all.map((c, k) => `<button type="button" class="btn${c.name === f.name ? " is-on" : ""}" data-barge="${k}">${esc(c.from.name.replace(/ barge$/i, ""))}<small>${esc(c.who)}${/no booking/i.test(c.book) ? " · no booking" : " · book ahead"}</small></button>`).join("")}</div>` : ""}
+      ${all.length > 1 && !f.back ? `<p class="ic-sub" style="margin-top:16px">Leave from somewhere else?</p><div class="barge-pick">${all.map((c, k) => `<button type="button" class="btn${c.name === f.name ? " is-on" : ""}" data-barge="${k}">${esc(c.from.name.replace(/ barge$/i, ""))} → ${esc(c.to.name)}<small>${esc(c.who)} · about ${c.mins} min${/no booking/i.test(c.book) ? " · no booking" : " · book ahead"}</small></button>`).join("")}</div>` : ""}
       ${isl ? islandCard(isl) : ""}
     </div>`);
     $("#detailBody").querySelectorAll("[data-barge]").forEach((b) => b.addEventListener("click", () => {
@@ -4924,36 +5115,40 @@
   async function refreshOfflinePill() {
     const s = await offlineSummary();
     $("#offlinePill").classList.toggle("ready", s.packs.length > 0);
-    $("#offlinePill span").textContent = s.packs.length ? `Offline · ${s.packs.length}` : "Offline";
-    if ($("#stOffline")) $("#stOffline").textContent = `${s.info ? `${s.info.count.toLocaleString("en-AU")} camps are always saved on your phone. ` : ""}${s.trips} trip${s.trips === 1 ? "" : "s"} and ${s.areas} area${s.areas === 1 ? "" : "s"} downloaded.`;
+    const n = s.packs.length + mapsState.have.size;
+    $("#offlinePill").classList.toggle("ready", n > 0);
+    $("#offlinePill span").textContent = n ? `Offline · ${n}` : "Offline";
+    if ($("#stOffline")) $("#stOffline").textContent = `${s.info ? `${s.info.count.toLocaleString("en-AU")} camps are always saved on your phone. ` : ""}${s.trips} trip${s.trips === 1 ? "" : "s"} and ${mapsState.have.size} state map${mapsState.have.size === 1 ? "" : "s"} downloaded.`;
   }
-  async function openOffline() {
+  async function openOffline(focus) {
+    focus = typeof focus === "string" ? focus : stateMapAt(map.getCenter().lat, map.getCenter().lng)?.id;
     const s = await offlineSummary();
+    if (nativeMaps) { mapsIndex().then(() => renderStateMaps(focus)); nativeMaps.postMessage({ cmd: "list" }); }
+    const savedMaps = [...mapsState.have.keys()].map((id) => stateMapById(id)?.short).filter(Boolean);
     const built = s.info ? new Date(s.info.built).toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : "";
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Offline use</h2><p class="d-kind">Get ready before you lose signal</p>
       <div class="off-status">
         <div><span class="ok">✅</span><span><b>${s.info ? s.info.count.toLocaleString("en-AU") : "All"} camps across Australia</b><small>Always on your phone, with fuel, water and dump points. Updated ${esc(built)}.</small></span></div>
         <div><span class="ok">${s.trips ? "✅" : "⬜"}</span><span><b>${s.trips ? `${s.trips} trip${s.trips > 1 ? "s" : ""} downloaded` : "No trips downloaded yet"}</b><small>A downloaded trip keeps your route, turn-by-turn directions, camps and fuel stops.</small></span></div>
-        <div><span class="ok">${s.areas ? "✅" : "⬜"}</span><span><b>${s.areas ? `${s.areas} area${s.areas > 1 ? "s" : ""} downloaded` : "No areas downloaded yet"}</b><small>Every camp in the part of the map you choose, with its details.</small></span></div>
+        <div id="smStatus"><span class="ok">${savedMaps.length ? "✅" : "⬜"}</span><span><b>${savedMaps.length ? `Maps saved: ${savedMaps.join(", ")}` : "No state maps saved yet"}</b><small>The map itself (roads, 4WD tracks, towns, parks, lakes) so you can see where you are with no signal.</small></span></div>
       </div>
+      <h3 class="h2">Download a state</h3>
+      ${nativeMaps ? `<p class="help">Everything for the state: its map, plus the camps, caravan parks, fuel, water and dump points that are already on your phone.</p><ul class="list sm-list" id="stateMaps"><li class="empty">Loading…</li></ul>`
+        : `<p class="help">State map downloads work in the Camp Finder iPhone app.</p>`}
       <div class="off-actions">
-        ${plan ? `<button class="cta" type="button" id="offTrip">${icon("download")}Download this trip: ${esc(short(plan.from.name))} to ${esc(short(plan.to.name))}</button>` : `<p class="help">Plan a trip first, then come back here to download it.</p>`}
-        <button class="btn" type="button" id="offArea">${icon("download")}Download the area on the map</button>
+        ${plan ? `<button class="cta" type="button" id="offTrip">${icon("download")}Download this trip: ${esc(short(plan.from.name))} to ${esc(short(plan.to.name))}</button>` : `<p class="help">Plan a trip, then come back here to download its directions too.</p>`}
       </div>
       <h3 class="h2">Your downloads</h3>
       <ul class="list" id="offList"></ul>
-      <p class="caveat">Without signal the map background shows only places you've already looked at, and Google photos need signal. Camp details, directions you've downloaded and your journey recording all work offline.</p>
+      <p class="caveat">With no signal the app switches to your downloaded state maps by itself. Without one, the map shows only places you've already looked at. Google photos need signal. Camp details, downloaded directions and your journey recording all work offline. Map data © OpenStreetMap contributors.</p>
     </div>`);
     const list = $("#offList");
     const packs = s.packs.sort((a, b) => b.created.localeCompare(a.created));
     list.innerHTML = packs.length ? packs.map((p) => `<li class="trip-item"><b>${esc(p.name)}</b><span class="help">${p.type === "trip" ? "Trip" : "Area"} · ${p.camps.length} camps · ${sizeOf(p)}</span><span class="row">${p.type === "trip" ? `<button class="btn" data-open-pack="${esc(p.id)}" type="button">Open</button>` : `<button class="btn" data-show-pack="${esc(p.id)}" type="button">Show</button>`}<button class="icon-btn" data-del-pack="${esc(p.id)}" type="button" aria-label="Delete download">${icon("close")}</button></span></li>`).join("") : `<li class="empty">Nothing downloaded yet.</li>`;
     list.addEventListener("click", (e) => { const b = e.target.closest("[data-open-pack],[data-show-pack],[data-del-pack]"); if (!b) return; const ul = $("#offlinePacks"); ul.innerHTML = list.innerHTML; ul.querySelector(`[${[...b.attributes].find((a) => a.name.startsWith("data-")).name}="${CSS.escape(Object.values(b.dataset)[0])}"]`)?.click(); setTimeout(() => { refreshOfflinePill(); if (!$("#detail").hidden && $("#offList")) openOffline(); }, 300); });
     $("#offTrip")?.addEventListener("click", async (e) => { e.currentTarget.disabled = true; e.currentTarget.innerHTML = `<span class="spinner"></span>Downloading directions and camps`; await saveTripOffline(); refreshOfflinePill(); openOffline(); });
-    $("#offArea").addEventListener("click", async () => {
-      closeDetail();
-      if (map.getZoom() < CFG.exploreMinZoom) { setView("explore"); toast("Zoom in on the area you want, then tap Download area", 4000); return; }
-      setView("explore"); await loadExplore(); await saveAreaOffline(); refreshOfflinePill();
-    });
+    $("#stateMaps")?.addEventListener("click", stateMapAction);
+    renderStateMaps(focus);
   }
   $("#offlinePill").addEventListener("click", openOffline);
   $("#stOfflineOpen").addEventListener("click", openOffline);
