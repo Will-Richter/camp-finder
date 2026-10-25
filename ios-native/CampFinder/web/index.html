@@ -468,8 +468,10 @@
           </div>
           <p class="offline-note" id="tripOffline" hidden></p>
           <button class="cta start-journey" type="button" id="startJourney"><svg class="ic"><use href="#i-nav"/></svg>Start journey</button>
-          <button class="btn other-route" type="button" id="otherRoute"><svg class="ic sm"><use href="#i-route"/></svg>Show me a different route</button>
-          <p class="help other-route-note" id="otherRouteNote" hidden></p>
+          <div class="other-route-row">
+            <button class="btn other-route" type="button" id="otherRoute"><svg class="ic sm"><use href="#i-route"/></svg>Route options</button>
+            <button class="btn other-route" type="button" id="otherRouteHome" hidden><svg class="ic sm"><use href="#i-route"/></svg>Routes home</button>
+          </div>
           <div class="need-row" id="needRow">
             <button type="button" class="chip" data-need="water">💧 Need water</button>
             <button type="button" class="chip" data-need="dump">🚐 Dump point</button>

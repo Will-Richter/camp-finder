@@ -1298,3 +1298,37 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .add-stop-field .suggest { top: 52px; }
 .other-route { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 8px 0 4px; }
 .other-route-note { margin: 2px 0 10px; text-align: center; }
+
+/* islands: barges, ferries, permits */
+.island-card { margin: 12px 0; padding: 14px; border-radius: 16px; background: color-mix(in srgb, #1D7FB8 10%, var(--sheet)); border: 1px solid color-mix(in srgb, #1D7FB8 30%, transparent); }
+.ic-head { display: flex; align-items: center; gap: 8px; }
+.ic-head b { flex: 1; font: 800 15.5px var(--display); }
+.ic-4wd { font: 800 11.5px var(--display); color: #fff; background: #A9521C; padding: 4px 8px; border-radius: 999px; }
+.ic-sub { margin: 10px 0 6px; font-weight: 700; font-size: 13px; color: var(--sub); }
+.ic-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ic-list li { display: flex; align-items: center; gap: 10px; background: var(--sheet); border-radius: 12px; padding: 10px 12px; }
+.ic-list li > div { flex: 1; min-width: 0; }
+.ic-list b { display: block; font-size: 14.5px; }
+.ic-list small { display: block; color: var(--sub); font-size: 12.5px; line-height: 1.35; margin-top: 2px; }
+.ic-note { margin: 10px 0 0; font-size: 13.5px; line-height: 1.4; }
+.ic-permits { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; }
+.ic-permits a { font-weight: 700; font-size: 13.5px; color: var(--sign); }
+@media (prefers-color-scheme: dark) { .ic-permits a { color: var(--free); } }
+.other-route-row { display: flex; gap: 8px; margin: 8px 0 4px; }
+.other-route-row .other-route { flex: 1; margin: 0; }
+.route-opts { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+.route-opts li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--well); }
+.route-opts li > div { flex: 1; min-width: 0; }
+.route-opts b { display: block; font: 800 16px var(--display); }
+.route-opts small { display: block; color: var(--sub); font-size: 13px; margin-top: 2px; }
+.route-opts li.is-cur { box-shadow: inset 0 0 0 2px var(--sign); }
+.ro-cur { font: 800 12px var(--display); color: var(--sign); }
+@media (prefers-color-scheme: dark) { .ro-cur { color: var(--free); } .route-opts li.is-cur { box-shadow: inset 0 0 0 2px var(--free); } }
+
+/* typing on a phone: the panel sits above the keyboard and fills the screen */
+@media (max-width: 899px) {
+  body.typing .sheet { top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: var(--kb, 0px); height: auto !important; border-radius: 18px; z-index: 3000; transition: none; }
+  body.typing .sheet-scroll { padding-bottom: 50vh; }
+  body.typing .suggest { max-height: var(--sugmax, 260px); }
+}
+@media (max-width: 899px) { body.typing .cta-bar { display: none; } }
