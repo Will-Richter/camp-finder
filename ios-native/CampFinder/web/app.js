@@ -343,6 +343,7 @@
 
   // ---------------------------------------------------------------- routing
   // ---------------------------------------------------------------- islands: barges, ferries and permits
+  const bargePick = {};   // island id -> which crossing you chose (index); otherwise the closest
   const QLD_CAMPING = { label: "Book a QPWS camping permit", url: "https://www.qld.gov.au/camping" };
   const ISLANDS = [
     { id: "kgari", name: "K'gari (Fraser Island)", fourWD: true,
@@ -404,8 +405,10 @@
       // leaving one island and/or arriving on another
       const legs = [];
       let cur = a;
-      if (ia?.crossings?.length) { const cr = ia.crossings.reduce((x, y) => (hav([a.lat, a.lon], [x.to.lat, x.to.lon]) <= hav([a.lat, a.lon], [y.to.lat, y.to.lon]) ? x : y)); legs.push([cur, cr.to], { ferry: { ...cr, from: cr.to, to: cr.from } }); cur = cr.from; }
-      if (ib?.crossings?.length) { const cr = ib.crossings.reduce((x, y) => (hav([cur.lat, cur.lon], [x.from.lat, x.from.lon]) + hav([x.to.lat, x.to.lon], [b.lat, b.lon]) <= hav([cur.lat, cur.lon], [y.from.lat, y.from.lon]) + hav([y.to.lat, y.to.lon], [b.lat, b.lon]) ? x : y)); legs.push([cur, cr.from], { ferry: cr }); cur = cr.to; }
+      if (ia?.crossings?.length && bargePick[ia.id] != null && ia.crossings[bargePick[ia.id]]) { const cr = ia.crossings[bargePick[ia.id]]; legs.push([cur, cr.to], { ferry: { ...cr, from: cr.to, to: cr.from, back: true } }); cur = cr.from; }
+      else if (ia?.crossings?.length) { const cr = ia.crossings.reduce((x, y) => (hav([a.lat, a.lon], [x.to.lat, x.to.lon]) <= hav([a.lat, a.lon], [y.to.lat, y.to.lon]) ? x : y)); legs.push([cur, cr.to], { ferry: { ...cr, from: cr.to, to: cr.from } }); cur = cr.from; }
+      if (ib?.crossings?.length && bargePick[ib.id] != null && ib.crossings[bargePick[ib.id]]) { const cr = ib.crossings[bargePick[ib.id]]; legs.push([cur, cr.from], { ferry: cr }); cur = cr.to; }
+      else if (ib?.crossings?.length) { const cr = ib.crossings.reduce((x, y) => (hav([cur.lat, cur.lon], [x.from.lat, x.from.lon]) + hav([x.to.lat, x.to.lon], [b.lat, b.lon]) <= hav([cur.lat, cur.lon], [y.from.lat, y.from.lon]) + hav([y.to.lat, y.to.lon], [b.lat, b.lon]) ? x : y)); legs.push([cur, cr.from], { ferry: cr }); cur = cr.to; }
       legs.push([cur, b]);
       hops.push(...legs);
     }
@@ -413,7 +416,16 @@
     // route each road part, add the crossings, and join them into one route
     const parts = [];
     let road = [];
-    const flush = async () => { if (road.length > 1) parts.push(await osrmRaw(road, steps)); road = []; };
+    // the island part is often sand tracks a road router won't use: fall back to a straight line at track speed
+    const trackLeg = (pts) => { let d = 0; for (let i = 1; i < pts.length; i++) d += hav([pts[i - 1].lat, pts[i - 1].lon], [pts[i].lat, pts[i].lon]) * 1.3;
+      return { distance: d, duration: d / (30 / 3.6), track: true, geometry: { type: "LineString", coordinates: pts.map((q) => [q.lon, q.lat]) }, legs: [{ distance: d, duration: d / (30 / 3.6), steps: [] }] }; };
+    const flush = async () => {
+      if (road.length > 1) {
+        const onIsland = road.every((q) => islandAt(q.lat, q.lon));
+        try { parts.push(await osrmRaw(road, steps)); } catch (e) { if (!onIsland) throw e; parts.push(trackLeg(road)); }
+      }
+      road = [];
+    };
     for (const h of hops) {
       if (h.ferry) { await flush(); parts.push(ferryLeg(h.ferry)); continue; }
       const [a, b] = h;
@@ -424,6 +436,7 @@
     await flush();
     const out = parts.reduce((acc, r) => (acc ? joinRoutes(acc, r) : r), null);
     out.ferries = parts.filter((r) => r.ferry).map((r) => r.ferry);
+    if (parts.some((r) => r.track)) out.tracks = true;
     return out;
   }
   async function osrmRaw(points, steps = false) {
@@ -536,11 +549,11 @@
   }
   // ---- The road home for return trips: the same road reversed, your own "way back" stops, or a sensible different road
   function joinRoutes(a, b) {
-    return { distance: (a.distance || 0) + (b.distance || 0), duration: (a.duration || 0) + (b.duration || 0),
+    return { ferries: [...(a.ferries || (a.ferry ? [a.ferry] : [])), ...(b.ferries || (b.ferry ? [b.ferry] : []))], distance: (a.distance || 0) + (b.distance || 0), duration: (a.duration || 0) + (b.duration || 0),
       geometry: { type: "LineString", coordinates: [...a.geometry.coordinates, ...b.geometry.coordinates.slice(1)] },
       legs: [...(a.legs || [{ distance: a.distance, duration: a.duration }]), ...(b.legs || [{ distance: b.distance, duration: b.duration }])] };
   }
-  const reverseRoute = (r) => ({ distance: r.distance, duration: r.duration, geometry: { type: "LineString", coordinates: [...r.geometry.coordinates].reverse() }, legs: [{ distance: r.distance, duration: r.duration }] });
+  const reverseRoute = (r) => ({ ferries: (r.ferries || []).map((f) => ({ ...f, from: f.to, to: f.from, back: !f.back })).reverse(), distance: r.distance, duration: r.duration, geometry: { type: "LineString", coordinates: [...r.geometry.coordinates].reverse() }, legs: [{ distance: r.distance, duration: r.duration }] });
   async function homeRoute(from, to, out, backV, way, say = () => {}) {
     if (homePick?.fastest) return { route: await osrm([to, ...backV, from]) };
     if (homePick?.name) return { route: await osrm([to, homePick, ...backV, from]), via: homePick.name };
@@ -1160,7 +1173,7 @@
   // Smooth map: no tile fade, keep plenty of tiles around, and a low-detail copy underneath so zooming
   // never flashes grey while the sharp tiles load.
   const map = L.map("map", {
-    zoomControl: false, attributionControl: true, preferCanvas: true, renderer: L.canvas({ padding: 0.8 }),
+    zoomControl: false, attributionControl: true, preferCanvas: true, renderer: L.canvas({ padding: 0.35, tolerance: 6 }),
     fadeAnimation: false, bounceAtZoomLimits: false, minZoom: 3, maxZoom: 19, worldCopyJump: false,
     zoomSnap: 0, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,   // pinch zoom stops exactly where your fingers do (no snapping jump)
     maxBounds: [[-85, 70], [45, 200]], maxBoundsViscosity: 0.85, // stay around Australia (room below for the panel)
@@ -1180,7 +1193,8 @@
   // Vector map (Stadia Outdoors drawn by the phone's graphics chip): smooth pinch zoom, sharp at every zoom, no squares
   // loading in. Falls back to the picture tiles above if WebGL or the map library isn't available, or with no signal.
   const glOK = (() => { try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); } catch { return false; } })();
-  if (CFG.stadiaKey && glOK && window.maplibregl && L.maplibreGL && !isOffline()) {
+  // The vector map (MapLibre) looked sharp but made panning laggy on phones; Stadia's own map tiles are smooth and show the same 4WD tracks
+  if (CFG.vectorMap && CFG.stadiaKey && glOK && window.maplibregl && L.maplibreGL && !isOffline()) {
     try {
       const vec = L.maplibreGL({
         style: `https://tiles.stadiamaps.com/styles/outdoors.json?api_key=${CFG.stadiaKey}`,
@@ -1239,6 +1253,24 @@
   const travelLayer = L.layerGroup().addTo(map);   // the part of your route you've already driven
   const cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 42, chunkedLoading: true, animate: false });
   map.addLayer(cluster);
+  // Explore markers are kept and reused: moving the map only adds or removes the ones that changed (it used to rebuild them all)
+  const exMarkers = new Map(), exShown = new Map();
+  function clearExplore() { cluster.clearLayers(); exShown.clear(); }
+  function syncExploreMarkers(list) {
+    const want = new Map();
+    for (const c of list) {
+      const key = `${c.id}|${c.cpark ? 1 : 0}|${c.closed ? 1 : 0}`;
+      let m = exMarkers.get(key); if (!m) { m = campMarker(c); exMarkers.set(key, m); }
+      want.set(key, m);
+    }
+    const remove = [], add = [];
+    exShown.forEach((m, k) => { if (!want.has(k)) remove.push(m); });
+    want.forEach((m, k) => { if (!exShown.has(k)) add.push(m); });
+    if (remove.length) cluster.removeLayers ? cluster.removeLayers(remove) : remove.forEach((m) => cluster.removeLayer(m));
+    if (add.length) cluster.addLayers(add);
+    exShown.clear(); want.forEach((m, k) => exShown.set(k, m));
+    if (exMarkers.size > 6000) { for (const k of exMarkers.keys()) { if (!exShown.has(k)) exMarkers.delete(k); if (exMarkers.size < 4000) break; } }
+  }
 
   const divIcon = (html, size) => L.divIcon({ className: "", html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] });
   function campMarker(c, opts = {}) {
@@ -1429,7 +1461,7 @@
     $("#sheetScroll").scrollTop = 0;
     if (sheet.classList.contains("is-peek")) setSheet("half");
     if (v === "explore") { tripLayer.clearLayers(); legLayer.clearLayers(); loadExplore(); }
-    else cluster.clearLayers();
+    else clearExplore();
     setTimeout(() => { try { if (journey) drawTravelled(); } catch {} }, 0);
     if (v === "plan" && plan) drawPlan();
     if (v === "saved") renderSaved();
@@ -1905,7 +1937,11 @@
     const p = plan; if (!p) return;
     const stops = [];
     const fuel = [...(p.fuel || [])];
-    const fuelUpTo = (along) => { while (fuel.length && fuel[0].along <= along) stops.push(fuelStopHtml(fuel.shift())); };
+    const ferries = (p.route?.ferries || []).map((f) => ({ f, along: project(p.line, f.from).along })).sort((a, b) => a.along - b.along);
+    const bargeRow = ({ f }) => `<li class="stop barge"><div class="plate barge" aria-hidden="true">⛴️</div><div class="stop-body"><div class="stop-place">${f.back ? "Barge back" : "Catch the barge"}: ${esc(f.from.name.replace(/ barge$/i, ""))}</div>
+      <p class="help">${esc(f.who)} to ${esc(f.to.name)} · ${f.mins >= 120 ? `about ${Math.round(f.mins / 60)} h` : `about ${f.mins} min`} · ${esc(f.book)}</p>
+      <div class="stop-actions"><a class="btn" href="${esc(f.url)}" target="_blank" rel="noopener">${/no booking/i.test(f.book) ? "Times and fares" : "Book the barge"}</a><button class="btn line" type="button" data-act="barge" data-k="${p.route.ferries.indexOf(f)}">More</button></div></div></li>`;
+    const fuelUpTo = (along) => { while (fuel.length && fuel[0].along <= along) stops.push(fuelStopHtml(fuel.shift())); while (ferries.length && ferries[0].along <= along) stops.push(bargeRow(ferries.shift())); };
     stops.push(`<li class="stop"><div class="plate start" aria-hidden="true"></div><div class="stop-body"><div class="stop-place">${esc(short(p.from.name))}</div></div></li>`);
     let turned = !p.line.turn;
     p.picks.forEach((pk, i) => {
@@ -1949,13 +1985,21 @@
   function drawPlan() {
     tripLayer.clearLayers(); legLayer.clearLayers();
     const p = plan; if (!p) return;
-    L.polyline(p.line.pts, { color: "#ffffff", weight: 9, opacity: .9 }).addTo(tripLayer);
-    const line = L.polyline(p.line.pts, { color: "#0E5A3E", weight: 5, opacity: .95 }).addTo(tripLayer);
+    L.polyline(p.line.pts, { color: "#ffffff", weight: 9, opacity: .9, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
+    const line = L.polyline(p.line.pts, { color: "#0E5A3E", weight: 5, opacity: .95, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
     L.marker([p.from.lat, p.from.lon], { icon: divIcon(`<div class="mk-start"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
     L.marker([p.to.lat, p.to.lon], { icon: divIcon(`<div class="mk-end"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
     const pickIds = new Set(p.picks.map((x) => x.camp?.id));
-    const drawn = new Set();
-    for (const c of p.camps) if (!pickIds.has(c.id) && !drawn.has(c.id)) { drawn.add(c.id); campMarker(c).addTo(tripLayer); }
+    const drawn = new Set(), others = [];
+    for (const c of p.camps) if (!pickIds.has(c.id) && !drawn.has(c.id)) { drawn.add(c.id); others.push(campMarker(c)); }
+    // the other camps along the way, clustered so a long trip doesn't put thousands of markers on the map
+    if (L.markerClusterGroup) { const cg = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 38, chunkedLoading: true, animate: false, disableClusteringAtZoom: 12 }); cg.addLayers(others); tripLayer.addLayer(cg); }
+    else others.forEach((m) => m.addTo(tripLayer));
+    for (const f of p.route?.ferries || []) {
+      L.polyline([[f.from.lat, f.from.lon], [f.to.lat, f.to.lon]], { color: "#1D7FB8", weight: 5, opacity: .95, dashArray: "8 9" }).addTo(tripLayer);
+      const bm = L.marker([f.from.lat, f.from.lon], { icon: divIcon(`<div class="mk-barge" title="Catch the barge">⛴️</div>`, [34, 34]), title: `Barge: ${f.name}`, zIndexOffset: 1500 });
+      bm.on("click", () => openBarge(f)); bm.addTo(tripLayer);
+    }
     p.picks.forEach((pk, i) => { if (pk.camp) campMarker(pk.camp, { night: true, label: String(i + 1) }).addTo(tripLayer); });
     for (const poi of poisAlong(p).slice(0, 40)) {
       const m = L.marker([poi.lat, poi.lon], { icon: divIcon(`<div class="mk-poi${seeIds.has(poi.id) ? " on" : ""}">${poi.emoji}</div>`, [30, 30]), title: poi.name, zIndexOffset: 500 });
@@ -1986,6 +2030,7 @@
       return;
     }
     if (b?.dataset.act === "leg") { showLeg(+b.dataset.i); return; }
+    if (b?.dataset.act === "barge") { const f = plan.route.ferries?.[+b.dataset.k]; if (f) openBarge(f); return; }
     if (b?.dataset.act === "pois") { openPois(); return; }
     if (b?.dataset.poi) { openPoi(b.dataset.poi); return; }
     if (b?.dataset.act === "fuelpick") { const fs = plan.fuel[+b.dataset.f]; const o = fs.options.find((x) => x.id === b.dataset.id); fs.options = [o, ...fs.options.filter((x) => x !== o)]; renderItinerary(); renderBudget(); return; }
@@ -2621,7 +2666,7 @@
       if (add.length) { exploreCamps = [...exploreCamps, ...add]; renderExplore(); }
     }, 700);
   }
-  let exploreCamps = [];
+  let exploreCamps = [], exListSig = "";
   let exploreOffline = false;
   const exCache = new Map();
   attachSuggest($("#exploreSearch"), (r) => { map.setView([r.lat, r.lon], 11); setSheet("half"); });
@@ -2639,7 +2684,7 @@
     if (view !== "explore") return;
     if (map.getZoom() < CFG.exploreMinZoom) {
       $("#exploreCount").textContent = "Zoom in on the map, or search a town, to see its camps.";
-      $("#exploreList").innerHTML = ""; cluster.clearLayers();
+      $("#exploreList").innerHTML = ""; exListSig = ""; clearExplore();
       return;
     }
     const keys = tileKeys(map.getBounds()).filter((k) => !exCache.has(k));
@@ -2706,8 +2751,7 @@
     shown.forEach((c) => (c._d = hav([ctr.lat, ctr.lng], [c.lat, c.lon])));
     const mode = parksOnly ? "parks" : freeOnly ? "free" : "any";
     shown.sort((a, b2) => score(b2, wants, mode) - score(a, wants, mode) || a._d - b2._d);
-    cluster.clearLayers();
-    cluster.addLayers(shown.map((c) => campMarker(c)));
+    syncExploreMarkers(shown);
     const hidden = inView.length - shown.length;
     $("#exploreCount").textContent = shown.length
       ? `${shown.length} ${parksOnly ? `caravan park${shown.length === 1 ? "" : "s"}` : `${freeOnly ? "free " : ""}camp${shown.length === 1 ? "" : "s"}`} on the map${hidden ? `, ${hidden} more hidden by your filters` : ""}`
@@ -2717,7 +2761,9 @@
     $("#exploreRule").innerHTML = gNear.map((g) => guideCard(g, tripKey(plan))).join("") + rc.map((r) => `<div class="notice warn"><b>Local rule: ${esc(r.place)}</b><span>${esc(r.text)}</span><a href="${esc(r.src)}" target="_blank" rel="noopener">Source</a></div>`).join("");
     $("#offlineArea").hidden = exploreOffline || !inView.length;
     if (exploreOffline) $("#exploreCount").textContent = `Offline: showing ${shown.length} downloaded camp${shown.length === 1 ? "" : "s"}`;
-    $("#exploreList").innerHTML = shown.slice(0, 80).map((c) => `<li>${campCard(c, { fromCenter: c._d })}</li>`).join("");
+    // the list only redraws when what's in it changes (distances update once you stop moving)
+    const top = shown.slice(0, 60), sig = top.map((c) => c.id).join(",") + "|" + Math.round(ctr.lat * 50) + "," + Math.round(ctr.lng * 50);
+    if (sig !== exListSig) { exListSig = sig; $("#exploreList").innerHTML = top.map((c) => `<li>${campCard(c, { fromCenter: c._d })}</li>`).join(""); }
   }
   $("#exploreList").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(findCamp(card.dataset.id)); });
 
@@ -3169,13 +3215,35 @@
   }
   // How to get onto an island: the barge or ferry (with booking links), permits and what vehicles can go
   function islandCard(isl, trip = false) {
-    const cr = (isl.crossings || []).map((x) => `<li><div><b>${esc(x.name)}</b><small>${esc(x.who)} · ${x.mins >= 120 ? `about ${Math.round(x.mins / 60)} hours` : `about ${x.mins} min`} · ${esc(x.book)}</small></div><a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">${/no booking/i.test(x.book) ? "Times and fares" : "Book"}</a></li>`).join("");
+    const using = trip && plan?.route?.ferries ? plan.route.ferries.map((f) => f.name) : [];
+    const cr = (isl.crossings || []).map((x, k) => `<li class="${using.includes(x.name) ? "is-using" : ""}"><div><b>${using.includes(x.name) ? "⛴️ " : ""}${esc(x.name)}</b><small>${esc(x.who)} · ${x.mins >= 120 ? `about ${Math.round(x.mins / 60)} hours` : `about ${x.mins} min`} · ${esc(x.book)}</small></div>${trip && isl.crossings.length > 1 && !using.includes(x.name) ? `<button class="btn line" type="button" data-use-barge="${esc(isl.id)}:${k}">Use</button>` : ""}<a class="btn" href="${esc(x.url)}" target="_blank" rel="noopener">${/no booking/i.test(x.book) ? "Times" : "Book"}</a></li>`).join("");
     return `<div class="island-card${trip ? " trip" : ""}">
       <div class="ic-head"><span aria-hidden="true">⛴️</span><b>${trip ? `This trip goes to ${esc(isl.name)}` : `On ${esc(isl.name)}`}</b>${isl.fourWD ? `<span class="ic-4wd">4WD only</span>` : isl.noCars ? `<span class="ic-4wd">No vehicles</span>` : ""}</div>
-      ${cr ? `<p class="ic-sub">${isl.crossings.length > 1 ? "Getting there: pick a barge" : "Getting there"}</p><ul class="ic-list">${cr}</ul>` : ""}
+      ${cr ? `<p class="ic-sub">${isl.crossings.length > 1 ? (trip ? "Barges: you're booked through the one marked ⛴️ on the map. Tap Use to switch" : "Getting there: pick a barge") : "Getting there"}</p><ul class="ic-list">${cr}</ul>` : ""}
       ${isl.note ? `<p class="ic-note">${esc(isl.note)}</p>` : ""}
       ${isl.permits?.length ? `<div class="ic-permits">${isl.permits.map((pm) => `<a href="${esc(pm.url)}" target="_blank" rel="noopener">${esc(pm.label)}</a>`).join("")}</div>` : ""}
     </div>`;
+  }
+  // the barge or ferry you'll catch: times, booking, and the other places you could leave from
+  function openBarge(f) {
+    const isl = ISLANDS.find((k) => (k.crossings || []).some((c) => c.name === f.name || (c.from.name === f.to.name && c.to.name === f.from.name)));
+    const all = isl?.crossings || [];
+    showDetail(`<div class="d-pad" style="padding-top:22px">
+      <p class="d-kind">⛴️ ${f.back ? "Barge back to the mainland" : "Catch the barge here"}</p>
+      <h2 class="d-title">${esc(f.from.name)}</h2>
+      <p class="help">${esc(f.who)} to ${esc(f.to.name)} · ${f.mins >= 120 ? `about ${Math.round(f.mins / 60)} hours` : `about ${f.mins} min`} · ${esc(f.book)}</p>
+      <div class="d-actions" style="margin-top:12px">
+        <a class="cta" href="${esc(f.url)}" target="_blank" rel="noopener">${/no booking/i.test(f.book) ? "Times and fares" : "Book the barge"}</a>
+        <a class="btn" href="${navUrl({ lat: f.from.lat, lon: f.from.lon, name: f.from.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
+      </div>
+      ${all.length > 1 && !f.back ? `<p class="ic-sub" style="margin-top:16px">Leave from somewhere else?</p><div class="barge-pick">${all.map((c, k) => `<button type="button" class="btn${c.name === f.name ? " is-on" : ""}" data-barge="${k}">${esc(c.from.name.replace(/ barge$/i, ""))}<small>${esc(c.who)}${/no booking/i.test(c.book) ? " · no booking" : " · book ahead"}</small></button>`).join("")}</div>` : ""}
+      ${isl ? islandCard(isl) : ""}
+    </div>`);
+    $("#detailBody").querySelectorAll("[data-barge]").forEach((b) => b.addEventListener("click", () => {
+      const k = +b.dataset.barge; if (all[k]?.name === f.name) return;
+      bargePick[isl.id] = k; closeDetail(); toast(`Re-planning via ${all[k].from.name.replace(/ barge$/i, "")}`);
+      $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
+    }));
   }
   function tripIslands(p) {
     const pts = [p.from, p.to, ...(p.picks || []).map((pk) => pk.camp).filter(Boolean)];
@@ -3184,6 +3252,11 @@
     for (const f of p.route?.ferries || []) { const i = ISLANDS.find((k) => (k.crossings || []).some((c) => c.name === f.name)); if (i && !seen.has(i.id)) seen.set(i.id, i); }
     return [...seen.values()];
   }
+  $("#tripExtras").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-use-barge]"); if (!b) return;
+    const [id, k] = b.dataset.useBarge.split(":"); bargePick[id] = +k;
+    toast("Re-planning with that barge"); $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
+  });
   function renderTripExtras() {
     const box = $("#tripExtras"); if (!box || !plan) return;
     const key = tripKey(plan), gs = guidesForPlan(plan), n = notesFor(key);
