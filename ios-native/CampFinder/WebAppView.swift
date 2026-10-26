@@ -118,7 +118,7 @@ struct WebAppView: UIViewRepresentable {
             "catalogue.data.infrastructure.gov.au", "spatial-gis.information.qld.gov.au",
             "overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee",
             "will-richter.github.io", "raw.githubusercontent.com", "places.googleapis.com",
-            "api.open-meteo.com", "www.rfs.nsw.gov.au", "emergency.vic.gov.au", "publiccontent-gis-psba-qld-gov-au.s3.amazonaws.com",
+            "api.open-meteo.com", "valhalla1.openstreetmap.de", "www.rfs.nsw.gov.au", "emergency.vic.gov.au", "publiccontent-gis-psba-qld-gov-au.s3.amazonaws.com",
         ]
         private func handleFetch(_ body: Any) {
             guard let dict = body as? [String: Any], let id = dict["id"] as? Int,

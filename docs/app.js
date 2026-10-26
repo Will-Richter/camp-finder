@@ -351,7 +351,8 @@
   const QLD_CAMPING = { label: "Book a QPWS camping permit", url: "https://www.qld.gov.au/camping" };
   const ISLANDS = [
     { id: "kgari", name: "K'gari (Fraser Island)", fourWD: true,
-      poly: [[-24.67, 153.26], [-24.75, 153.32], [-25.0, 153.36], [-25.3, 153.24], [-25.6, 153.13], [-25.795, 153.1], [-25.8, 153.05], [-25.7, 152.98], [-25.45, 153.02], [-25.2, 152.95], [-25.0, 153.05], [-24.8, 153.15]],
+      // generous outline of the whole island, Sandy Cape to Hook Point (River Heads and Hervey Bay stay outside)
+      poly: [[-24.6, 153.27], [-24.7, 153.34], [-24.95, 153.39], [-25.25, 153.28], [-25.55, 153.17], [-25.79, 153.115], [-25.805, 153.075], [-25.795, 153.03], [-25.77, 152.985], [-25.62, 152.95], [-25.4, 152.99], [-25.2, 152.96], [-25.0, 153.05], [-24.85, 153.1], [-24.75, 153.13], [-24.66, 153.19]],
       crossings: [
         { name: "Inskip Point to Hook Point", who: "Manta Ray barge", from: { name: "Inskip Point barge", lat: -25.8156, lon: 153.0614 }, to: { name: "Hook Point", lat: -25.7956, lon: 153.0756 }, mins: 10, book: "No booking needed, runs all day (first about 6am, last from Inskip about 4:45pm)", url: "https://mantarayfraserislandbarge.com.au/tickets/#timetable-fares" },
         { name: "River Heads to Kingfisher Bay", who: "SeaLink K'gari", from: { name: "River Heads barge", lat: -25.4176, lon: 152.9131 }, to: { name: "Kingfisher Bay", lat: -25.3876, lon: 153.0244 }, mins: 50, book: "Booking required", url: "https://www.islandconnections.com.au/kgari-fraser-island/ferry-information/ferry-timetable" },
@@ -419,7 +420,9 @@
   async function trackRoute(points, steps = false) {
     const body = { locations: points.map((p) => ({ lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), costing: "auto", costing_options: { auto: { use_tracks: 1, use_highways: fourWD ? 0.8 : 0.5, use_living_streets: 0.3 } }, units: "kilometers", directions_type: steps ? "instructions" : "none", language: "en-AU" };
     const url = `${CFG.valhalla}?json=${encodeURIComponent(JSON.stringify(body))}`;
-    const j = nativeFetch ? JSON.parse(await nativeFetch(url)) : await fetchJSON(url, {}, 25000);
+    // straight from the page first (the track router allows it); the phone's own fetch as a backup
+    let j = null;
+    try { j = await fetchJSON(url, {}, 30000); } catch (e) { if (nativeFetch) j = JSON.parse(await nativeFetch(url, { timeout: 30000 })); else throw e; }
     const legs = j?.trip?.legs; if (!legs?.length) throw new Error("No track route");
     const coordinates = [], outLegs = [];
     legs.forEach((l, k) => { const c = poly6(l.shape); coordinates.push(...(k ? c.slice(1) : c)); const dist = l.summary.length * 1000; outLegs.push({ steps: steps ? (l.maneuvers || []).map((m) => ({ distance: (m.length || 0) * 1000, text: m.instruction || "", maneuver: { type: "valhalla" } })) : [], distance: dist, duration: Math.min(l.summary.time, dist / (30 / 3.6))  /* Valhalla's time, but never slower than 30 km/h average (its sand-track guess is far too slow) */ }); });
@@ -5109,7 +5112,7 @@
   paintCars();
   setTimeout(() => updateBadges(false), 1500);
   // changing where you're going drops the suggested sights, but keeps the stops you added yourself
-  ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); homePick = null; if (viaStops.some((v) => !v.mine)) { viaStops = viaStops.filter((v) => v.mine); renderVia(); } }));
+  ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); homePick = null; for (const k of Object.keys(bargePick)) delete bargePick[k]; if (viaStops.some((v) => !v.mine)) { viaStops = viaStops.filter((v) => v.mine); renderVia(); } }));
   $("#tripType").addEventListener("change", () => { seeIds.clear(); if (viaStops.some((v) => v.poi)) { viaStops = viaStops.filter((v) => !v.poi); renderVia(); } });
 
   // ================================================================ first-time sign in
