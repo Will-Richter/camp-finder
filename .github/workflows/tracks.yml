@@ -1,0 +1,52 @@
+name: 4WD tracks
+
+# Every off-road track in Australia from OpenStreetMap (highway=track, 4wd_only, sand/beach driving),
+# packed into one vector tile file the app draws as its 4WD map.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["tools/tracks.trigger"]
+
+permissions:
+  contents: write
+
+jobs:
+  tracks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          set -e
+          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool build-essential libsqlite3-dev zlib1g-dev >/dev/null
+          git clone -q --depth 1 https://github.com/felt/tippecanoe.git /tmp/tc && make -s -C /tmp/tc -j4 >/dev/null && sudo make -s -C /tmp/tc install >/dev/null
+          tippecanoe --version
+      - name: Download Australia
+        run: curl -sSL -o /tmp/au.pbf https://download.geofabrik.de/australia-oceania/australia-latest.osm.pbf && ls -la /tmp/au.pbf
+      - name: Extract tracks
+        run: |
+          set -e
+          osmium tags-filter /tmp/au.pbf w/highway=track w/4wd_only=yes w/surface=sand w/highway=*:surface=sand -o /tmp/t1.pbf --overwrite
+          osmium tags-filter /tmp/t1.pbf w/highway -o /tmp/t2.pbf --overwrite
+          osmium export /tmp/t2.pbf -f geojsonseq -o /tmp/t.geojsonseq --overwrite -a type -c tools/osmium-export.json
+          wc -l /tmp/t.geojsonseq
+          python3 tools/tracks_clean.py /tmp/t.geojsonseq /tmp/tracks.geojsonseq
+      - name: Tiles
+        run: |
+          set -e
+          mkdir -p docs/tiles
+          tippecanoe -o /tmp/tracks.pmtiles -l tracks -Z5 -z12 --force \
+            -j '{"tracks":["any",[">=","$zoom",10],["has","n"],["==","g",5],["==","w",1]]}' \
+            --drop-smallest-as-needed --simplification=4 --no-tile-size-limit=false \
+            -P /tmp/tracks.geojsonseq
+          ls -la /tmp/tracks.pmtiles
+          S=$(stat -c %s /tmp/tracks.pmtiles); echo "size $S"
+          if [ "$S" -lt 95000000 ]; then cp /tmp/tracks.pmtiles docs/tiles/tracks.pmtiles; echo "{\"bytes\": $S, \"built\": \"$(date -u +%FT%TZ)\"}" > docs/tiles/tracks.json; else echo "TOO BIG for Pages"; echo "{\"bytes\": $S, \"tooBig\": true}" > docs/tiles/tracks.json; fi
+      - name: Commit
+        run: |
+          git config user.name "camp-data-bot"
+          git config user.email "camp-data-bot@users.noreply.github.com"
+          git add docs/tiles
+          git diff --cached --quiet || git commit -m "4WD tracks for the off-road map"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
