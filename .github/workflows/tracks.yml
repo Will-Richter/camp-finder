@@ -27,7 +27,7 @@ jobs:
       - name: Extract tracks
         run: |
           set -e
-          osmium tags-filter /tmp/au.pbf w/highway=track w/4wd_only=yes w/surface=sand w/highway=*:surface=sand -o /tmp/t1.pbf --overwrite
+          osmium tags-filter /tmp/au.pbf w/highway=track w/4wd_only=yes w/surface=sand -o /tmp/t1.pbf --overwrite
           osmium tags-filter /tmp/t1.pbf w/highway -o /tmp/t2.pbf --overwrite
           osmium export /tmp/t2.pbf -f geojsonseq -o /tmp/t.geojsonseq --overwrite -a type -c tools/osmium-export.json
           wc -l /tmp/t.geojsonseq
@@ -38,7 +38,7 @@ jobs:
           mkdir -p docs/tiles
           tippecanoe -o /tmp/tracks.pmtiles -l tracks -Z5 -z12 --force \
             -j '{"tracks":["any",[">=","$zoom",10],["has","n"],["==","g",5],["==","w",1]]}' \
-            --drop-smallest-as-needed --simplification=4 --no-tile-size-limit=false \
+            --drop-smallest-as-needed --simplification=4 \
             -P /tmp/tracks.geojsonseq
           ls -la /tmp/tracks.pmtiles
           S=$(stat -c %s /tmp/tracks.pmtiles); echo "size $S"
