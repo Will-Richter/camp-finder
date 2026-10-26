@@ -1,0 +1,28 @@
+name: Queensland Parks camps
+
+on:
+  schedule:
+    - cron: "41 17 * * 0"
+  workflow_dispatch:
+  push:
+    paths: ["tools/qpws.trigger"]
+
+permissions:
+  contents: write
+
+jobs:
+  qpws:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read every camping area page
+        run: python3 -u tools/qpws_camps.py
+      - name: Commit
+        run: |
+          cp docs/qpws-camps.js ios-native/CampFinder/web/qpws-camps.js
+          git config user.name "camp-data-bot"
+          git config user.email "camp-data-bot@users.noreply.github.com"
+          git add docs/qpws-camps.js ios-native/CampFinder/web/qpws-camps.js
+          git diff --cached --quiet || git commit -m "Queensland Parks camps update"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
