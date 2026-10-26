@@ -476,7 +476,11 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
     private func serveMap(_ task: WKURLSchemeTask, _ url: URL) {
         let name = url.lastPathComponent
         guard name.hasSuffix(".pmtiles"), !name.contains("/"), !name.hasPrefix(".") else { task.didFailWithError(URLError(.fileDoesNotExist)); return }
-        let f = OfflineMaps.shared.dir.appendingPathComponent(name)
+        serveRange(task, url, OfflineMaps.shared.dir.appendingPathComponent(name))
+    }
+
+    /// Serves part of a big file (the map reader asks for small byte ranges instead of the whole file).
+    private func serveRange(_ task: WKURLSchemeTask, _ url: URL, _ f: URL) {
         guard let h = try? FileHandle(forReadingFrom: f), let size = (try? FileManager.default.attributesOfItem(atPath: f.path)[.size] as? NSNumber)?.int64Value else {
             task.didFailWithError(URLError(.fileDoesNotExist)); return
         }
@@ -508,6 +512,7 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         var path = url.path
         if path.isEmpty || path == "/" { path = "/index.html" }
         let file = root.appendingPathComponent(String(path.dropFirst())).standardizedFileURL
+        if file.path.hasPrefix(root.standardizedFileURL.path), file.pathExtension == "pmtiles" { serveRange(task, url, file); return }
         guard file.path.hasPrefix(root.standardizedFileURL.path), let data = try? Data(contentsOf: file) else {
             cfLog("missing file: \(file.lastPathComponent)")
             task.didFailWithError(URLError(.fileDoesNotExist)); return

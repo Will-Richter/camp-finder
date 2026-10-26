@@ -194,7 +194,7 @@
   <div class="map-tools">
     <button id="locateBtn" class="tool" type="button" aria-label="Show my location"><svg class="ic"><use href="#i-locate"/></svg></button>
     <button id="addBtn" class="tool" type="button" aria-label="Add a camp"><svg class="ic"><use href="#i-plus"/></svg></button>
-    <button id="layerBtn" class="tool" type="button" aria-label="Switch to satellite view" aria-pressed="false"><svg class="ic"><use href="#i-layers"/></svg></button>
+    <button id="layerBtn" class="tool" type="button" aria-label="Map style" aria-pressed="false"><svg class="ic"><use href="#i-layers"/></svg></button>
   </div>
 
   <div id="journeyBar" class="jbar" hidden>
@@ -396,6 +396,7 @@
           <fieldset class="group">
             <legend class="label">Travelling with</legend>
             <div class="rigs" id="rigs"></div>
+            <label class="switch fourwd-sw"><span><b>🛞 4WD: tracks and beaches</b><small>Route along 4WD tracks, beach runs and outback tracks where they're the way through. High-clearance 4WD only.</small></span><input type="checkbox" id="fourwd"><i></i></label>
           </fieldset>
 
           <fieldset class="group">
@@ -506,6 +507,9 @@
         <h1 class="title">Discover</h1>
         <p class="help">Australia's favourite road trips, ready to plan in one tap.</p>
         <div class="trip-grid" id="tripGrid"></div>
+        <h2 class="h2" style="margin-top:22px">🛞 4WD tracks</h2>
+        <p class="help">The big off-road trips, planned along the tracks with the 4WD map.</p>
+        <div class="trip-grid" id="tripGrid4wd"></div>
       </div>
 
       <!-- SAVED -->
@@ -653,6 +657,15 @@
     <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
   </nav>
 
+  <div id="layerMenu" class="layer-menu" role="menu" hidden>
+    <button type="button" data-mode="map" class="is-on"><span>🗺️</span><b>Map</b><small>Roads, parks and towns</small></button>
+    <button type="button" data-mode="sat"><span>🛰️</span><b>Satellite</b><small>Photos from above</small></button>
+    <button type="button" data-mode="4wd"><span>🛞</span><b>4WD</b><small>Every off-road track, beach run and sand track</small></button>
+  </div>
+  <div id="trackKey" class="track-key" hidden>
+    <b>4WD tracks</b>
+    <span><i style="background:#D2691E"></i>Gravel</span><span><i style="background:#8A5A2B"></i>Dirt track</span><span><i style="background:#C0392B"></i>4WD only</span><span><i style="background:#8E1B12"></i>Hard 4WD</span><span><i style="background:#C99A06"></i>Sand / beach</span>
+  </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>
 
@@ -665,6 +678,7 @@
 <script src="cars.js"></script>
 <script src="badges.js"></script>
 <script src="pois.js"></script>
+<script src="qpws-camps.js" onerror="void 0"></script>
 <script src="islands.js"></script>
 <script src="recap.js"></script>
 <script src="road.js"></script>

@@ -15,6 +15,7 @@
     ],
     valhalla: "https://valhalla1.openstreetmap.de/route",
     mapsIndex: "data/maps.json",   // offline state map files (built by .github/workflows/offline-maps.yml)
+    tracksUrl: "tiles/tracks.pmtiles",   // every 4WD track in Australia (built by .github/workflows/tracks.yml)
     mapsIndexLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/maps.json",
     osrm: [
       "https://router.project-osrm.org/route/v1/driving/",
@@ -415,17 +416,18 @@
     }
     return out;
   }
-  async function trackRoute(points) {
-    const body = { locations: points.map((p) => ({ lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), costing: "auto", costing_options: { auto: { use_tracks: 1, use_highways: 0.5 } }, units: "kilometers", directions_type: "none" };
+  async function trackRoute(points, steps = false) {
+    const body = { locations: points.map((p) => ({ lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), costing: "auto", costing_options: { auto: { use_tracks: 1, use_highways: fourWD ? 0.8 : 0.5, use_living_streets: 0.3 } }, units: "kilometers", directions_type: steps ? "instructions" : "none", language: "en-AU" };
     const url = `${CFG.valhalla}?json=${encodeURIComponent(JSON.stringify(body))}`;
     const j = nativeFetch ? JSON.parse(await nativeFetch(url)) : await fetchJSON(url, {}, 25000);
     const legs = j?.trip?.legs; if (!legs?.length) throw new Error("No track route");
     const coordinates = [], outLegs = [];
-    legs.forEach((l, k) => { const c = poly6(l.shape); coordinates.push(...(k ? c.slice(1) : c)); const dist = l.summary.length * 1000; outLegs.push({ distance: dist, duration: dist / (30 / 3.6), steps: []  /* sand: about 30 km/h average (Valhalla's own guess is far too slow) */ }); });
+    legs.forEach((l, k) => { const c = poly6(l.shape); coordinates.push(...(k ? c.slice(1) : c)); const dist = l.summary.length * 1000; outLegs.push({ steps: steps ? (l.maneuvers || []).map((m) => ({ distance: (m.length || 0) * 1000, text: m.instruction || "", maneuver: { type: "valhalla" } })) : [], distance: dist, duration: Math.min(l.summary.time, dist / (30 / 3.6))  /* Valhalla's time, but never slower than 30 km/h average (its sand-track guess is far too slow) */ }); });
     const distance = outLegs.reduce((a, l) => a + l.distance, 0), duration = outLegs.reduce((a, l) => a + l.duration, 0);
     return { distance, duration, track: true, geometry: { type: "LineString", coordinates }, legs: outLegs };
   }
-  const onTrackIsland = (pts) => pts.length > 1 && pts.every((q) => islandAt(q.lat, q.lon)?.fourWD);
+  let fourWD = false;   // the trip's "4WD: tracks and beaches" option: route over tracks everywhere, not just on 4WD islands
+  const onTrackIsland = (pts) => pts.length > 1 && (fourWD || pts.every((q) => islandAt(q.lat, q.lon)?.fourWD));
   async function osrm(points, steps = false) {
     const hops = [];
     for (let i = 1; i < points.length; i++) {
@@ -442,7 +444,7 @@
       hops.push(...legs);
     }
     if (!hops.some((h) => h.ferry)) {
-      if (onTrackIsland(points)) { try { return await trackRoute(points); } catch (e) { /* fall back to the road routers */ } }
+      if (onTrackIsland(points)) { try { return await trackRoute(points, steps); } catch (e) { /* fall back to the road routers */ } }
       return osrmRaw(points, steps);
     }
     // route each road part, add the crossings, and join them into one route
@@ -455,7 +457,7 @@
       if (road.length > 1) {
         const onIsland = road.every((q) => islandAt(q.lat, q.lon));
         let r = null;
-        if (onTrackIsland(road)) r = await trackRoute(road).catch(() => null);
+        if (onTrackIsland(road)) r = await trackRoute(road, steps).catch(() => null);
         if (!r) { try { r = await osrmRaw(road, steps); } catch (e) { if (!onIsland) throw e; r = trackLeg(road); } }
         parts.push(r);
       }
@@ -909,7 +911,7 @@
     // Queensland Parks island and beach campgrounds (islands.js): official names, access and facilities, linked to each camp's page
     function qpwsCamp([park, slug, name, lat, lon, f]) {
       const hasF = (ch) => f.includes(ch);
-      const drive = /[H4KCVM]/.test(f), boatOnly = !drive;
+      const drive = /[H4KCVM2]/.test(f), boatOnly = !drive && /[BAL]/.test(f);
       const t = { name, tourism: "camp_site", operator: "Queensland Parks and Wildlife Service", fee: "yes", reservation: "required", tents: "yes",
         website: `https://parks.qld.gov.au/parks/${park}/camping/${slug}`, qpws: "yes" };
       if (hasF("T") || hasF("t")) t.toilets = "yes";
@@ -921,7 +923,9 @@
       if (/[H4]/.test(f) && !hasF("V") && !hasF("M")) t["4wd_only"] = "yes";
       if (boatOnly) t.backcountry = "yes";
       const bits = [];
-      bits.push(boatOnly ? (hasF("B") ? "Boat or walk-in access only, no vehicles." : "Walk-in only, no vehicles.") : hasF("H") ? "High-clearance 4WD access." : hasF("4") ? "4WD access." : "");
+      bits.push(boatOnly ? (hasF("B") ? "Boat or walk-in access only, no vehicles." : "Walk-in only, no vehicles.") : hasF("H") ? "High-clearance 4WD access." : hasF("4") ? "4WD access." : hasF("2") ? "2WD access." : "");
+      if (hasF("R") || hasF("O")) t.drinking_water = "yes";
+      if (hasF("D")) t.dog = "yes";
       if (hasF("C")) bits.push("Camper trailers OK."); if (hasF("V")) bits.push("Caravans OK.");
       if (hasF("K")) bits.push("Camp beside your car.");
       if (/fenced/i.test(name)) bits.push("Fenced against dingoes, good with young kids.");
@@ -932,7 +936,8 @@
       return [`qpws/${slug}`, lat, lon, t];
     }
     function addQpws(d) {
-      const list = window.CF_QPWS_CAMPS || []; if (!list.length || d._qpws) return;
+      const seenQ = new Set(), list = [...(window.CF_QPWS_ALL || []), ...(window.CF_QPWS_CAMPS || [])].filter((r) => { const k = `${r[0]}/${r[1]}`; if (seenQ.has(k)) return false; seenQ.add(k); return true; });
+      if (!list.length || d._qpws) return;
       d._qpws = true;
       const words = (n) => String(n || "").toLowerCase().replace(/camp(ing)? ?(area|ground|site|zone)?s?|\(.*?\)|great walk|fenced/g, " ").split(/[^a-z']+/).filter((w) => w.length > 2);
       for (const row of list) {
@@ -1287,13 +1292,43 @@
   const sat = L.tileLayer(ESRI, { ...tileOpts, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" });
   streetBase.addTo(map); street.addTo(map);
   let onSat = false;
-  $("#layerBtn").addEventListener("click", (e) => {
-    onSat = !onSat;
-    e.currentTarget.setAttribute("aria-pressed", onSat);
-    e.currentTarget.setAttribute("aria-label", onSat ? "Switch to map view" : "Switch to satellite view");
+  function setSat(on) {
+    onSat = !!on;
+    $("#layerBtn").setAttribute("aria-pressed", onSat || mapMode === "4wd");
+    let offline = false; try { offline = offOn; } catch { /* not set up yet */ }
+    if (offline) return;   // no signal: the downloaded map stays
     if (onSat) { map.removeLayer(street); map.removeLayer(streetBase); satBase.addTo(map); sat.addTo(map); }
     else { map.removeLayer(sat); map.removeLayer(satBase); streetBase.addTo(map); street.addTo(map); }
-  });
+  }
+  // ---- 4WD map: every off-road track in Australia (OpenStreetMap), drawn over the map like a HEMA map,
+  // coloured by how hard it is, with track names. Works with no signal (the track file ships with the app).
+  let mapMode = "map", tracksLayer = null;
+  const TRACK_COL = (f) => f.props.s ? "#C99A06" : f.props.g >= 5 ? "#8E1B12" : f.props.g >= 4 ? "#C0392B" : f.props.g === 3 ? "#8A5A2B" : "#D2691E";
+  function makeTracksLayer() {
+    if (!window.protomapsL) return null;
+    const P = protomapsL, wz = (b) => (z) => b * (z < 8 ? 0.55 : z < 11 ? 0.85 : z < 14 ? 1.15 : 1.6);
+    try {
+      return P.leafletLayer({ url: CFG.tracksUrl, maxDataZoom: 12, maxZoom: 19, zIndex: 3, attribution: "4WD tracks © OpenStreetMap",
+        paintRules: [
+          { dataLayer: "tracks", symbolizer: new P.LineSymbolizer({ color: "#FFFFFF", width: wz(5), opacity: 0.85, lineCap: "round" }) },
+          { dataLayer: "tracks", symbolizer: new P.LineSymbolizer({ color: (z, f) => TRACK_COL(f), width: wz(2.6), lineCap: "round", dash: [6, 4], dashColor: (z, f) => TRACK_COL(f), dashWidth: wz(2.6) }) },
+        ],
+        labelRules: [{ dataLayer: "tracks", minzoom: 9, symbolizer: new P.LineLabelSymbolizer({ labelProps: ["n"], fill: "#5A3410", stroke: "#FFFFFF", width: 3, font: "700 12px sans-serif" }) }],
+      });
+    } catch { return null; }
+  }
+  function setMapMode(m) {
+    mapMode = m;
+    setSat(m === "sat");
+    if (m === "4wd") { tracksLayer ||= makeTracksLayer(); if (tracksLayer && !map.hasLayer(tracksLayer)) tracksLayer.addTo(map); if (!tracksLayer) toast("The 4WD map needs the latest app version"); }
+    else if (tracksLayer && map.hasLayer(tracksLayer)) map.removeLayer(tracksLayer);
+    $("#trackKey").hidden = m !== "4wd";
+    document.querySelectorAll("#layerMenu [data-mode]").forEach((b) => b.classList.toggle("is-on", b.dataset.mode === m));
+    prefs.mapMode = m; store.set("cf-prefs", prefs);
+  }
+  $("#layerBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#layerMenu").hidden = !$("#layerMenu").hidden; });
+  $("#layerMenu").addEventListener("click", (e) => { const b = e.target.closest("[data-mode]"); if (!b) return; setMapMode(b.dataset.mode); $("#layerMenu").hidden = true; if (b.dataset.mode === "4wd" && map.getZoom() < 7) toast("Zoom in to see every track. Red is hard 4WD, yellow is sand and beach.", 4000); });
+  document.addEventListener("click", (e) => { if (!$("#layerMenu").hidden && !e.target.closest("#layerMenu,#layerBtn")) $("#layerMenu").hidden = true; });
   // ---------------------------------------------------------------- offline state maps (iPhone app)
   // "Download Queensland": the app downloads the state's map file (OpenStreetMap roads, tracks, towns, parks and water,
   // as Protomaps vector tiles) and draws it on the phone whenever there's no signal.
@@ -1663,10 +1698,12 @@
   const radio = (name) => $(`input[name="${name}"]:checked`)?.value;
   const wantsOf = (el) => $$("input[value]:checked", el).map((i) => i.value).filter((v) => AMENITIES.some((a) => a.id === v));
   function savePrefs() {
-    Object.assign(prefs, { wants: wantsOf($("#planWants")), exWants: wantsOf($("#explorePills")), exMore: moreOf(), rig: radio("rig"), exType: radio("exType") || "all" });
+    Object.assign(prefs, { wants: wantsOf($("#planWants")), exWants: wantsOf($("#explorePills")), exMore: moreOf(), rig: radio("rig"), exType: radio("exType") || "all", fourwd: $("#fourwd").checked });
     store.set("cf-prefs", prefs); paintCars();
   }
   $("#rigs").addEventListener("change", () => { prefs.rig = radio("rig") || prefs.rig; store.set("cf-prefs", prefs); paintCars(); });
+  $("#fourwd").checked = !!prefs.fourwd;
+  $("#fourwd").addEventListener("change", () => { prefs.fourwd = $("#fourwd").checked; store.set("cf-prefs", prefs); if (prefs.fourwd && radio("rig") === "caravan") toast("4WD tracks: only take an off-road caravan or camper on these", 4000); });
 
   const nightsIn = $("#nights");
   function setNights(n) {
@@ -1829,9 +1866,11 @@
       const ret = isRet();
       const nights = ret ? +nightsIn.value + (retThere() > 0 ? 1 : 0) + retBack() : +nightsIn.value;
       if (settings.simple) { const r = $("#simpleRefresh").checked ? Math.max(1, Math.round(+nightsIn.value / 3)) : 0; refreshIn.value = Math.min(r, +nightsIn.value); }
-      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "", ret,
+      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "", ret, fourwd: $("#fourwd").checked,
         ...(ret ? { retOut: +nightsIn.value, retThere: retThere(), retBack: retBack(), retWay: radio("retWay") || "diff" } : {}) };
       if (ret) { prefs.retThere = opts.retThere; prefs.retBack = opts.retBack; prefs.retWay = opts.retWay; store.set("cf-prefs", prefs); }
+      fourWD = opts.fourwd;
+      if (fourWD && mapMode !== "4wd") setMapMode("4wd");
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
       say("Planning the route");
@@ -3451,7 +3490,9 @@
   function renderTripExtras() {
     const box = $("#tripExtras"); if (!box || !plan) return;
     const key = tripKey(plan), gs = guidesForPlan(plan), n = notesFor(key);
-    box.innerHTML = `${tripIslands(plan).map((i) => islandCard(i, true)).join("")}${gs.map((g) => guideCard(g, key)).join("")}
+    const offroad = plan.opts?.fourwd ? `<div class="island-card offroad"><div class="ic-head"><span aria-hidden="true">🛞</span><b>4WD route</b><span class="ic-4wd">High clearance</span></div>
+      <p class="ic-note">This plan follows 4WD tracks and beaches, shown on the 4WD map. Drive beaches around low tide, let your tyres down for sand, and check track closures, permits and recent rain with the park or council before you go. Times on tracks are rough.</p></div>` : "";
+    box.innerHTML = `${offroad}${tripIslands(plan).map((i) => islandCard(i, true)).join("")}${gs.map((g) => guideCard(g, key)).join("")}
       <div class="bookings-box">
         <div class="bb-head"><b>Bookings for this trip</b><button class="btn line small-btn" type="button" data-add-booking="">${icon("plus", "ic sm")}Add</button></div>
         ${n.bookings.length ? `<ul class="bookings">${n.bookings.map(bookingRow).join("")}</ul>` : `<p class="help">Ferries, permits and camp bookings, kept offline with this trip.</p>`}
@@ -4963,11 +5004,14 @@
   });
   function renderDiscover() {
     const T = window.CF_TRIPS || [];
-    $("#tripGrid").innerHTML = T.map((t) => `<button type="button" class="trip-card" data-trip="${t.id}" style="--a:${t.art[0]};--b:${t.art[1]}">
+    const card = (t) => `<button type="button" class="trip-card" data-trip="${t.id}" style="--a:${t.art[0]};--b:${t.art[1]}">
         <span class="tc-art"><span class="tc-emoji">${t.emoji}</span><span class="tc-km">${t.km.toLocaleString("en-AU")} km</span></span>
         <span class="tc-body"><b>${esc(t.name)}</b><small>${esc(t.tagline)}</small><span class="tc-meta">${t.nights} night${t.nights > 1 ? "s" : ""} · ${esc(t.road)}</span></span>
-      </button>`).join("");
+      </button>`;
+    $("#tripGrid").innerHTML = T.filter((t) => !t.fourwd).map(card).join("");
+    const g4 = $("#tripGrid4wd"); if (g4) g4.innerHTML = T.filter((t) => t.fourwd).map(card).join("");
   }
+  $("#tripGrid4wd")?.addEventListener("click", (e) => { const b = e.target.closest("[data-trip]"); if (b) openTrip(b.dataset.trip); });
   $("#tripGrid").addEventListener("click", (e) => { const b = e.target.closest("[data-trip]"); if (b) openTrip(b.dataset.trip); });
   function openTrip(id) {
     const t = (window.CF_TRIPS || []).find((x) => x.id === id); if (!t) return;
@@ -4994,6 +5038,7 @@
       <dl class="facts"><div><dt>Best time</dt><dd>${esc(t.season)}</dd></div><div><dt>Roads</dt><dd>${esc(t.road)}</dd></div><div><dt>Route</dt><dd>${t.stops.map((s) => esc(s.name)).join(" → ")}</dd></div></dl>
       <h3 class="h2">Highlights</h3><ul class="trip-hl">${t.highlights.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>
       <div class="notice"><b>Good to know</b><span>${esc(t.tips)}</span></div>
+      ${t.fourwd ? `<p class="caveat">🛞 Planned along the 4WD tracks. Track conditions, seasonal closures and permits change: check with the park or road authority before you go.</p>` : ""}
       ${t.guide ? `<button class="btn line" type="button" id="tripGuide">Open the ${esc(t.name)} guide</button>` : ""}
     </div>`);
     $("#tripGuide")?.addEventListener("click", () => openGuide(guideById(t.guide)));
@@ -5054,6 +5099,7 @@
       set($("#from"), stops[0]); set($("#to"), stops.at(-1));
       viaStops = stops.slice(1, -1); renderVia();
       setNights(t.nights + Math.round(extraKm / 450));
+      $("#fourwd").checked = !!t.fourwd; prefs.fourwd = !!t.fourwd; store.set("cf-prefs", prefs);
       closeDetail(); setView("plan");
       $("#results").hidden = true; $("#planForm").hidden = false;
       $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
@@ -5257,7 +5303,7 @@
     $("#stTow").addEventListener("input", (e) => { settings.tow = +e.target.value; $("#stTowOut").textContent = `+${settings.tow}%`; saveSettings(); renderVehicleSummary(); });
     $("#stAnim").addEventListener("change", (e) => { settings.anim = e.target.checked; saveSettings(); applyMotion(); });
     $("#stFollow").addEventListener("change", (e) => { settings.follow = e.target.checked; saveSettings(); if (settings.follow) locate(() => setFollow(true)); else setFollow(false); });
-    $("#stSat").addEventListener("change", (e) => { settings.sat = e.target.checked; saveSettings(); if (settings.sat !== onSat) $("#layerBtn").click(); });
+    $("#stSat").addEventListener("change", (e) => { settings.sat = e.target.checked; saveSettings(); setMapMode(settings.sat ? "sat" : "map"); });
     $("#stWelcome").addEventListener("click", () => showWelcome());
     $("#modePick").addEventListener("change", (e) => { settings.simple = e.target.value === "simple"; saveSettings(); applyMode(); toast(settings.simple ? "Simple mode: bigger and easier" : "Full mode: every feature"); });
     num("#stHeight", "height", 1.5, 4.6); num("#stLength", "length", 3, 30);
@@ -5270,7 +5316,7 @@
     $("#stTerms").addEventListener("click", () => openLegal("terms"));
     $("#stPrivacy").addEventListener("click", () => openLegal("privacy"));
   })();
-  if (settings.sat && !onSat) $("#layerBtn").click();
+  if (prefs.mapMode === "4wd") setMapMode("4wd"); else if (settings.sat || prefs.mapMode === "sat") setMapMode("sat");
   if (store.get("cf-loc-ok", false)) { startTracking(); if (settings.follow) setFollow(true); }
 
   // ---- sliding tab indicator
