@@ -1433,3 +1433,12 @@ input:placeholder-shown + .clear-x { display: none; }
 .track-key { cursor: pointer; }
 .track-key.collapsed span { display: none; }
 .track-key b small { font-weight: 700; color: var(--sub); }
+/* 4WD map: chips across the top to choose which tracks to show */
+.track-bar { position: fixed; z-index: 500; left: 12px; right: 70px; top: calc(env(safe-area-inset-top, 0px) + 68px); display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; align-items: center; }
+.track-bar::-webkit-scrollbar { display: none; }
+.track-bar[hidden] { display: none; }
+.track-bar .tb-title { flex: none; font: 800 13px var(--display); background: var(--sheet); padding: 7px 10px; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.track-bar button { flex: none; display: inline-flex; align-items: center; gap: 6px; border: 0; background: color-mix(in srgb, var(--sheet) 92%, transparent); color: var(--sub); font: 700 13px var(--display); padding: 7px 11px; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.18); cursor: pointer; opacity: .75; }
+.track-bar button i { width: 16px; height: 4px; border-radius: 2px; display: inline-block; opacity: .4; }
+.track-bar button.is-on { color: var(--ink); opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,.22), inset 0 0 0 2px var(--gold); }
+.track-bar button.is-on i { opacity: 1; }

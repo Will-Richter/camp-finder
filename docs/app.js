@@ -1308,25 +1308,22 @@
   // coloured by how hard it is, with track names. Works with no signal (the track file ships with the app).
   let mapMode = "map", tracksLayer = null;
   const TRACK_COL = (f) => f.props.s ? "#C99A06" : f.props.g >= 5 ? "#8E1B12" : f.props.g >= 4 ? "#C0392B" : f.props.g === 3 ? "#8A5A2B" : "#D2691E";
-  const ROAD_COL = { 1: "#D7391E", 2: "#F08A24", 3: "#F7C744", 4: "#FFF6C9", 5: "#FFFFFF" };
-  const ROAD_W = (z, f) => { const r = f.props.r || 5, base = [0, 3.6, 3, 2.4, 1.9, 1.5][r]; return base * (z < 7 ? 0.5 : z < 9 ? 0.7 : z < 12 ? 1 : z < 14 ? 1.4 : 2); };
+  // which kinds of track to draw (chips across the top of the 4WD map); the real off-road ones are on to start with
+  const trackKinds = new Set(store.get("cf-prefs", {}).trackKinds || ["sand", "4wd", "hard"]);
+  const kindOf = (f) => f.props.s ? "sand" : f.props.g >= 5 ? "hard" : f.props.g >= 4 ? "4wd" : f.props.g === 3 ? "dirt" : "easy";
+  const trackOn = (z, f) => trackKinds.has(kindOf(f));
+  function paintTrackBar() { document.querySelectorAll("#trackKey [data-tk]").forEach((b) => { const on = trackKinds.has(b.dataset.tk); b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", on); }); }
   function makeTracksLayer() {
     if (!window.protomapsL) return null;
     const P = protomapsL, wz = (b) => (z) => b * (z < 8 ? 0.55 : z < 11 ? 0.85 : z < 14 ? 1.15 : 1.6);
     try {
       return P.leafletLayer({ url: CFG.tracksUrl, maxDataZoom: 12, maxZoom: 19, zIndex: 3, attribution: "4WD tracks © OpenStreetMap",
         paintRules: [
-          // main roads first (underneath), coloured like a HEMA map; dashed where they're unsealed
-          { dataLayer: "roads", symbolizer: new P.LineSymbolizer({ color: "#5B4636", width: (z, f) => ROAD_W(z, f) + 2, opacity: 0.55, lineCap: "round", lineJoin: "round" }) },
-          { dataLayer: "roads", filter: (z, f) => !f.props.u, symbolizer: new P.LineSymbolizer({ color: (z, f) => ROAD_COL[f.props.r] || "#FFFFFF", width: ROAD_W, lineCap: "round", lineJoin: "round" }) },
-          { dataLayer: "roads", filter: (z, f) => !!f.props.u, symbolizer: new P.LineSymbolizer({ color: "#F3E3C3", width: ROAD_W, lineCap: "round" }) },
-          { dataLayer: "roads", filter: (z, f) => !!f.props.u, symbolizer: new P.LineSymbolizer({ color: "#A0612A", width: ROAD_W, dash: [8, 4], dashColor: "#A0612A", dashWidth: ROAD_W }) },
-          { dataLayer: "tracks", symbolizer: new P.LineSymbolizer({ color: "#FFFFFF", width: wz(5), opacity: 0.85, lineCap: "round" }) },
-          { dataLayer: "tracks", symbolizer: new P.LineSymbolizer({ color: (z, f) => TRACK_COL(f), width: wz(2.6), lineCap: "round", dash: [6, 4], dashColor: (z, f) => TRACK_COL(f), dashWidth: wz(2.6) }) },
+          { dataLayer: "tracks", filter: trackOn, symbolizer: new P.LineSymbolizer({ color: "#FFFFFF", width: wz(5), opacity: 0.85, lineCap: "round" }) },
+          { dataLayer: "tracks", filter: trackOn, symbolizer: new P.LineSymbolizer({ color: (z, f) => TRACK_COL(f), width: wz(2.6), lineCap: "round", dash: [6, 4], dashColor: (z, f) => TRACK_COL(f), dashWidth: wz(2.6) }) },
         ],
         labelRules: [
-          { dataLayer: "roads", minzoom: 7, filter: (z, f) => f.props.r <= 2 || z >= 10, symbolizer: new P.LineLabelSymbolizer({ labelProps: ["n"], fill: "#3A2A1C", stroke: "#FFFFFF", width: 3, font: "800 12px sans-serif" }) },
-          { dataLayer: "tracks", minzoom: 9, symbolizer: new P.LineLabelSymbolizer({ labelProps: ["n"], fill: "#5A3410", stroke: "#FFFFFF", width: 3, font: "700 12px sans-serif" }) },
+          { dataLayer: "tracks", minzoom: 9, filter: trackOn, symbolizer: new P.LineLabelSymbolizer({ labelProps: ["n"], fill: "#5A3410", stroke: "#FFFFFF", width: 3, font: "700 12px sans-serif" }) },
         ],
       });
     } catch { return null; }
@@ -1340,7 +1337,13 @@
     document.querySelectorAll("#layerMenu [data-mode]").forEach((b) => b.classList.toggle("is-on", b.dataset.mode === m));
     prefs.mapMode = m; store.set("cf-prefs", prefs);
   }
-  $("#trackKey").addEventListener("click", () => $("#trackKey").classList.toggle("collapsed"));
+  $("#trackKey").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tk]"); if (!b) return;
+    trackKinds.has(b.dataset.tk) ? trackKinds.delete(b.dataset.tk) : trackKinds.add(b.dataset.tk);
+    prefs.trackKinds = [...trackKinds]; store.set("cf-prefs", prefs); paintTrackBar();
+    if (tracksLayer && map.hasLayer(tracksLayer)) { if (tracksLayer.rerenderTiles) tracksLayer.rerenderTiles(); else { map.removeLayer(tracksLayer); tracksLayer = makeTracksLayer(); tracksLayer?.addTo(map); } }
+  });
+  paintTrackBar();
   $("#layerBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#layerMenu").hidden = !$("#layerMenu").hidden; });
   $("#layerMenu").addEventListener("click", (e) => { const b = e.target.closest("[data-mode]"); if (!b) return; setMapMode(b.dataset.mode); $("#layerMenu").hidden = true; if (b.dataset.mode === "4wd" && map.getZoom() < 7) toast("Zoom in to see every track. Red is hard 4WD, yellow is sand and beach.", 4000); });
   document.addEventListener("click", (e) => { if (!$("#layerMenu").hidden && !e.target.closest("#layerMenu,#layerBtn")) $("#layerMenu").hidden = true; });

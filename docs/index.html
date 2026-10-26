@@ -664,10 +664,13 @@
     <button type="button" data-mode="sat"><span>🛰️</span><b>Satellite</b><small>Photos from above</small></button>
     <button type="button" data-mode="4wd"><span>🛞</span><b>4WD</b><small>Every off-road track, beach run and sand track</small></button>
   </div>
-  <div id="trackKey" class="track-key collapsed" hidden role="button" tabindex="0" aria-label="Show the 4WD map key">
-    <b>🛞 4WD map <small>key ▾</small></b>
-    <span><i style="background:#D7391E;height:5px"></i>Highway</span><span><i style="background:#F08A24"></i>Main road</span><span><i style="background:repeating-linear-gradient(90deg,#A0612A 0 6px,#F3E3C3 6px 9px)"></i>Gravel road</span>
-    <span><i style="background:#D2691E"></i>Easy track</span><span><i style="background:#8A5A2B"></i>Dirt track</span><span><i style="background:#C0392B"></i>4WD only</span><span><i style="background:#8E1B12"></i>Hard 4WD</span><span><i style="background:#C99A06"></i>Sand / beach</span>
+  <div id="trackKey" class="track-bar" hidden>
+    <span class="tb-title">🛞 Show</span>
+    <button type="button" data-tk="sand"><i style="background:#C99A06"></i>Sand / beach</button>
+    <button type="button" data-tk="4wd"><i style="background:#C0392B"></i>4WD only</button>
+    <button type="button" data-tk="hard"><i style="background:#8E1B12"></i>Hard 4WD</button>
+    <button type="button" data-tk="dirt"><i style="background:#8A5A2B"></i>Dirt tracks</button>
+    <button type="button" data-tk="easy"><i style="background:#D2691E"></i>Easy tracks</button>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>
