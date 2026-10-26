@@ -1,0 +1,148 @@
+  ohsome failed (HTTP Error 403: Forbidden); retrying
+ohsome unavailable (ohsome failed: HTTP Error 403: Forbidden); using Overpass tiles
+tile 1/42 (-44.0, 112.0, -38.0, 120.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+tile 2/42 (-44.0, 120.0, -38.0, 129.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 3/42 (-44.0, 129.0, -38.0, 138.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (Remote end closed connection without response); retrying
+  overpass.kumi.systems failed (Remote end closed connection without response); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 4/42 (-44.0, 138.0, -38.0, 143.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (Remote end closed connection without response); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 5/42 (-44.0, 143.0, -38.0, 147.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.kumi.systems failed (HTTP Error 502: Bad Gateway); retrying
+  tile failed: query failed: HTTP Error 502: Bad Gateway
+tile 6/42 (-44.0, 147.0, -38.0, 151.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 7/42 (-44.0, 151.0, -38.0, 160.0)
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (Remote end closed connection without response); retrying
+  overpass.kumi.systems failed (Remote end closed connection without response); retrying
+  tile failed: query failed: Remote end closed connection without response
+tile 8/42 (-38.0, 112.0, -34.0, 120.0)
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (Remote end closed connection without response); retrying
+  tile failed: query failed: Remote end closed connection without response
+tile 9/42 (-38.0, 120.0, -34.0, 129.0)
+tile 10/42 (-38.0, 129.0, -34.0, 138.0)
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 11/42 (-38.0, 138.0, -34.0, 143.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (The read operation timed out); retrying
+tile 12/42 (-38.0, 143.0, -34.0, 147.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 13/42 (-38.0, 147.0, -34.0, 151.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 14/42 (-38.0, 151.0, -34.0, 160.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 15/42 (-34.0, 112.0, -30.0, 120.0)
+tile 16/42 (-34.0, 120.0, -30.0, 129.0)
+tile 17/42 (-34.0, 129.0, -30.0, 138.0)
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 18/42 (-34.0, 138.0, -30.0, 143.0)
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+tile 19/42 (-34.0, 143.0, -30.0, 147.0)
+tile 20/42 (-34.0, 147.0, -30.0, 151.0)
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+tile 21/42 (-34.0, 151.0, -30.0, 160.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 22/42 (-30.0, 112.0, -26.0, 120.0)
+tile 23/42 (-30.0, 120.0, -26.0, 129.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 502: Bad Gateway); retrying
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 24/42 (-30.0, 129.0, -26.0, 138.0)
+  overpass-api.de failed (HTTP Error 502: Bad Gateway); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  tile failed: query failed: HTTP Error 504: Gateway Timeout
+tile 25/42 (-30.0, 138.0, -26.0, 143.0)
+tile 26/42 (-30.0, 143.0, -26.0, 147.0)
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.kumi.systems failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass-api.de failed (HTTP Error 504: Gateway Timeout); retrying
+  overpass.private.coffee failed (HTTP Error 504: Gateway Timeout); retrying
