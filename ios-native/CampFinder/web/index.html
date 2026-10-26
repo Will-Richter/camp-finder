@@ -311,12 +311,14 @@
               <div class="place">
                 <label class="sr" for="from">Starting from</label>
                 <input id="from" type="text" placeholder="Starting from" required>
+                <button type="button" class="clear-x" data-clear="from" aria-label="Clear">✕</button>
                 <button type="button" class="here" id="useHere">Use my location</button>
                 <ul class="suggest" id="from-suggest" role="listbox" hidden></ul>
               </div>
               <div class="place">
                 <label class="sr" for="to">Going to</label>
                 <input id="to" type="text" placeholder="Going to" required>
+                <button type="button" class="clear-x" data-clear="to" aria-label="Clear">✕</button>
                 <ul class="suggest" id="to-suggest" role="listbox" hidden></ul>
               </div>
             </div>
@@ -331,7 +333,7 @@
             <button type="button" class="add-stop-btn" id="addStopBtn"><svg class="ic sm"><use href="#i-plus"/></svg>Places you want to stop at on the way</button>
             <div class="place add-stop-field" id="addStopField" hidden>
               <label class="sr" for="stopIn">Add a stop</label>
-              <input id="stopIn" type="text" placeholder="e.g. Uluru, Kings Canyon, a mate's place">
+              <input id="stopIn" type="text" placeholder="e.g. Uluru, Kings Canyon, a mate's place"><button type="button" class="clear-x" data-clear="stopIn" aria-label="Clear">✕</button>
               <ul class="suggest" id="stopIn-suggest" role="listbox" hidden></ul>
               <p class="help">Pick from the list. Add as many as you like; we'll route you through them in order of the trip.</p>
             </div>
@@ -345,10 +347,10 @@
               </div>
               <div class="stepper" role="group" aria-labelledby="nightsLabel">
                 <button type="button" id="nightsDown" aria-label="One less night"><svg class="ic"><use href="#i-minus"/></svg></button>
-                <output id="nightsOut" aria-live="polite">6</output>
+                <output id="nightsOut" aria-live="polite">0</output>
                 <button type="button" id="nightsUp" aria-label="One more night"><svg class="ic"><use href="#i-plus"/></svg></button>
               </div>
-              <input type="hidden" id="nights" value="6">
+              <input type="hidden" id="nights" value="0">
             </div>
           </div>
 
@@ -371,7 +373,7 @@
               </div>
               <div class="stepper" role="group" aria-labelledby="backLabel">
                 <button type="button" id="backDown" aria-label="One less night on the way home"><svg class="ic"><use href="#i-minus"/></svg></button>
-                <output id="backOut" aria-live="polite">6</output>
+                <output id="backOut" aria-live="polite">0</output>
                 <button type="button" id="backUp" aria-label="One more night on the way home"><svg class="ic"><use href="#i-plus"/></svg></button>
               </div>
             </div>
@@ -662,9 +664,10 @@
     <button type="button" data-mode="sat"><span>🛰️</span><b>Satellite</b><small>Photos from above</small></button>
     <button type="button" data-mode="4wd"><span>🛞</span><b>4WD</b><small>Every off-road track, beach run and sand track</small></button>
   </div>
-  <div id="trackKey" class="track-key" hidden>
-    <b>4WD tracks</b>
-    <span><i style="background:#D2691E"></i>Gravel</span><span><i style="background:#8A5A2B"></i>Dirt track</span><span><i style="background:#C0392B"></i>4WD only</span><span><i style="background:#8E1B12"></i>Hard 4WD</span><span><i style="background:#C99A06"></i>Sand / beach</span>
+  <div id="trackKey" class="track-key collapsed" hidden role="button" tabindex="0" aria-label="Show the 4WD map key">
+    <b>🛞 4WD map <small>key ▾</small></b>
+    <span><i style="background:#D7391E;height:5px"></i>Highway</span><span><i style="background:#F08A24"></i>Main road</span><span><i style="background:repeating-linear-gradient(90deg,#A0612A 0 6px,#F3E3C3 6px 9px)"></i>Gravel road</span>
+    <span><i style="background:#D2691E"></i>Easy track</span><span><i style="background:#8A5A2B"></i>Dirt track</span><span><i style="background:#C0392B"></i>4WD only</span><span><i style="background:#8E1B12"></i>Hard 4WD</span><span><i style="background:#C99A06"></i>Sand / beach</span>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>

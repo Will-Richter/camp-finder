@@ -1401,3 +1401,35 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .track-key b { font: 800 12.5px var(--display); }
 .track-key span { display: flex; align-items: center; gap: 6px; }
 .track-key i { width: 18px; height: 4px; border-radius: 2px; display: inline-block; }
+/* Camp tonight questions */
+.ct .h2 { margin: 18px 0 8px; }
+.ct-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.ct-chips .chip { border: 0; background: var(--well); color: var(--ink); font: 700 14px var(--display); padding: 9px 13px; border-radius: 999px; cursor: pointer; }
+.ct-chips .chip small { color: var(--sub); font-weight: 600; margin-left: 3px; }
+.ct-chips .chip.is-on { background: var(--gold); color: var(--gold-ink); }
+.ct-chips .chip.is-on small { color: inherit; }
+.ct .ts-town { margin-top: 10px; }
+.ct .switch { margin-top: 12px; }
+.ok-sun { color: #1F8A4C; font-weight: 700; }
+.late-sun { color: #B3261E; font-weight: 700; }
+/* ✕ to clear a typing box (hidden while the box is empty) */
+.place { position: relative; }
+.clear-x { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--well); color: var(--sub); font-size: 14px; font-weight: 800; display: grid; place-items: center; cursor: pointer; z-index: 2; }
+input:placeholder-shown + .clear-x { display: none; }
+.place input { padding-right: 40px; }
+.add-stop { position: relative; }
+.add-stop-field .clear-x { top: 6px; transform: none; }
+/* sight pages: swipeable photos, about, to do / bring / know lists */
+.pd-photo.pd-strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 4px; touch-action: pan-x pan-y; }
+.pd-photo.pd-strip img { flex: 0 0 88%; height: 100%; object-fit: cover; scroll-snap-align: start; border-radius: 0; }
+.pd-photo.pd-strip img:only-child { flex-basis: 100%; }
+.pd-about { font-size: 15px; line-height: 1.5; margin: 0; }
+.pd-list { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 6px; }
+.pd-list li { position: relative; padding-left: 26px; font-size: 14.5px; line-height: 1.4; }
+.pd-list li::before { position: absolute; left: 0; top: 0; }
+.pd-list.todo li::before { content: "✅"; }
+.pd-list.bring li::before { content: "🎒"; }
+.pd-list.know li::before { content: "ℹ️"; }
+.track-key { cursor: pointer; }
+.track-key.collapsed span { display: none; }
+.track-key b small { font-weight: 700; color: var(--sub); }
