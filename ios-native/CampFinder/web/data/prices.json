@@ -1,11 +1,11 @@
 {
-  "updated": "2026-10-20",
+  "updated": "2026-10-31",
   "note": "Rough Australian averages used when a place doesn't list its price. Reviewed monthly.",
-  "fuel": { "diesel": 2.75, "petrol": 2.30, "lpg": 1.20 },
+  "fuel": { "diesel": 2.81, "petrol": 2.37, "lpg": 1.20 },
   "stay": {
     "camp_paid": 30,
     "national_park_person": 7.75,
-    "caravan_powered": 45,
+    "caravan_powered": 50,
     "caravan_unpowered": 35,
     "cabin": 135,
     "motel": 155,
@@ -13,8 +13,10 @@
     "bougie": 280
   },
   "sources": [
-    "Queensland national park camping fees from 1 July 2026: $7.75 per person per night (parks.qld.gov.au)",
-    "Caravan park powered sites average about $40 to $50 a night (YourLifeChoices)",
+    "Queensland national park camping fees from 1 July 2026: $7.75 per person per night (parks.qld.gov.au; confirmed by OzRoadTrips, Oct 2026)",
+    "Caravan park powered sites typically $40 to $80 a night (Jayco, May 2026) and $40 to $70 (OzRoadTrips, Oct 2026)",
+    "Motels $100 to $180, 3-star hotels $150 to $250, 4-star $200 to $350 a night (GMTC, Aug 2026)",
+    "Fuel late Oct 2026: diesel ~281c, unleaded ~236-240c, LPG ~116-123c (FuelRadar national average; NRMA weekly report 26 Oct 2026; myLPG.eu)",
     "Fuel: live Google Maps prices along your route when available"
   ]
 }
