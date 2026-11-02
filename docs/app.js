@@ -1529,11 +1529,11 @@
 
   let me = null;
   let following = false;
-  function locate(then) {
-    if (!navigator.geolocation) { toast("Location isn't available on this device"); return; }
+  function locate(then, onFail) {
+    if (!navigator.geolocation) { toast("Location isn't available on this device"); onFail?.(); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => { onPosition(pos); store.set("cf-loc-ok", true); startTracking(); then(me); },
-      () => toast("Turn on location for Camp Finder in your phone's settings"),
+      () => { toast("Turn on location for Camp Finder in your phone's settings"); onFail?.(); },
       { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
     );
   }
@@ -4907,11 +4907,11 @@
   const clock = (d) => d.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
   // a handful of real towns in different directions you could head towards
   function ctPlaces(pt, reachM) {
-    const d = Math.max(0.6, reachM / 100000);
+    const d = 3.3;
     const towns = campDB.townsIn([pt.lat - d, pt.lon - d, pt.lat + d, pt.lon + d])
       .map((t) => ({ ...t, d: hav([pt.lat, pt.lon], [t.lat, t.lon]) }))
-      .filter((t) => t.d > 25000 && t.d < Math.max(reachM * 1.6, 80000))
-      .sort((a, b) => (b.rank || 1) - (a.rank || 1) || b.d - a.d);
+      .filter((t) => t.d > 25000 && t.d < 350000)
+      .sort((a, b) => ((b.rank || 1) * 150000 - b.d * 0.5) - ((a.rank || 1) * 150000 - a.d * 0.5));   // bigger towns first, nearer ones break ties
     const picked = [];
     for (const t of towns) {
       const br = bearingOf(pt, t);
@@ -5011,7 +5011,11 @@
       if (top.length) { legLayer.clearLayers(); top.forEach((c) => campMarker(c).addTo(legLayer)); map.fitBounds([[pt.lat, pt.lon], ...top.map((c) => [c.lat, c.lon])], fitPad()); }
     };
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Camp tonight</h2><p class="msg"><span class="spinner"></span>Finding where you are</p></div>`);
-    campDB.ready().then(() => { if (me) ask(me); else locate(ask); });
+    // no location (turned off or no fix yet): use the middle of the map so you can still pick a camp
+    let asked = false;
+    const askOnce = (pt) => { if (asked) return; asked = true; ask(pt); };
+    const fromMap = () => { const c = map.getCenter(); toast("Couldn't find you, so this is around the middle of the map", 4000); askOnce({ lat: c.lat, lon: c.lng }); };
+    campDB.ready().then(() => { if (me) askOnce(me); else { locate(askOnce, fromMap); setTimeout(() => { if (!asked) fromMap(); }, 15000); } });
   }
   $("#tonightBtn").addEventListener("click", campTonight);
 
