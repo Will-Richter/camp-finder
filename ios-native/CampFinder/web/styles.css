@@ -1464,3 +1464,11 @@ input:placeholder-shown + .clear-x { display: none; }
 .tl-scene { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .tl-scene span { font: 700 12px var(--display); background: color-mix(in srgb, var(--free) 14%, var(--sheet)); color: var(--ink); padding: 3px 8px; border-radius: 999px; }
 .tl-unk { display: block; color: var(--sub); font-size: 12px; margin-top: 3px; }
+/* Track me: zoom in on your car and follow it */
+.track-btn { position: absolute; z-index: 1000; left: 50%; transform: translateX(-50%); top: calc(12px + env(safe-area-inset-top, 0px)); display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 15px 0 12px; border: 0; border-radius: 999px; background: var(--sheet); color: var(--ink); font: 800 14.5px var(--display); box-shadow: var(--float); cursor: pointer; white-space: nowrap; }
+.track-btn .ic { color: var(--sign); width: 18px; height: 18px; }
+.track-btn.is-on { background: var(--sign); color: #fff; }
+.track-btn.is-on .ic { color: #fff; }
+.track-btn.is-on::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #7CF0A8; margin-left: 2px; animation: trackPulse 1.4s ease-in-out infinite; }
+@keyframes trackPulse { 50% { opacity: .3; } }
+@media (min-width: 900px) { .track-btn { left: auto; right: 74px; transform: none; } }

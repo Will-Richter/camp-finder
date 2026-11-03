@@ -1476,6 +1476,22 @@
   let homeAt = null;
   const aroundMe = (p, r = 300000) => { const dLat = r / 111000, dLon = r / (111000 * Math.cos(p.lat * Math.PI / 180)); return [[p.lat - dLat, p.lon - dLon], [p.lat + dLat, p.lon + dLon]]; };
   const inAustralia = (p) => p && p.lat > -45 && p.lat < -9 && p.lon > 111 && p.lon < 155;
+  // Put a point in the middle of the bit of map you can actually see: on a phone that's the strip above the panel
+  // (often only the top quarter of the screen), not the middle of the whole screen
+  function mapViewCentre() {
+    const el = map.getContainer(), h = el.clientHeight, w = el.clientWidth;
+    if (window.innerWidth >= 900) return { dx: 190, dy: 0 };          // wide screens: the panel is on the left
+    const top = Math.max(60, ($("#offlinePill")?.getBoundingClientRect().bottom || 50) + 10);
+    const sheetTop = Math.min(h, Math.max(top + 80, $("#sheet").getBoundingClientRect().top || h * 0.6));
+    return { dx: 0, dy: (top + sheetTop) / 2 - h / 2 };
+  }
+  function showAt(p, zoom, opts = {}) {
+    const z = zoom ?? map.getZoom();
+    let c = [p.lat, p.lon];
+    try { const off = mapViewCentre(); c = map.unproject(map.project([p.lat, p.lon], z).subtract([off.dx, off.dy]), z); } catch { /* fall back to the plain centre */ }
+    if (opts.pan) map.panTo(c, { animate: true, duration: opts.duration ?? 0.8 }); else map.setView(c, z, { animate: !!opts.animate });
+  }
+  const HOME_ZOOM = 13;   // opening view: zoomed in on you (town level)
   map.on("dragstart", () => (userMovedMap = true));
   map.getContainer().addEventListener("touchstart", () => (userMovedMap = true), { passive: true });
   map.getContainer().addEventListener("wheel", () => (userMovedMap = true), { passive: true });
@@ -1486,7 +1502,8 @@
     // you can zoom out to see all of Australia, but not much further
     if (map.getBoundsZoom && map.setMinZoom) { const fp = fitPad(); const pad = L.point(fp.paddingTopLeft).add(fp.paddingBottomRight); map.setMinZoom(Math.max(1.5, map.getBoundsZoom(AU, false, pad) - 0.5)); }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
-    if (!plan && !userMovedMap && !typing && view === "plan" && window.innerHeight > 200) map.fitBounds(homeAt ? aroundMe(homeAt) : AU, fitPad());
+    if (!plan && !userMovedMap && !typing && view === "plan" && window.innerHeight > 200) { if (homeAt) showAt(homeAt, HOME_ZOOM); else map.fitBounds(AU, fitPad()); }
+    if (following && me) showAt(me, null, { pan: true, duration: 0.3 });
   };
   [60, 400, 1200, 2500].forEach((ms) => setTimeout(fixMapSize, ms));
   // keep Australia in the space above the panel whenever the panel or screen changes size, until you move the map
@@ -1556,15 +1573,24 @@
       { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
     );
   }
+  // "Track me": zoom in on your car and keep it in view as you drive (tap again to stop)
+  $("#trackBtn").addEventListener("click", () => {
+    if (following) { setFollow(false); return; }
+    toast("Finding you…", 1500);
+    locate((p) => { showAt(p, Math.max(map.getZoom(), 15), { animate: true }); setFollow(true); });
+  });
   $("#locateBtn").addEventListener("click", () => {
     if (me && following) { setFollow(false); return; }
-    locate((p) => { map.setView([p.lat, p.lon], Math.max(map.getZoom(), 13)); setFollow(true); });
+    locate((p) => { showAt(p, Math.max(map.getZoom(), 15), { animate: true }); setFollow(true); });
   });
   function setFollow(on) {
     following = on;
     $("#locateBtn").classList.toggle("is-follow", on);
-    $("#locateBtn").setAttribute("aria-label", on ? "Stop following my location" : "Show my location");
-    if (on && me) map.panTo([me.lat, me.lon]);
+    $("#locateBtn").setAttribute("aria-label", on ? "Stop tracking me" : "Track me");
+    $("#trackBtn").classList.toggle("is-on", on);
+    $("#trackBtn").setAttribute("aria-pressed", on);
+    $("#trackBtn span").textContent = on ? "Tracking you" : "Track me";
+    if (on && me) showAt(me, null, { pan: true });
   }
   map.on("dragstart", () => { if (following) setFollow(false); });
 
@@ -1592,7 +1618,7 @@
       const el = meMarker.getElement?.()?.querySelector(".me-car");
       if (el) el.style.setProperty("--rot", `${Math.round(heading)}deg`);
     }
-    if (following) map.panTo([me.lat, me.lon], { animate: true, duration: .8 });
+    if (following) showAt(me, null, { pan: true });
     if (typeof recordPoint === "function") try { recordPoint(me); } catch {}
     if (typeof onRoadCheck === "function") try { onRoadCheck(me); } catch {}
     if (typeof famOnPos === "function") try { famOnPos(c); } catch {}
@@ -5645,7 +5671,7 @@
     onPosition(pos); store.set("cf-loc-ok", true); startTracking();
     if (!inAustralia(me) || journey || (plan && !$("#results").hidden) || view !== "plan") return;
     homeAt = { ...me }; userMovedMap = false;
-    map.fitBounds(aroundMe(homeAt), fitPad());
+    showAt(homeAt, HOME_ZOOM);
   }
   const centreSoon = centreOnMe(false);   // starts during the opening animation if location is already allowed
   playIntro(true).then(async () => { await centreSoon; if (!homeAt) centreOnMe(true); });
