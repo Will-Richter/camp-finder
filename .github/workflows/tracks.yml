@@ -27,17 +27,27 @@ jobs:
       - name: Extract tracks
         run: |
           set -e
-          osmium tags-filter /tmp/au.pbf w/highway=track w/4wd_only=yes w/surface=sand w/highway=motorway,trunk,primary,secondary,tertiary,unclassified,motorway_link,trunk_link -o /tmp/t1.pbf --overwrite
-          osmium tags-filter /tmp/t1.pbf w/highway -o /tmp/t2.pbf --overwrite
-          osmium export /tmp/t2.pbf -f geojsonseq -o /tmp/t.geojsonseq --overwrite -a type -c tools/osmium-export.json
+          # tracks, 4WD-only and sand/beach driving, rough roads, roads named like tracks, vehicle beaches
+          osmium tags-filter /tmp/au.pbf w/highway=track w/4wd_only w/surface=sand,beach w/smoothness=very_bad,horrible,very_horrible,impassable \
+            w/tracktype w/highway=unclassified,tertiary,secondary,service,road w/motor_vehicle=yes,designated,permissive w/vehicle=yes,designated,permissive \
+            a/natural=beach -o /tmp/t1.pbf --overwrite
+          osmium export /tmp/t1.pbf -f geojsonseq -o /tmp/t.geojsonseq --overwrite -c tools/osmium-export.json
           wc -l /tmp/t.geojsonseq
-          python3 tools/tracks_clean.py /tmp/t.geojsonseq /tmp/tracks.geojsonseq /tmp/roads.geojsonseq
+          python3 tools/tracks_clean.py /tmp/t.geojsonseq /tmp/tracks.geojsonseq
+      - name: What's around each camp (beach, river, lake, dam, rock, waterfall)
+        run: |
+          set -e
+          osmium tags-filter /tmp/au.pbf nwr/natural=beach,coastline,water,cliff,bare_rock,rock,stone,scree,valley,waterfall \
+            nw/waterway=waterfall w/waterway=river,stream,canal,dam,weir nwr/landuse=reservoir -o /tmp/f.pbf --overwrite
+          osmium export /tmp/f.pbf -f geojsonseq -o /tmp/f.geojsonseq --overwrite -c tools/osmium-features.json
+          wc -l /tmp/f.geojsonseq
+          python3 tools/camp_features.py /tmp/f.geojsonseq docs/data/camp-features.json
       - name: Tiles
         run: |
           set -e
           mkdir -p docs/tiles
           tippecanoe -o /tmp/tracks.pmtiles -Z5 -z12 --force \
-            -j '{"tracks":["any",[">=","$zoom",10],["has","n"],["==","g",5],["==","w",1]]}' \
+            -j '{"tracks":["any",[">=","$zoom",10],["has","n"],["==","g",5],["==","w",1],["==","s",1]]}' \
             --drop-smallest-as-needed --simplification=4 \
             -L tracks:/tmp/tracks.geojsonseq
           ls -la /tmp/tracks.pmtiles
@@ -47,6 +57,6 @@ jobs:
         run: |
           git config user.name "camp-data-bot"
           git config user.email "camp-data-bot@users.noreply.github.com"
-          git add docs/tiles
-          git diff --cached --quiet || git commit -m "4WD tracks for the off-road map"
+          git add docs/tiles docs/data/camp-features.json
+          git diff --cached --quiet || git commit -m "4WD tracks and camp surroundings from OpenStreetMap"
           for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
