@@ -1032,6 +1032,7 @@
       lowIn: (bb) => { if (!grid) return []; const out = []; for (const g of cells(bb)) for (const w of g.low) if (w.lat >= bb[0] && w.lat <= bb[2] && w.lon >= bb[1] && w.lon <= bb[3]) out.push({ ...w }); return out; },
       townNear,
       townsIn: (bb) => { if (!grid) return []; const out = []; for (const g of cells(bb)) for (const t of g.towns) if (t.lat >= bb[0] && t.lat <= bb[2] && t.lon >= bb[1] && t.lon <= bb[3]) out.push(t); return out; },
+      fuelInBox: (bb) => { if (!grid) return []; const out = []; for (const g of cells(bb)) for (const f of g.fuel) if (f.lat >= bb[0] && f.lat <= bb[2] && f.lon >= bb[1] && f.lon <= bb[3]) out.push(f); return out; },
       fuelIn: (pt, radius) => { if (!grid) return []; const d = radius / 100000; const out = []; for (const g of cells([pt.lat - d, pt.lon - d, pt.lat + d, pt.lon + d])) for (const f of g.fuel) if (hav([pt.lat, pt.lon], [f.lat, f.lon]) <= radius) out.push({ ...f }); return out; },
       _use: use,
     };
@@ -1298,19 +1299,21 @@
   let onSat = false;
   function setSat(on) {
     onSat = !!on;
-    $("#layerBtn").setAttribute("aria-pressed", onSat || mapMode === "4wd");
     let offline = false; try { offline = offOn; } catch { /* not set up yet */ }
     if (offline) return;   // no signal: the downloaded map stays
     if (onSat) { map.removeLayer(street); map.removeLayer(streetBase); satBase.addTo(map); sat.addTo(map); }
     else { map.removeLayer(sat); map.removeLayer(satBase); streetBase.addTo(map); street.addTo(map); }
   }
-  // ---- 4WD map: every off-road track in Australia (OpenStreetMap), drawn over the map like a HEMA map,
-  // coloured by how hard it is, with track names. Works with no signal (the track file ships with the app).
+  // ---- 4WD tracks: every off-road track in Australia (OpenStreetMap), drawn over the map or satellite like a HEMA map,
+  // coloured by kind, with track names. Works with no signal (the track file ships with the app). Each kind is switched on
+  // or off in the map menu; normal roads are always there underneath.
   let mapMode = "map", tracksLayer = null;
-  const TRACK_COL = (f) => f.props.s ? "#C99A06" : f.props.g >= 5 ? "#8E1B12" : f.props.g >= 4 ? "#C0392B" : f.props.g === 3 ? "#8A5A2B" : "#D2691E";
-  // which kinds of track to draw (chips across the top of the 4WD map); the real off-road ones are on to start with
-  const trackKinds = new Set(store.get("cf-prefs", {}).trackKinds || ["sand", "4wd", "hard"]);
-  const kindOf = (f) => f.props.s ? "sand" : f.props.g >= 5 ? "hard" : f.props.g >= 4 ? "4wd" : f.props.g === 3 ? "dirt" : "easy";
+  const TRACK_KINDS = ["beach", "sand", "4wd", "hard", "dirt", "easy"];
+  const TRACK_HUE = { beach: "#E0B000", sand: "#B8860B", "4wd": "#C0392B", hard: "#7A1610", dirt: "#8A5A2B", easy: "#D2691E" };
+  const kindOf = (f) => f.props.b || (f.props.s && /beach/i.test(f.props.n || "")) ? "beach" : f.props.s ? "sand" : f.props.g >= 5 ? "hard" : f.props.w || f.props.g >= 4 ? "4wd" : f.props.g === 3 ? "dirt" : "easy";
+  const TRACK_COL = (f) => TRACK_HUE[kindOf(f)];
+  const savedPrefs = store.get("cf-prefs", {});
+  const trackKinds = new Set((savedPrefs.tracksOn || []).filter((k) => TRACK_KINDS.includes(k)));   // off to start with: normal roads only
   const trackOn = (z, f) => trackKinds.has(kindOf(f));
   function paintTrackBar() { document.querySelectorAll("#trackKey [data-tk]").forEach((b) => { const on = trackKinds.has(b.dataset.tk); b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", on); }); }
   function makeTracksLayer() {
@@ -1328,25 +1331,41 @@
       });
     } catch { return null; }
   }
+  // draw (or hide) the tracks layer for the kinds that are switched on
+  function applyTracks() {
+    const p = store.get("cf-prefs", {}); p.tracksOn = [...trackKinds]; store.set("cf-prefs", p);
+    try { prefs.tracksOn = p.tracksOn; } catch { /* prefs not set up yet */ }
+    paintTrackBar();
+    if (!trackKinds.size) { if (tracksLayer && map.hasLayer(tracksLayer)) map.removeLayer(tracksLayer); return; }
+    tracksLayer ||= makeTracksLayer();
+    if (!tracksLayer) { toast("The 4WD tracks need the latest app version"); return; }
+    if (!map.hasLayer(tracksLayer)) tracksLayer.addTo(map);
+    else if (tracksLayer.rerenderTiles) tracksLayer.rerenderTiles();
+    else { map.removeLayer(tracksLayer); tracksLayer = makeTracksLayer(); tracksLayer?.addTo(map); }
+  }
+  function showTracks(kinds) { const was = trackKinds.size; trackKinds.clear(); kinds.forEach((k) => trackKinds.add(k)); applyTracks(); if (!was && kinds.length && map.getZoom() < 7) toast("Zoom in to see every track and its name", 3000); }
   function setMapMode(m) {
-    mapMode = m;
-    setSat(m === "sat");
-    if (m === "4wd") { tracksLayer ||= makeTracksLayer(); if (tracksLayer && !map.hasLayer(tracksLayer)) tracksLayer.addTo(map); if (!tracksLayer) toast("The 4WD map needs the latest app version"); }
-    else if (tracksLayer && map.hasLayer(tracksLayer)) map.removeLayer(tracksLayer);
-    $("#trackKey").hidden = m !== "4wd";
-    document.querySelectorAll("#layerMenu [data-mode]").forEach((b) => b.classList.toggle("is-on", b.dataset.mode === m));
-    prefs.mapMode = m; store.set("cf-prefs", prefs);
+    mapMode = m === "sat" ? "sat" : "map";
+    setSat(mapMode === "sat");
+    document.querySelectorAll("#layerMenu [data-mode]").forEach((b) => { b.classList.toggle("is-on", b.dataset.mode === mapMode); b.setAttribute("aria-pressed", b.dataset.mode === mapMode); });
+    const p = store.get("cf-prefs", {}); p.mapMode = mapMode; store.set("cf-prefs", p);
+    try { prefs.mapMode = mapMode; } catch { /* prefs not set up yet */ }
   }
   $("#trackKey").addEventListener("click", (e) => {
     const b = e.target.closest("[data-tk]"); if (!b) return;
-    trackKinds.has(b.dataset.tk) ? trackKinds.delete(b.dataset.tk) : trackKinds.add(b.dataset.tk);
-    prefs.trackKinds = [...trackKinds]; store.set("cf-prefs", prefs); paintTrackBar();
-    if (tracksLayer && map.hasLayer(tracksLayer)) { if (tracksLayer.rerenderTiles) tracksLayer.rerenderTiles(); else { map.removeLayer(tracksLayer); tracksLayer = makeTracksLayer(); tracksLayer?.addTo(map); } }
+    const k = b.dataset.tk;
+    const kinds = new Set(trackKinds); kinds.has(k) ? kinds.delete(k) : kinds.add(k);
+    showTracks([...kinds]);
   });
+  $("#lmAllTracks").addEventListener("click", () => showTracks(TRACK_KINDS));
+  $("#lmNoTracks").addEventListener("click", () => showTracks([]));
   paintTrackBar();
-  $("#layerBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#layerMenu").hidden = !$("#layerMenu").hidden; });
-  $("#layerMenu").addEventListener("click", (e) => { const b = e.target.closest("[data-mode]"); if (!b) return; setMapMode(b.dataset.mode); $("#layerMenu").hidden = true; if (b.dataset.mode === "4wd" && map.getZoom() < 7) toast("Zoom in to see every track. Red is hard 4WD, yellow is sand and beach.", 4000); });
-  document.addEventListener("click", (e) => { if (!$("#layerMenu").hidden && !e.target.closest("#layerMenu,#layerBtn")) $("#layerMenu").hidden = true; });
+  if (trackKinds.size) setTimeout(applyTracks, 0);
+  const openLayerMenu = (open) => { $("#layerMenu").hidden = !open; $("#layerBtn").setAttribute("aria-expanded", open); if (open) paintLayerMenu?.(); };
+  $("#layerBtn").addEventListener("click", (e) => { e.stopPropagation(); openLayerMenu($("#layerMenu").hidden); });
+  $("#lmClose").addEventListener("click", () => openLayerMenu(false));
+  $("#layerMenu").addEventListener("click", (e) => { const b = e.target.closest("[data-mode]"); if (b) setMapMode(b.dataset.mode); });
+  document.addEventListener("click", (e) => { if (!$("#layerMenu").hidden && !e.target.closest("#layerMenu,#layerBtn")) openLayerMenu(false); });
   // ---------------------------------------------------------------- offline state maps (iPhone app)
   // "Download Queensland": the app downloads the state's map file (OpenStreetMap roads, tracks, towns, parks and water,
   // as Protomaps vector tiles) and draws it on the phone whenever there's no signal.
@@ -1529,11 +1548,11 @@
 
   let me = null;
   let following = false;
-  function locate(then) {
-    if (!navigator.geolocation) { toast("Location isn't available on this device"); return; }
+  function locate(then, onFail) {
+    if (!navigator.geolocation) { toast("Location isn't available on this device"); onFail?.(); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => { onPosition(pos); store.set("cf-loc-ok", true); startTracking(); then(me); },
-      () => toast("Turn on location for Camp Finder in your phone's settings"),
+      () => { toast("Turn on location for Camp Finder in your phone's settings"); onFail?.(); },
       { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
     );
   }
@@ -1701,6 +1720,7 @@
     if (v === "saved") renderSaved();
     if (v === "settings") renderSettings();
     if (v === "saved") renderBadges();
+    try { renderScope(); } catch { /* still starting up */ }
     moveInk();
   }
 
@@ -1774,21 +1794,6 @@
   $("#to").addEventListener("input", () => { if (isRet()) retSum(); });
   setThere(prefs.retThere ?? 1); setBack(0);
   if (prefs.retWay === "same") $("#retWaySeg input[value=same]").checked = true;
-  const refreshIn = $("#refreshIn");
-  function setRefresh(n) {
-    const max = +nightsIn.value;
-    n = Math.max(0, Math.min(max, n));
-    refreshIn.value = n; $("#refreshOut").textContent = n;
-    $("#refreshDown").disabled = n === 0; $("#refreshUp").disabled = n >= max;
-    $("#refreshHelp").textContent = n === 0 ? "Swap a few camp nights for a real bed and a hot shower" : `${n} night${n > 1 ? "s" : ""} in a ${radio("rstyle") || "motel"}, spread through the trip`;
-    $("#rstyleSeg").hidden = n === 0;
-  }
-  $("#refreshDown").addEventListener("click", () => setRefresh(+refreshIn.value - 1));
-  $("#refreshUp").addEventListener("click", () => setRefresh(+refreshIn.value + 1));
-  $("#rstyleSeg").addEventListener("change", () => setRefresh(+refreshIn.value));
-  $("#nightsUp").addEventListener("click", () => setRefresh(+refreshIn.value));
-  $("#nightsDown").addEventListener("click", () => setRefresh(+refreshIn.value));
-  setRefresh(0);
   (() => { const d = new Date(); $("#leaveDate").value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   const COST_HELP = { free: "Only free camps and rest areas.", cheap: "Free camps where there are good ones, paid camps and caravan parks where there aren't.", parks: "A caravan or holiday park every night, with prices and booking links.", any: "The best-rated place each night, free or paid." };
   const costHelp = () => { const h = $("#costHelp"); if (h) h.textContent = COST_HELP[radio("cost")] || ""; };
@@ -1890,12 +1895,11 @@
       savePrefs();
       const ret = isRet();
       const nights = ret ? +nightsIn.value + (retThere() > 0 ? 1 : 0) + retBack() : +nightsIn.value;
-      if (settings.simple) { const r = $("#simpleRefresh").checked ? Math.max(1, Math.round(+nightsIn.value / 3)) : 0; refreshIn.value = Math.min(r, +nightsIn.value); }
-      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: +$("#refreshIn").value, refreshStyle: radio("rstyle") || "motel", bougie: $("#bougie").checked, leave: $("#leaveDate").value || "", ret, fourwd: $("#fourwd").checked,
+      const opts = { rig: radio("rig"), cost: radio("cost"), detour: +radio("detour"), wants: wantsOf($("#planWants")), refresh: 0, refreshStyle: "motel", bougie: false, leave: $("#leaveDate").value || "", ret, fourwd: $("#fourwd").checked,
         ...(ret ? { retOut: +nightsIn.value, retThere: retThere(), retBack: retBack(), retWay: radio("retWay") || "diff" } : {}) };
       if (ret) { prefs.retThere = opts.retThere; prefs.retBack = opts.retBack; prefs.retWay = opts.retWay; store.set("cf-prefs", prefs); }
       fourWD = opts.fourwd;
-      if (fourWD && mapMode !== "4wd") setMapMode("4wd");
+      if (fourWD && !trackKinds.size) showTracks(["beach", "sand", "4wd", "hard"]);
       say("Finding places");
       const [from, to] = await Promise.all([resolvePlace($("#from")), resolvePlace($("#to"))]);
       say("Planning the route");
@@ -2622,6 +2626,7 @@
         ${c.rule ? `<div class="notice"><b>Overnight stays</b><span>${esc(c.rule)}</span></div>` : ""}
         ${rulesNear(c.lat, c.lon).map((r) => `<div class="notice warn"><b>Local rule: ${esc(r.place)}</b><span>${esc(r.text)}</span><a href="${esc(r.src)}" target="_blank" rel="noopener">Source</a></div>`).join("")}
         <dl class="facts">
+          ${fact("Around it", (() => { try { return sceneryOf(c).filter((x) => x.id !== "bush").map((x) => `${x.em} ${esc(x.label)}`).join(" · "); } catch { return ""; } })())}
           ${fact("Price", esc(cost))}
           ${fact("Suits", esc(suits(c)))}
           ${fact("Max stay", esc(c.maxstay || (c.kind === "Roadside rest area" ? "Usually 20 to 24 hours (check the signs)" : "")))}
@@ -3050,7 +3055,7 @@
     const b = map.getBounds(), ctr = map.getCenter();
     const inView = exploreCamps.filter((c) => b.contains([c.lat, c.lon]));
     if (parksOnly) topUpParks(b);   // ask Google Maps for any park we don't already know about
-    const shown = inView.filter((c) => (!freeOnly || c.cost === "free") && (!parksOnly || c.cpark) && rigOK(c, rig) && missing(c, wants).length === 0 && more.every((f) => moreOK(c, f)));
+    const shown = inView.filter((c) => (!freeOnly || c.cost === "free") && (!parksOnly || c.cpark) && rigOK(c, rig) && missing(c, wants).length === 0 && more.every((f) => moreOK(c, f)) && layerOK(c));
     shown.forEach((c) => (c._d = hav([ctr.lat, ctr.lng], [c.lat, c.lon])));
     const mode = parksOnly ? "parks" : freeOnly ? "free" : "any";
     shown.sort((a, b2) => score(b2, wants, mode) - score(a, wants, mode) || a._d - b2._d);
@@ -3070,6 +3075,89 @@
     if (sig !== exListSig) { exListSig = sig; $("#exploreList").innerHTML = top.map((c) => `<li>${campCard(c, { fromCenter: c._d })}</li>`).join(""); }
   }
   $("#exploreList").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(findCamp(card.dataset.id)); });
+
+  // ---------------------------------------------------------------- map menu: what's on the map
+  // Free camps, paid camps, caravan parks and rest areas (when zoomed in), must-sees (always), fuel, dump points and water.
+  // Explore uses the same switches; while a trip is on screen its own camps are shown instead.
+  const LAYER_DEFAULT = { free: true, paid: true, parks: true, rest: true, sights: true, fuel: false, dump: false, water: false };
+  const layers = { ...LAYER_DEFAULT, ...(prefs.layers || {}) };
+  const campKind = (c) => c.cpark ? "parks" : c.source === "rest" || c.kind === "Roadside rest area" ? "rest" : c.cost === "free" ? "free" : "paid";
+  function layerOK(c) { return !!layers[campKind(c)]; }
+  function paintLayerMenu() { $$("#lmPlaces [data-ly]").forEach((b) => { const on = !!layers[b.dataset.ly]; b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", on); }); paintTrackBar(); }
+  $("#lmPlaces").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ly]"); if (!b) return;
+    layers[b.dataset.ly] = !layers[b.dataset.ly];
+    prefs.layers = { ...layers }; store.set("cf-prefs", prefs); paintLayerMenu();
+    if (layers[b.dataset.ly] && ["fuel", "dump", "water", "free", "paid", "parks", "rest"].includes(b.dataset.ly) && map.getZoom() < LAYER_ZOOM) toast("Zoom in to a town to see them", 2500);
+    if (view === "explore") renderExplore();
+    renderScope();
+  });
+  paintLayerMenu();
+  const LAYER_ZOOM = CFG.exploreMinZoom;
+  const scopeCamps = L.layerGroup().addTo(map), sightLayer = L.layerGroup().addTo(map), utilLayer = L.layerGroup().addTo(map);
+  const scMarkers = new Map(), scShown = new Map();
+  function syncLayer(group, shown, list, keyOf, make) {
+    const want = new Map();
+    for (const x of list) { const k = keyOf(x); let m = scMarkers.get(k); if (!m) { m = make(x); scMarkers.set(k, m); } want.set(k, m); }
+    const mine = shown.get(group) || new Map();
+    mine.forEach((m, k) => { if (!want.has(k)) group.removeLayer(m); });
+    want.forEach((m, k) => { if (!mine.has(k)) group.addLayer(m); });
+    shown.set(group, want);
+    if (scMarkers.size > 8000) for (const k of scMarkers.keys()) { if (![...shown.values()].some((w) => w.has(k))) scMarkers.delete(k); if (scMarkers.size < 5000) break; }
+  }
+  const tripOnScreen = () => !!plan && view === "plan" && !$("#results").hidden;
+  const utilIcon = (em) => L.divIcon({ className: "", html: `<div class="mk-util">${em}</div>`, iconSize: [21, 21], iconAnchor: [10, 10] });
+  function openUtil(x, kind) {
+    const name = x.name || { fuel: "Fuel station", dump: "Dump point", water: x.tank ? "Water fill point" : "Drinking water tap" }[kind];
+    const where = campDB.townNear?.(x.lat, x.lon);
+    showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${{ fuel: "⛽", dump: "🚽", water: "💧" }[kind]} ${esc(name)}</h2>
+      <p class="d-kind">${where ? `${where.d < 2000 ? "In" : `${km(where.d)} from`} ${esc(where.name)}` : ""}${me ? `${where ? " · " : ""}${km(hav([me.lat, me.lon], [x.lat, x.lon]))} from you` : ""}</p>
+      <div class="stop-actions" style="margin-top:12px"><a class="cta" href="${navUrl({ lat: x.lat, lon: x.lon, name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Directions</a></div>
+      <p class="caveat">From OpenStreetMap. ${kind === "water" ? "Check the water is drinkable before you rely on it." : kind === "dump" ? "Check it's open before you rely on it." : "Opening hours and prices can change."}</p></div>`);
+  }
+  let scT = 0;
+  function renderScope() {
+    clearTimeout(scT);
+    scT = setTimeout(() => {
+      const z = map.getZoom(), b = map.getBounds().pad(0.15);
+      const bb = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()];
+      // must-sees: the big ones from far out, every one once you're closer
+      const minStar = z < 5.5 ? 3 : z < 7.5 ? 2 : 0;
+      // one marker per patch of screen (about 46 px), the best-known first, so zoomed out it stays tidy
+      const cellDeg = (360 / Math.pow(2, z)) * (46 / 256), taken = new Set();
+      const sights = !layers.sights ? [] : POIS.filter((x) => (x.star || 0) >= minStar && b.contains([x.lat, x.lon]))
+        .sort((a, c) => (c.star || 0) - (a.star || 0))
+        .filter((x) => { const k = `${Math.floor(x.lat / cellDeg)},${Math.floor(x.lon / cellDeg)}`; if (taken.has(k)) return false; taken.add(k); return true; });
+      syncLayer(sightLayer, scShown, sights, (x) => `s|${x.id}`, (x) => {
+        const m = L.marker([x.lat, x.lon], { icon: L.divIcon({ className: "", html: `<div class="mk-see${x.star >= 3 ? " star" : ""}">${x.emoji}</div>`, iconSize: x.star >= 3 ? [34, 34] : [30, 30], iconAnchor: x.star >= 3 ? [17, 17] : [15, 15] }), title: x.name, keyboard: true, zIndexOffset: 400 });
+        m.on("click", () => openPoi(x.id)); return m;
+      });
+      const close = z >= LAYER_ZOOM && campDB.has();
+      // camps (Explore draws its own; a trip shows its own)
+      let camps = [];
+      if (close && view !== "explore" && !tripOnScreen() && ["free", "paid", "parks", "rest"].some((k) => layers[k])) {
+        const res = campDB.inArea(bb, 0);
+        camps = mergeSources(res.camps, userCampsIn(bb), res.ramps, res.dumps).filter((c) => !c.closed && layerOK(c));
+      }
+      syncLayer(scopeCamps, scShown, camps, (c) => `c|${c.id}|${c.cpark ? 1 : 0}`, (c) => campMarker(c));
+      const utils = [];
+      if (close && z >= LAYER_ZOOM) {
+        if (layers.fuel) campDB.fuelInBox(bb).forEach((x) => utils.push({ ...x, k: "fuel" }));
+        if (layers.dump) (campDB.inArea(bb, 0).dumps || []).forEach((x) => utils.push({ ...x, k: "dump" }));
+        if (layers.water) campDB.waterIn(bb).forEach((x) => utils.push({ ...x, k: "water" }));
+      }
+      // fuel, dump and water: one per small patch of screen until you're right in close
+      const uCell = (360 / Math.pow(2, z)) * (26 / 256), uTaken = new Set();
+      const utilsShown = z >= 14 ? utils : utils.filter((x) => { const k = `${x.k}|${Math.floor(x.lat / uCell)},${Math.floor(x.lon / uCell)}`; if (uTaken.has(k)) return false; uTaken.add(k); return true; });
+      syncLayer(utilLayer, scShown, utilsShown.slice(0, 600), (x) => `u|${x.k}|${x.id}`, (x) => {
+        const m = L.marker([x.lat, x.lon], { icon: utilIcon({ fuel: "⛽", dump: "🚽", water: "💧" }[x.k]), title: x.name || x.k, keyboard: true, zIndexOffset: 200 });
+        m.on("click", () => openUtil(x, x.k)); return m;
+      });
+    }, 120);
+  }
+  map.on("moveend", renderScope);
+  if (window.MutationObserver) new MutationObserver(renderScope).observe($("#results"), { attributes: true, attributeFilter: ["hidden"] });
+  campDB.ready().then(renderScope);
 
   // ---------------------------------------------------------------- SAVED
   function renderSaved() {
@@ -3574,7 +3662,7 @@
     const box = $("#tripExtras"); if (!box || !plan) return;
     const key = tripKey(plan), gs = guidesForPlan(plan), n = notesFor(key);
     const offroad = plan.opts?.fourwd ? `<div class="island-card offroad"><div class="ic-head"><span aria-hidden="true">🛞</span><b>4WD route</b><span class="ic-4wd">High clearance</span></div>
-      <p class="ic-note">This plan follows 4WD tracks and beaches, shown on the 4WD map. Drive beaches around low tide, let your tyres down for sand, and check track closures, permits and recent rain with the park or council before you go. Times on tracks are rough.</p></div>` : "";
+      <p class="ic-note">This plan follows 4WD tracks and beaches (switch kinds of track on and off from the map button). Drive beaches around low tide, let your tyres down for sand, and check track closures, permits and recent rain with the park or council before you go. Times on tracks are rough.</p></div>` : "";
     box.innerHTML = `${offroad}${tripIslands(plan).map((i) => islandCard(i, true)).join("")}${gs.map((g) => guideCard(g, key)).join("")}
       <div class="bookings-box">
         <div class="bb-head"><b>Bookings for this trip</b><button class="btn line small-btn" type="button" data-add-booking="">${icon("plus", "ic sm")}Add</button></div>
@@ -4907,11 +4995,11 @@
   const clock = (d) => d.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
   // a handful of real towns in different directions you could head towards
   function ctPlaces(pt, reachM) {
-    const d = Math.max(0.6, reachM / 100000);
+    const d = 3.3;
     const towns = campDB.townsIn([pt.lat - d, pt.lon - d, pt.lat + d, pt.lon + d])
       .map((t) => ({ ...t, d: hav([pt.lat, pt.lon], [t.lat, t.lon]) }))
-      .filter((t) => t.d > 25000 && t.d < Math.max(reachM * 1.6, 80000))
-      .sort((a, b) => (b.rank || 1) - (a.rank || 1) || b.d - a.d);
+      .filter((t) => t.d > 25000 && t.d < 350000)
+      .sort((a, b) => ((b.rank || 1) * 150000 - b.d * 0.5) - ((a.rank || 1) * 150000 - a.d * 0.5));   // bigger towns first, nearer ones break ties
     const picked = [];
     for (const t of towns) {
       const br = bearingOf(pt, t);
@@ -4920,8 +5008,29 @@
     }
     return picked.sort((a, b) => a.d - b.d);
   }
+  // What's around a camp: beach, river, lake ... from OpenStreetMap (data/camp-features.json, built with the 4WD tracks)
+  // plus the camp's own name and description
+  const campFeat = (() => {
+    let m = null, p = null;
+    const load = () => (p ||= fetchJSON("data/camp-features.json", {}, 12000).then((d) => (m = d?.f || {})).catch(() => (m = {})));
+    const get = (c) => { if (!m || c?.lat == null) return ""; const k = (a, o) => m[`${a.toFixed(4)},${o.toFixed(4)}`]; return k(c.lat, c.lon) || k(c.lat + 0.00005, c.lon) || k(c.lat - 0.00005, c.lon) || ""; };
+    return { load, get };
+  })();
+  const SCENERY = [
+    { id: "beach", label: "Beach", em: "🏖️", ok: (f, t, c) => /B/.test(f) || (/C/.test(f) && !/K/.test(f)) || /\b(beach|foreshore|surf|seaside|ocean)\b/i.test(t) },
+    { id: "river", label: "River or creek", em: "🏞️", ok: (f, t) => /R/.test(f) || /\b(river|creek|riverside|billabong|waterhole|crossing)\b/i.test(t) },
+    { id: "lake", label: "Lake", em: "🛶", ok: (f, t) => /L/.test(f) || /\b(lake|lagoon)\b/i.test(t) },
+    { id: "dam", label: "Dam or weir", em: "🌊", ok: (f, t) => /D/.test(f) || /\b(dam|weir|reservoir)\b/i.test(t) },
+    { id: "rocky", label: "Rocky or gorge", em: "🪨", ok: (f, t) => /K/.test(f) || /\b(gorge|rocky|rocks?|cliffs?|bluff|headland|escarpment)\b/i.test(t) },
+    { id: "falls", label: "Waterfall", em: "💦", ok: (f, t) => /F/.test(f) || /\b(falls|waterfalls?|cascades?)\b/i.test(t) },
+    { id: "bush", label: "Bush camp", em: "🌳", ok: (f, t, c) => c.kind === "Bush camp" || !!c.park || /\b(bush|forest|national park|state park)\b/i.test(t) },
+  ];
+  const CT_AMEN = [["toilets", "🚻", "Toilets"], ["showers", "🚿", "Showers"], ["water", "💧", "Water"], ["dogs", "🐕", "Dogs OK"], ["fires", "🔥", "Campfires"]];
+  const sceneryOf = (c) => { const f = campFeat.get(c), t = textOf(c); return SCENERY.filter((s) => s.ok(f, t, c)); };
+  setTimeout(() => campFeat.load(), 4000);
   function campTonight() {
-    const q = { hours: prefs.ctHours || 1, sunset: prefs.ctSunset !== false, fourwd: prefs.ctFourwd ?? !!prefs.fourwd, cost: prefs.ctCost || "cheap", to: null };
+    const q = { hours: prefs.ctHours || 1, sunset: prefs.ctSunset !== false, fourwd: prefs.ctFourwd ?? !!prefs.fourwd, cost: prefs.ctCost || "cheap", to: null, want: new Set(prefs.ctWant || []), amen: new Set(prefs.ctAmen || []) };
+    campFeat.load();
     const ask = (pt) => {
       const sun = sunTimes(pt.lat, pt.lon), leftMin = (sun - Date.now()) / 60000;
       const sunLine = leftMin > 0 ? `Sunset ${clock(sun)} · ${leftMin >= 60 ? `${Math.floor(leftMin / 60)} h ${Math.round(leftMin % 60)} min` : `${Math.round(leftMin)} min`} of daylight left` : "It's already dark, so we'll keep it close";
@@ -4936,6 +5045,10 @@
         <div class="place ct-place"><input class="ts-town" id="ctTo" type="text" placeholder="Or type a place, e.g. Agnes Water" autocomplete="off"><button type="button" class="clear-x" data-clear="ctTo" aria-label="Clear">✕</button><ul class="suggest" id="ctTo-suggest" role="listbox" hidden></ul></div>
         <h3 class="h2">What kind of camp?</h3>
         <div class="ct-chips" id="ctCost">${[["free", "Free only"], ["cheap", "Free first"], ["parks", "Caravan parks"], ["any", "Anything"]].map(([v, t]) => `<button type="button" class="chip${q.cost === v ? " is-on" : ""}" data-cost="${v}">${t}</button>`).join("")}</div>
+        <h3 class="h2">What do you want there?</h3>
+        <p class="help ct-help">Pick any. Leave them all off for anything.</p>
+        <div class="ct-chips" id="ctWant">${SCENERY.map((x) => `<button type="button" class="chip${q.want.has(x.id) ? " is-on" : ""}" data-want="${x.id}" aria-pressed="${q.want.has(x.id)}">${x.em} ${x.label}</button>`).join("")}</div>
+        <div class="ct-chips ct-amen" id="ctAmen">${CT_AMEN.map(([id, em, t]) => `<button type="button" class="chip${q.amen.has(id) ? " is-on" : ""}" data-amen="${id}" aria-pressed="${q.amen.has(id)}">${em} ${t}</button>`).join("")}</div>
         <label class="switch"><span><b>🛞 Include 4WD-only camps</b><small>Beach, bush and island camps you need a 4WD for</small></span><input type="checkbox" id="ctFour"${q.fourwd ? " checked" : ""}><i></i></label>
         <button class="cta" type="button" id="ctGo" style="width:100%;margin-top:16px">Find my camp for tonight</button>
       </div>`);
@@ -4943,10 +5056,13 @@
       pick($("#ctHours"), "data-h", (v) => (q.hours = +v));
       pick($("#ctWay"), "data-way", (v) => { q.to = v === "" ? null : places[+v]; $("#ctTo").value = ""; });
       pick($("#ctCost"), "data-cost", (v) => (q.cost = v));
+      const multi = (box, attr, set) => box.addEventListener("click", (e) => { const b = e.target.closest(`[${attr}]`); if (!b) return; const v = b.getAttribute(attr); set.has(v) ? set.delete(v) : set.add(v); b.classList.toggle("is-on", set.has(v)); b.setAttribute("aria-pressed", set.has(v)); });
+      multi($("#ctWant"), "data-want", q.want);
+      multi($("#ctAmen"), "data-amen", q.amen);
       attachSuggest?.($("#ctTo"));
       $("#ctGo").addEventListener("click", async () => {
         q.sunset = $("#ctSun") ? $("#ctSun").checked : false; q.fourwd = $("#ctFour").checked;
-        Object.assign(prefs, { ctHours: q.hours, ctSunset: q.sunset, ctFourwd: q.fourwd, ctCost: q.cost }); store.set("cf-prefs", prefs);
+        Object.assign(prefs, { ctHours: q.hours, ctSunset: q.sunset, ctFourwd: q.fourwd, ctCost: q.cost, ctWant: [...q.want], ctAmen: [...q.amen] }); store.set("cf-prefs", prefs);
         const typed = $("#ctTo").value.trim();
         if (typed) {
           const el = $("#ctTo");
@@ -4958,7 +5074,7 @@
     };
     const results = async (pt, sun, leftMin) => {
       showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Camp tonight</h2><p class="msg"><span class="spinner"></span>Finding the best camps for tonight</p></div>`);
-      await campDB.ready();
+      await Promise.all([campDB.ready(), campFeat.load()]);
       // how long can you drive? your choice, but not past dark if you asked for daylight
       let maxS = q.hours * 3600;
       if (q.sunset && leftMin > 0) maxS = Math.min(maxS, Math.max(20, leftMin - 15) * 60);
@@ -4969,6 +5085,14 @@
       const res = campDB.inArea(bb, 0.1);
       let list = mergeSources(res.camps, userCampsIn(bb), res.ramps, res.dumps)
         .filter((c) => !c.closed && (q.fourwd ? (rigOK(c, prefs.rig) || isFourWD(c)) : rigOK(c, prefs.rig) && !isFourWD(c)) && costOK(c, q.cost) && (!settings.dog || (c.a.dogs !== false && !c.park)));
+      // the kind of spot you asked for (any of them), and nothing that's recorded as missing what you need
+      const amen = [...q.amen];
+      const PARK_HAS = ["toilets", "showers", "water"];   // caravan parks always have these
+      const unrec = (c) => unrecorded(c, amen).filter((w) => !(c.cpark && PARK_HAS.includes(w)));
+      const got = (c) => amen.filter((w) => has(c, w) || (c.cpark && PARK_HAS.includes(w))).length;
+      list.forEach((c) => { c._scene = sceneryOf(c); });
+      if (q.want.size) list = list.filter((c) => c._scene.some((x) => q.want.has(x.id)));
+      if (amen.length) list = list.filter((c) => ruledOut(c, amen).length === 0);
       const toD = q.to ? hav([pt.lat, pt.lon], [q.to.lat, q.to.lon]) : 0;
       list.forEach((c) => {
         c._d = hav([pt.lat, pt.lon], [c.lat, c.lon]);
@@ -4976,7 +5100,7 @@
         c._toward = q.to ? (c._d + hav([c.lat, c.lon], [q.to.lat, q.to.lon])) / Math.max(toD, 1) : 1;   // 1 = right on the way
       });
       list = list.filter((c) => c._drive <= maxS * 1.1 && c._d > 800 && (!q.to || c._toward < 1.35 || hav([c.lat, c.lon], [q.to.lat, q.to.lon]) < 25000));
-      const rank = (c) => score(c, prefs.wants || [], q.cost) + (ratingCache.get(c.id)?.avg || 0) * 6 + (q.to ? (1.35 - c._toward) * 60 + Math.min(c._d, toD) / 8000 : -c._d / 4000) + (c.source === "rest" ? -10 : 0) + (q.fourwd && isFourWD(c) ? 4 : 0);
+      const rank = (c) => score(c, prefs.wants || [], q.cost) + (ratingCache.get(c.id)?.avg || 0) * 6 + (q.to ? (1.35 - c._toward) * 60 + Math.min(c._d, toD) / 8000 : -c._d / 4000) + (c.source === "rest" ? -10 : 0) + (q.fourwd && isFourWD(c) ? 4 : 0) + got(c) * 12 - unrec(c).length * 6;
       list.sort((a, b) => rank(b) - rank(a));
       let top = list.slice(0, 10);
       // real drive times for the best few (Apple Maps on the phone; tracks for 4WD camps), then drop any that are really too far
@@ -4990,15 +5114,17 @@
       const now = Date.now();
       const tag = (c) => { const at = new Date(now + c._drive * 1000); const before = (sun - at) / 60000; return { at, txt: `Arrive about ${clock(at)}`, ok: before > 0, before }; };
       showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Camp tonight</h2>
-        <p class="d-kind">${q.to ? `Heading towards ${esc(q.to.name)} · ` : ""}up to ${CT_HOURS.find(([h]) => h === q.hours)?.[1] || ""}${q.sunset && leftMin > 0 ? ` · before sunset (${clock(sun)})` : ""}${q.fourwd ? " · incl. 4WD camps" : ""}</p>
+        <p class="d-kind">${q.to ? `Heading towards ${esc(q.to.name)} · ` : ""}up to ${CT_HOURS.find(([h]) => h === q.hours)?.[1] || ""}${q.sunset && leftMin > 0 ? ` · before sunset (${clock(sun)})` : ""}${q.fourwd ? " · incl. 4WD camps" : ""}${q.want.size ? ` · ${SCENERY.filter((x) => q.want.has(x.id)).map((x) => x.label.toLowerCase()).join(" or ")}` : ""}${amen.length ? ` · ${CT_AMEN.filter(([id]) => q.amen.has(id)).map(([, , t]) => t.toLowerCase()).join(", ")}` : ""}</p>
         ${stretch ? `<p class="notice"><b>A bit further than you wanted</b><span>Nothing fits in that time, so these are the closest good camps.</span></p>` : ""}
         ${top.length ? `<ul class="tonight-list">${top.map((c, k) => { const t = tag(c); return `<li data-id="${esc(c.id)}">
             <div class="tl-ph" id="tlPh${k}"></div>
             <div class="tl-body"><b>${esc(c.name)}</b><small>${km(c._road || c._d * 1.3)} · ${hrs(c._drive)} drive · ${t.txt}${leftMin > 0 ? (t.ok ? ` · <span class="ok-sun">${Math.round(t.before)} min before sunset</span>` : ` · <span class="late-sun">after dark</span>`) : ""}${isFourWD(c) ? " · 🛞 4WD" : ""}</small>
+              ${c._scene?.length ? `<div class="tl-scene">${c._scene.filter((x) => x.id !== "bush" || c._scene.length === 1).slice(0, 3).map((x) => `<span>${x.em} ${x.label}</span>`).join("")}</div>` : ""}
+              ${unrec(c).length ? `<small class="tl-unk">${unrec(c).map((w) => SHORT_LABEL[w]).join(", ")} not recorded</small>` : ""}
               <div class="tl-tags">${priceTag(c)}${amenIcons(c)}</div>
               <div class="stop-actions"><a class="cta" href="${navUrl(c, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a><button class="btn" type="button" data-tl="${esc(c.id)}">Details</button></div>
             </div></li>`; }).join("")}</ul>`
-          : `<p class="msg">No camps fit that. Try driving a bit further, Any direction, or Anything for the kind of camp.</p>`}
+          : `<p class="msg">No camps fit that. Try driving a bit further, Any direction, Anything for the kind of camp${q.want.size || amen.length ? ", or fewer of the things you want there" : ""}.</p>`}
         <button class="btn line" type="button" id="ctAgain" style="margin-top:10px">Change my answers</button>
         <p class="caveat">Drive times are from the route where we could get one, otherwise a rough guess. Check signs when you arrive.</p></div>`);
       $("#ctAgain").addEventListener("click", () => ask(pt));
@@ -5008,10 +5134,14 @@
         if (!src) { try { src = (await soon(googlePhotos(c, 1), 8000, []))[0]?.src || ""; } catch {} }
         const el = $(`#tlPh${k}`); if (el && src) el.innerHTML = `<img src="${esc(src)}" alt="">`;
       });
-      if (top.length) { legLayer.clearLayers(); top.forEach((c) => campMarker(c).addTo(legLayer)); map.fitBounds([[pt.lat, pt.lon], ...top.map((c) => [c.lat, c.lon])], fitPad()); }
+      if (top.length) { legLayer.clearLayers(); top.forEach((c, k) => campMarker(c, { night: true, label: String(k + 1) }).addTo(legLayer)); map.fitBounds([[pt.lat, pt.lon], ...top.map((c) => [c.lat, c.lon])], fitPad()); }
     };
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Camp tonight</h2><p class="msg"><span class="spinner"></span>Finding where you are</p></div>`);
-    campDB.ready().then(() => { if (me) ask(me); else locate(ask); });
+    // no location (turned off or no fix yet): use the middle of the map so you can still pick a camp
+    let asked = false;
+    const askOnce = (pt) => { if (asked) return; asked = true; ask(pt); };
+    const fromMap = () => { const c = map.getCenter(); toast("Couldn't find you, so this is around the middle of the map", 4000); askOnce({ lat: c.lat, lon: c.lng }); };
+    campDB.ready().then(() => { if (me) askOnce(me); else { locate(askOnce, fromMap); setTimeout(() => { if (!asked) fromMap(); }, 15000); } });
   }
   $("#tonightBtn").addEventListener("click", campTonight);
 
@@ -5473,7 +5603,7 @@
     $("#stTerms").addEventListener("click", () => openLegal("terms"));
     $("#stPrivacy").addEventListener("click", () => openLegal("privacy"));
   })();
-  if (prefs.mapMode === "4wd") setMapMode("4wd"); else if (settings.sat || prefs.mapMode === "sat") setMapMode("sat");
+  if (settings.sat || prefs.mapMode === "sat") setMapMode("sat");
   if (store.get("cf-loc-ok", false)) { startTracking(); if (settings.follow) setFollow(true); }
 
   // ---- sliding tab indicator

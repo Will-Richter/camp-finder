@@ -30,13 +30,17 @@ EVERY NIGHT SORTED
 
 CAMP TONIGHT
 • Say how far you want to drive and which way you're heading
+• Pick what you want there: beach, river, lake, dam, rocky gorge, waterfall, toilets, dogs OK
 • See the best camps you'll reach before sunset, with arrival times
 
 4WD AND OFF-ROAD
-• Every 4WD track in Australia on the 4WD map: beach runs, sand tracks, 4WD only and hard 4WD, each on or off with a tap
+• Every 4WD track in Australia over the normal map or satellite: beach driving, sand tracks, 4WD only and hard 4WD, each on or off with a tap
 • Turn on 4WD mode and your route follows the tracks: K'gari, Moreton, Cape York, the Old Telegraph Track
 • Barges and ferries to the islands, with timetables, permits and island camps
 • Ready-made 4WD trips: the Old Telegraph Track, the Simpson, the Gibb, the Canning, K'gari, Teewah and more
+
+SCOPE IT ALL OUT
+• One map button: free camps, paid camps, caravan parks, rest areas, must-sees, fuel, dump points and water, each on or off
 
 WORKS WITH NO SIGNAL
 • Download a whole state's map, and your camps, fuel, water and dump points are always on your phone

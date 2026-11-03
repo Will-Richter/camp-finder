@@ -194,7 +194,7 @@
   <div class="map-tools">
     <button id="locateBtn" class="tool" type="button" aria-label="Show my location"><svg class="ic"><use href="#i-locate"/></svg></button>
     <button id="addBtn" class="tool" type="button" aria-label="Add a camp"><svg class="ic"><use href="#i-plus"/></svg></button>
-    <button id="layerBtn" class="tool" type="button" aria-label="Map style" aria-pressed="false"><svg class="ic"><use href="#i-layers"/></svg></button>
+    <button id="layerBtn" class="tool" type="button" aria-label="Map menu" aria-expanded="false"><svg class="ic"><use href="#i-layers"/></svg></button>
   </div>
 
   <div id="journeyBar" class="jbar" hidden>
@@ -417,26 +417,6 @@
             <div class="amen-pick" id="planWants"></div>
           </fieldset>
 
-          <fieldset class="group refresh-group" data-adv>
-            <legend class="label">Need a refresh?</legend>
-            <div class="group-row">
-              <div><div class="help" id="refreshHelp">Swap a few camp nights for a real bed and a hot shower</div></div>
-              <div class="stepper" role="group" aria-label="Refresh nights">
-                <button type="button" id="refreshDown" aria-label="One less refresh night"><svg class="ic"><use href="#i-minus"/></svg></button>
-                <output id="refreshOut" aria-live="polite">0</output>
-                <button type="button" id="refreshUp" aria-label="One more refresh night"><svg class="ic"><use href="#i-plus"/></svg></button>
-              </div>
-              <input type="hidden" id="refreshIn" value="0">
-            </div>
-            <div class="seg" id="rstyleSeg">
-              <label><input type="radio" name="rstyle" value="cabin"><span>Cabin</span></label>
-              <label><input type="radio" name="rstyle" value="motel" checked><span>Motel</span></label>
-              <label><input type="radio" name="rstyle" value="hotel"><span>Hotel</span></label>
-            </div>
-            <label class="switch bougie-sw"><span><b>✨ Feeling bougie</b><small>Finish the trip with a really nice place on the last night</small></span><input type="checkbox" id="bougie"><i></i></label>
-          </fieldset>
-
-          <label class="switch simple-only simple-q"><span><b>🛏️ A motel some nights?</b><small>Swap a couple of camp nights for a real bed</small></span><input type="checkbox" id="simpleRefresh"><i></i></label>
           <details class="more" id="moreOpts" data-adv>
             <summary>How far off the highway <span id="detourShown">15 km</span><svg class="ic sm"><use href="#i-chev"/></svg></summary>
             <div class="seg" id="detourSeg">
@@ -510,7 +490,7 @@
         <p class="help">Australia's favourite road trips, ready to plan in one tap.</p>
         <div class="trip-grid" id="tripGrid"></div>
         <h2 class="h2" style="margin-top:22px">🛞 4WD tracks</h2>
-        <p class="help">The big off-road trips, planned along the tracks with the 4WD map.</p>
+        <p class="help">The big off-road trips, planned along the tracks. Turn the tracks on from the map button.</p>
         <div class="trip-grid" id="tripGrid4wd"></div>
       </div>
 
@@ -659,18 +639,34 @@
     <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
   </nav>
 
-  <div id="layerMenu" class="layer-menu" role="menu" hidden>
-    <button type="button" data-mode="map" class="is-on"><span>🗺️</span><b>Map</b><small>Roads, parks and towns</small></button>
-    <button type="button" data-mode="sat"><span>🛰️</span><b>Satellite</b><small>Photos from above</small></button>
-    <button type="button" data-mode="4wd"><span>🛞</span><b>4WD</b><small>Every off-road track, beach run and sand track</small></button>
-  </div>
-  <div id="trackKey" class="track-bar" hidden>
-    <span class="tb-title">🛞 Show</span>
-    <button type="button" data-tk="sand"><i style="background:#C99A06"></i>Sand / beach</button>
-    <button type="button" data-tk="4wd"><i style="background:#C0392B"></i>4WD only</button>
-    <button type="button" data-tk="hard"><i style="background:#8E1B12"></i>Hard 4WD</button>
-    <button type="button" data-tk="dirt"><i style="background:#8A5A2B"></i>Dirt tracks</button>
-    <button type="button" data-tk="easy"><i style="background:#D2691E"></i>Easy tracks</button>
+  <div id="layerMenu" class="layer-menu" role="dialog" aria-label="Map menu" hidden>
+    <div class="lm-head"><b>Map</b><button type="button" class="lm-x" id="lmClose" aria-label="Close">✕</button></div>
+    <div class="lm-styles">
+      <button type="button" data-mode="map" class="is-on"><span class="lm-thumb lm-map" aria-hidden="true"></span><b>Map</b></button>
+      <button type="button" data-mode="sat"><span class="lm-thumb lm-sat" aria-hidden="true"></span><b>Satellite</b></button>
+    </div>
+    <p class="lm-sub">Show on the map</p>
+    <div class="lm-grid" id="lmPlaces">
+      <button type="button" data-ly="free"><i class="sw" style="background:#1F8A4C"></i>Free camps</button>
+      <button type="button" data-ly="paid"><i class="sw" style="background:#A9521C"></i>Paid camps</button>
+      <button type="button" data-ly="parks"><i class="sw park" style="background:#0E5A3E">🚐</i>Caravan parks</button>
+      <button type="button" data-ly="rest"><i class="sw" style="background:#2F6FD6"></i>Rest areas</button>
+      <button type="button" data-ly="sights"><i class="em">📸</i>Must-sees</button>
+      <button type="button" data-ly="fuel"><i class="em">⛽</i>Fuel</button>
+      <button type="button" data-ly="dump"><i class="em">🚽</i>Dump points</button>
+      <button type="button" data-ly="water"><i class="em">💧</i>Water</button>
+    </div>
+    <p class="lm-sub">4WD tracks</p>
+    <div class="lm-grid" id="trackKey">
+      <button type="button" data-tk="beach"><i class="ln" style="--c:#E0B000"></i>Beach driving</button>
+      <button type="button" data-tk="sand"><i class="ln" style="--c:#B8860B"></i>Sand tracks</button>
+      <button type="button" data-tk="4wd"><i class="ln" style="--c:#C0392B"></i>4WD only</button>
+      <button type="button" data-tk="hard"><i class="ln" style="--c:#7A1610"></i>Hard 4WD</button>
+      <button type="button" data-tk="dirt"><i class="ln" style="--c:#8A5A2B"></i>Dirt tracks</button>
+      <button type="button" data-tk="easy"><i class="ln" style="--c:#D2691E"></i>Easy gravel</button>
+    </div>
+    <div class="lm-foot"><button type="button" class="lm-link" id="lmAllTracks">All tracks</button><button type="button" class="lm-link" id="lmNoTracks">Hide tracks</button></div>
+    <p class="lm-note">Camps, fuel and water appear when you zoom in to a town.</p>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>
