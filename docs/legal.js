@@ -58,9 +58,10 @@ window.CF_LEGAL = {
 <ul>
 <li><b>Apple Maps</b> for place search and driving directions. Search text and the start and end of a route are sent to Apple.</li>
 <li><b>Google Maps (Places)</b> for camp photos, reviews, fuel prices and places to stay. The places you look at and points along your route are sent to Google.</li>
-<li><b>Stadia Maps and Esri</b> for the map and satellite background (map data © OpenStreetMap contributors), and Wikimedia Commons for some photos. The map area you're looking at is requested from them.</li>
-<li><b>Open-Meteo</b> for weather forecasts and <b>state fire and emergency services</b> for bushfire warnings, using points along your route.</li>
-<li><b>Stadia Maps routing</b> (with OpenStreetMap's FOSSGIS router as a backup) for routes along 4WD tracks and on the islands. The start, end and stops of those routes are sent to it.</li>
+<li><b>Stadia Maps</b> for the map background (map data © OpenStreetMap contributors), <b>Esri</b> for the satellite view, and Wikimedia Commons for some photos. The map area you're looking at is requested from them.</li>
+<li><b>Apple Weather</b> for weather forecasts and <b>state fire and emergency services</b> for bushfire warnings, using points along your route.</li>
+<li><b>Stadia Maps routing</b> for routes along 4WD tracks and on the islands, hill checks along your route, and as a backup to Apple Maps directions. The start, end and stops of those routes are sent to it.</li>
+<li><b>Photon (Komoot)</b> as a backup for place names and search when Apple Maps can't answer. The search text or map point is sent to it.</li>
 <li><b>Wikipedia</b> for descriptions of places to see. The name of the place you open is sent to it.</li>
 <li><b>GitHub</b>, which hosts the weekly camp list update and the state maps you download. No personal information is sent.</li>
 </ul>

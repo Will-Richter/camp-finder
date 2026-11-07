@@ -13,16 +13,11 @@
       "https://overpass.kumi.systems/api/interpreter",
       "https://overpass.private.coffee/api/interpreter",
     ],
-    valhalla: "https://valhalla1.openstreetmap.de/route",   // free backup track router
-    // 4WD and island routes: Stadia Maps' routing (same key and plan as the map). Empty = use the free backup only
+    // 4WD and island routes, the backup road router and the hill check: Stadia Maps' routing (same key and paid plan as the map)
     trackRouter: "https://api.stadiamaps.com/route/v1",
     mapsIndex: "data/maps.json",   // offline state map files (built by .github/workflows/offline-maps.yml)
     tracksUrl: "tiles/tracks.pmtiles",   // every 4WD track in Australia (built by .github/workflows/tracks.yml)
     mapsIndexLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/maps.json",
-    osrm: [
-      "https://router.project-osrm.org/route/v1/driving/",
-      "https://routing.openstreetmap.de/routed-car/route/v1/driving/",
-    ],
     photon: "https://photon.komoot.io/api/",
     commons: "https://commons.wikimedia.org/w/api.php",
     auBox: [112.5, -44.5, 154.5, -9.5], // w,s,e,n
@@ -31,6 +26,9 @@
     campDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/camps-au.json",
     // Google Places photos: paste an iOS-restricted Places API key here to switch them on (see GOOGLE_PHOTOS.md)
     googleKey: "AIzaSyAmDLzNnWpVNQTEFOCiarRRCJCfkdl1EJs", // restricted to the Camp Finder iPhone app and the Places API
+    // Satellite view: Esri World Imagery through an ArcGIS Location Platform API key (free tier allows commercial apps).
+    // Empty = the Satellite button is hidden (Esri's tiles may not be used without a key)
+    esriKey: "",
     stadiaKey: "21bef218-b23a-4eba-bf2e-20bca8e2f73c", // Stadia Maps key for the map background (free while testing). Empty = OpenStreetMap's own tiles
     priceData: "data/prices.json",
     priceDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/prices.json",
@@ -114,6 +112,7 @@
   const nativePlaces = nativeCall("places", "__cfPlacesDone");
   const nativeRoute = nativeCall("route", "__cfRouteDone");
   const nativeGeocode = nativeCall("geocode", "__cfGeocodeDone");
+  const nativeWeather = nativeCall("weather", "__cfWeatherDone");   // Apple WeatherKit (iPhone app only)
 
   // ================================================================ Camp Finder Pro (monthly or yearly subscription in the iPhone app)
   // Free: plan trips with a camp every night, the full camp map, fuel and water, Camp tonight and one state offline.
@@ -493,13 +492,13 @@
     }
     return out;
   }
-  async function trackRoute(points, steps = false) {
-    const body = { locations: points.map((p) => ({ lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), costing: "auto", costing_options: { auto: { use_tracks: 1, use_highways: fourWD ? 0.8 : 0.5, use_living_streets: 0.3 } }, units: "kilometers", directions_type: steps ? "instructions" : "none", language: "en-AU" };
+  async function trackRoute(points, steps = false, roads = false) {
+    const opts = roads ? {} : { use_tracks: 1, use_highways: fourWD ? 0.8 : 0.5, use_living_streets: 0.3 };
+    const body = { locations: points.map((p) => ({ lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), costing: "auto", costing_options: { auto: opts }, units: "kilometers", directions_type: steps ? "instructions" : "none", language: "en-AU" };
     const q = `json=${encodeURIComponent(JSON.stringify(body))}`;
     const urls = [];
     if (CFG.trackRouter && CFG.stadiaKey) urls.push(`${CFG.trackRouter}?api_key=${CFG.stadiaKey}&${q}`);   // Stadia Maps (paid plan)
-    urls.push(`${CFG.valhalla}?${q}`);                                                                     // free backup
-    // each router straight from the page first, the phone's own fetch as a backup
+    // straight from the page first, the phone's own fetch as a backup
     let j = null, lastErr = null;
     for (const url of urls) {
       try { j = await fetchJSON(url, {}, 30000); } catch (e) { lastErr = e; try { if (nativeFetch) j = JSON.parse(await nativeFetch(url, { timeout: 30000 })); } catch (e2) { lastErr = e2; } }
@@ -511,7 +510,7 @@
     const coordinates = [], outLegs = [];
     legs.forEach((l, k) => { const c = poly6(l.shape); coordinates.push(...(k ? c.slice(1) : c)); const dist = l.summary.length * 1000; outLegs.push({ steps: steps ? (l.maneuvers || []).map((m) => ({ distance: (m.length || 0) * 1000, text: m.instruction || "", maneuver: { type: "valhalla" } })) : [], distance: dist, duration: Math.min(l.summary.time, dist / (30 / 3.6))  /* Valhalla's time, but never slower than 30 km/h average (its sand-track guess is far too slow) */ }); });
     const distance = outLegs.reduce((a, l) => a + l.distance, 0), duration = outLegs.reduce((a, l) => a + l.duration, 0);
-    return { distance, duration, track: true, geometry: { type: "LineString", coordinates }, legs: outLegs };
+    return { distance, duration, track: !roads, geometry: { type: "LineString", coordinates }, legs: outLegs };
   }
   let fourWD = false;   // the trip's "4WD: tracks and beaches" option: route over tracks everywhere, not just on 4WD islands
   const onTrackIsland = (pts) => pts.length > 1 && (fourWD || pts.every((q) => islandAt(q.lat, q.lon)?.fourWD));
@@ -568,17 +567,9 @@
       try { return await appleRoute(points, steps); }
       catch (e) { if (/No route|directions not available/i.test(e.message)) throw new Error("No route"); /* else try the web routers */ }
     }
-    const coords = points.map((p) => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(";");
-    const q = `?overview=full&geometries=geojson&steps=${steps}`;
-    let lastErr;
-    for (const base of CFG.osrm) {
-      try {
-        const j = await fetchJSON(base + coords + q, {}, 30000);
-        if (j.code !== "Ok" || !j.routes?.length) throw new Error(j.message || "No route");
-        return j.routes[0];
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error("Routing unavailable");
+    // no Apple Maps (the website) or it failed: Stadia Maps' road routing
+    try { return await trackRoute(points, steps, true); }
+    catch (e) { throw /No track route/.test(e?.message || "") ? new Error("Routing unavailable") : e; }
   }
 
   // Apple Maps route, shaped like an OSRM route (multi-stop = one leg per pair)
@@ -1355,7 +1346,9 @@
   // Map background: Stadia Maps "Outdoors" (shows tracks, terrain and national parks) when the key is set
   const OSM = CFG.stadiaKey ? `https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png?api_key=${CFG.stadiaKey}` : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const OSM_ATTR = CFG.stadiaKey ? '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-  const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+  // Satellite: Esri World Imagery, only with an ArcGIS key (CFG.esriKey); without one the Satellite button is hidden
+  const SAT_OK = !!CFG.esriKey;
+  const ESRI = `https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=${CFG.esriKey}`;
   let streetBase = L.tileLayer(OSM, { ...backdropOpts, className: "tiles-backdrop" });
   let street = L.tileLayer(OSM, { ...tileOpts, attribution: OSM_ATTR });
   // Vector map (Stadia Outdoors drawn by the phone's graphics chip): smooth pinch zoom, sharp at every zoom, no squares
@@ -1378,11 +1371,12 @@
     } catch { /* keep the picture tiles */ }
   }
   const satBase = L.tileLayer(ESRI, { ...backdropOpts, maxNativeZoom: 8, className: "tiles-backdrop" });
-  const sat = L.tileLayer(ESRI, { ...tileOpts, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" });
+  const sat = L.tileLayer(ESRI, { ...tileOpts, attribution: 'Powered by <a href="https://www.esri.com/">Esri</a> · Imagery © Esri, Maxar, Earthstar Geographics' });
+  if (!SAT_OK) { document.querySelectorAll("#layerMenu .lm-styles").forEach((b) => { b.style.display = "none"; }); const ss = document.getElementById("stSat"); ss?.closest("label, .st-row, li")?.style.setProperty("display", "none"); }
   streetBase.addTo(map); street.addTo(map);
   let onSat = false;
   function setSat(on) {
-    onSat = !!on;
+    onSat = !!on && SAT_OK;
     let offline = false; try { offline = offOn; } catch { /* not set up yet */ }
     if (offline) return;   // no signal: the downloaded map stays
     if (onSat) { map.removeLayer(street); map.removeLayer(streetBase); satBase.addTo(map); sat.addTo(map); }
@@ -1429,7 +1423,7 @@
   }
   function showTracks(kinds) { const was = trackKinds.size; trackKinds.clear(); kinds.forEach((k) => trackKinds.add(k)); applyTracks(); if (!was && kinds.length && map.getZoom() < 7) toast("Zoom in to see every track and its name", 3000); }
   function setMapMode(m) {
-    mapMode = m === "sat" ? "sat" : "map";
+    mapMode = m === "sat" && SAT_OK ? "sat" : "map";
     setSat(mapMode === "sat");
     document.querySelectorAll("#layerMenu [data-mode]").forEach((b) => { b.classList.toggle("is-on", b.dataset.mode === mapMode); b.setAttribute("aria-pressed", b.dataset.mode === mapMode); });
     const p = store.get("cf-prefs", {}); p.mapMode = mapMode; store.set("cf-prefs", p);
@@ -3530,6 +3524,7 @@
     finally { btn.disabled = false; }
   }
   async function searchNearName(ll) {
+    if (nativeGeocode) { try { const g = await nativeGeocode({ lat: ll.lat, lon: ll.lng }, 6000); const n = g.locality || g.sub || g.name; if (n) return n; } catch { /* web lookup below */ } }
     try {
       const j = await fetchJSON(`https://photon.komoot.io/reverse?lat=${ll.lat}&lon=${ll.lng}&lang=en`, {}, 6000);
       const p = j.features?.[0]?.properties || {};
@@ -4185,9 +4180,11 @@
   async function loadWeather(p) {
     const spots = p.picks.map((pk, i) => ({ i, lat: (pk.refresh?.options?.[0] || pk.camp || pointAt(p.line, pk.target)).lat, lon: (pk.refresh?.options?.[0] || pk.camp || pointAt(p.line, pk.target)).lon }));
     spots.push({ i: p.picks.length, lat: p.to.lat, lon: p.to.lon });
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${spots.map((s) => s.lat.toFixed(3)).join(",")}&longitude=${spots.map((s) => s.lon.toFixed(3)).join(",")}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_gusts_10m_max&timezone=auto&forecast_days=16`;
-    const j = await getJSON(url);
-    const arr = Array.isArray(j) ? j : [j];
+    // Apple Weather (WeatherKit) in the iPhone app; the website has no weather (the free weather services aren't for commercial apps)
+    if (!nativeWeather) throw new Error("No weather here");
+    const j = await nativeWeather({ spots: spots.map((s) => [+s.lat.toFixed(3), +s.lon.toFixed(3)]) }, 14000);
+    const arr = j.days || [];
+    p.weatherBy = j.attribution || null;
     const off = dayOffset(p);
     p.weather = spots.map((s, k) => {
       let extra = 0; for (let q = 0; q < s.i; q++) extra += Math.max(0, +(p.stays?.[q]) || 0);
@@ -4265,13 +4262,17 @@
     return out.filter((c) => { const k = Math.round(c.along / 2000); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8);
   }
   async function steepClimbs(p) {
-    const step = Math.max(1500, p.line.total / 499), pts = [];
-    for (let a = 0; a <= p.line.total; a += step) pts.push({ along: a, ...pointAt(p.line, a) });
-    const elev = [];
-    for (let k = 0; k < pts.length; k += 100) {
-      const ch = pts.slice(k, k + 100);
-      const j = await getJSON(`https://api.open-meteo.com/v1/elevation?latitude=${ch.map((x) => x.lat.toFixed(4)).join(",")}&longitude=${ch.map((x) => x.lon.toFixed(4)).join(",")}`);
-      elev.push(...(j.elevation || []));
+    // heights along the route from Stadia Maps' routing (elevation every `step` metres), in pieces of up to 3,000 km
+    if (!CFG.trackRouter || !CFG.stadiaKey) return [];
+    const step = Math.round(Math.max(1500, p.line.total / 499)), pts = [], elev = [];
+    const CH = 3000000;
+    for (let a0 = 0; a0 < p.line.total; a0 += CH) {
+      const a1 = Math.min(p.line.total, a0 + CH), n = 12;
+      const locs = Array.from({ length: n + 1 }, (_, i) => { const q = pointAt(p.line, a0 + (a1 - a0) * i / n); return { lat: +q.lat.toFixed(5), lon: +q.lon.toFixed(5), type: i && i < n ? "through" : "break" }; });
+      const body = { locations: locs, costing: "auto", costing_options: { auto: fourWD ? { use_tracks: 1 } : {} }, directions_type: "none", elevation_interval: step, units: "kilometers" };
+      const j = await getJSON(`${CFG.trackRouter}?api_key=${CFG.stadiaKey}&json=${encodeURIComponent(JSON.stringify(body))}`);
+      const hs = (j.trip?.legs || []).flatMap((l, i) => (i ? (l.elevation || []).slice(1) : (l.elevation || [])));
+      hs.forEach((h, k) => { const along = a0 + k * step; if (along <= a1 + step) { pts.push({ along }); elev.push(h); } });
     }
     const out = [];
     const real = step;
@@ -4317,7 +4318,14 @@
       <div class="al-head"><b>${serious ? `${serious} thing${serious > 1 ? "s" : ""} to know` : "Road check: all clear"}</b><span class="help">${a.weatherOk ? "Weather, fires and your rig" : "Fires and your rig"}</span></div>
       ${items.length ? first.map(row).join("") + (rest.length ? `<details class="al-more"><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : "") : `<p class="help">No fires, low clearances${a.weatherOk ? " or severe weather" : ""} for your ${h} m rig.</p>`}
       <details class="al-more links"><summary>Road and fire updates</summary><p class="al-links">Road conditions: ${links || "check the state road authority"}<br>Fire warnings: ${fireLinks}</p></details>
+      ${a.weatherOk ? weatherCredit(p) : ""}
     </div>`;
+  }
+  // Apple requires the Apple Weather mark and a link to its data sources wherever its weather is shown
+  function weatherCredit(p) {
+    const by = p.weatherBy || {}, legal = by.legal || "https://weatherkit.apple.com/legal-attribution.html";
+    const mark = by.logo ? `<img src="${esc(by.logo)}" alt="Apple Weather" class="wx-mark">` : " Weather";
+    return `<p class="wx-credit">${mark} <a href="${esc(legal)}" target="_blank" rel="noopener">Weather data sources</a></p>`;
   }
 
   // ================================================================ need water / dump point / fuel

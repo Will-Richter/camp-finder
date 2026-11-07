@@ -4,6 +4,7 @@ import StoreKit
 import CoreLocation
 import MapKit
 import UniformTypeIdentifiers
+import WeatherKit
 
 /// Diagnostics go to the Xcode console only (never on screen).
 @inline(__always) func cfLog(_ s: @autoclosure () -> String) {
@@ -25,7 +26,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile", "offlineMap", "store"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile", "offlineMap", "store", "weather"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -133,6 +134,56 @@ struct WebAppView: UIViewRepresentable {
                     default: self.reply("__cfStoreDone", id, ok: false, "Unknown")
                     }
                 } catch { self.reply("__cfStoreDone", id, ok: false, error.localizedDescription) }
+            }
+        }
+
+        // MARK: Apple Weather (WeatherKit): daily forecasts for the trip's camps, shaped like the page expects
+        private func handleWeather(_ body: Any) {
+            guard let d = body as? [String: Any], let id = d["id"] as? Int, let spots = d["spots"] as? [[Double]] else { return }
+            Task {
+                do {
+                    let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"; fmt.locale = Locale(identifier: "en_US_POSIX")
+                    var days: [Any] = []
+                    for s in spots where s.count == 2 {
+                        let loc = CLLocation(latitude: s[0], longitude: s[1])
+                        do {
+                            let f = try await WeatherService.shared.weather(for: loc, including: .daily)
+                            var time: [String] = [], code: [Int] = [], hi: [Double] = [], lo: [Double] = [], pop: [Int] = [], mm: [Double] = [], gust: [Double] = []
+                            for day in f.forecast {
+                                time.append(fmt.string(from: day.date))
+                                code.append(Self.wmo(day.condition))
+                                hi.append(day.highTemperature.converted(to: .celsius).value)
+                                lo.append(day.lowTemperature.converted(to: .celsius).value)
+                                pop.append(Int((day.precipitationChance * 100).rounded()))
+                                mm.append(day.precipitationAmount.converted(to: .millimeters).value)
+                                gust.append(day.wind.gust?.converted(to: .kilometersPerHour).value ?? day.wind.speed.converted(to: .kilometersPerHour).value)
+                            }
+                            days.append(["daily": ["time": time, "weather_code": code, "temperature_2m_max": hi, "temperature_2m_min": lo, "precipitation_probability_max": pop, "precipitation_sum": mm, "wind_gusts_10m_max": gust]])
+                        } catch { days.append(NSNull()) }
+                    }
+                    var out: [String: Any] = ["days": days]
+                    if let a = try? await WeatherService.shared.attribution {
+                        out["attribution"] = ["logo": a.combinedMarkLightURL.absoluteString, "legal": a.legalPageURL.absoluteString]
+                    }
+                    self.reply("__cfWeatherDone", id, ok: true, out)
+                } catch { self.reply("__cfWeatherDone", id, ok: false, error.localizedDescription) }
+            }
+        }
+        /// Apple's weather conditions as the WMO codes the page already understands
+        static func wmo(_ c: WeatherCondition) -> Int {
+            switch c {
+            case .clear, .hot: return 0
+            case .mostlyClear: return 1
+            case .partlyCloudy, .breezy, .windy: return 2
+            case .mostlyCloudy, .cloudy, .blowingDust, .frigid: return 3
+            case .foggy, .haze, .smoky: return 45
+            case .drizzle, .freezingDrizzle: return 51
+            case .sunShowers: return 80
+            case .rain, .freezingRain, .sleet, .wintryMix: return 63
+            case .heavyRain: return 65
+            case .isolatedThunderstorms, .scatteredThunderstorms, .thunderstorms, .strongStorms, .tropicalStorm, .hurricane: return 95
+            case .hail: return 96
+            default: return 3
             }
         }
 
@@ -308,6 +359,7 @@ struct WebAppView: UIViewRepresentable {
                 let result = JourneyRecorder.shared.handle(d) ?? NSNull()
                 if let id = d["reply"] as? Int { reply("__cfJourneyDone", id, ok: true, result) }
             case "store": handleStore(message.body)
+            case "weather": handleWeather(message.body)
             case "log": cfLog("web \(message.body)")
             case "location":
                 if let d = message.body as? [String: Int] {
