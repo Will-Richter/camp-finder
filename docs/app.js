@@ -115,6 +115,80 @@
   const nativeRoute = nativeCall("route", "__cfRouteDone");
   const nativeGeocode = nativeCall("geocode", "__cfGeocodeDone");
 
+  // ================================================================ Camp Finder Pro (monthly or yearly subscription in the iPhone app)
+  // Free: plan trips with a camp every night, the full camp map, fuel and water, Camp tonight and one state offline.
+  // Pro: 4WD tracks and 4WD trips, every state offline, Camp tonight filters, unlimited saved trips, family sharing, trip videos.
+  // Apple handles the purchase (StoreKit 2 over the "store" message handler); the page only asks and listens.
+  const nativeStore = nativeCall("store", "__cfStoreDone");
+  const PRO_IDS = { month: "au.com.gonelappin.campfinder.pro.monthly", year: "au.com.gonelappin.campfinder.pro.yearly" };
+  const PRO_FALLBACK = { month: { price: "A$4.99", value: 4.99 }, year: { price: "A$29.99", value: 29.99 } };   // until the App Store answers
+  const PRO_WHY = { tracks: "The 4WD tracks map", fourwd: "4WD trips along the tracks", states: "More than one state offline", tonight: "Camp tonight filters", trips: "More than 3 saved trips", family: "Family sharing", video: "Trip videos" };
+  const pro = { on: !!store.get("cf-pro", false), products: null };
+  const isPro = () => pro.on || (!nativeStore && !!store.get("cf-pro-test", false));
+  function setPro(st) {
+    const on = !!st?.pro, was = pro.on;
+    pro.on = on; store.set("cf-pro", on);
+    try { paintPro(); } catch { /* still starting up */ }
+    if (on && !was) toast("Camp Finder Pro is on. Enjoy the big lap! 🎉", 3500);
+  }
+  window.__cfProChanged = (st) => setPro(st);
+  if (nativeStore) nativeStore({ op: "status" }, 30000).then(setPro).catch(() => {});
+  function requirePro(why, then) { if (isPro()) { then?.(); return true; } showPaywall(why, then); return false; }
+  const proTag = () => (isPro() ? "" : `<i class="pro-tag">PRO</i>`);
+  function paintPro() {
+    const on = isPro();
+    document.querySelectorAll("[data-pro-tag]").forEach((el) => { el.hidden = on; });
+    const c = document.getElementById("stPro"); if (!c) return;
+    c.classList.toggle("is-pro", on);
+    c.querySelector("b").textContent = on ? "Camp Finder Pro is on" : "Get Camp Finder Pro";
+    c.querySelector("small").textContent = on ? "Thanks for supporting the app. Tap to manage your subscription." : "Every 4WD track, all of Australia offline, Camp tonight filters and more. 7 days free.";
+  }
+  async function showPaywall(why, then) {
+    let plan = "year";
+    const FEATS = [["🛞", "Every 4WD track", "Beach runs, sand and hard 4WD on the map, and trips that follow the tracks"], ["📶", "All of Australia offline", "Download every state for when there's no signal"], ["🌅", "Camp tonight filters", "Beach, river, lake, dam or gorge, with toilets, showers or dogs OK"], ["🧭", "Unlimited saved trips", "Keep every trip you plan"], ["👨‍👩‍👧", "Family sharing", "Let family follow your trip live"], ["🎬", "Trip videos", "A short film of every trip to share"]];
+    const P = (u) => pro.products?.find((p) => p.unit === u) || PRO_FALLBACK[u];
+    const draw = () => {
+      const m = P("month"), y = P("year"), sel = P(plan);
+      const save = m.value && y.value ? Math.round((1 - y.value / (m.value * 12)) * 100) : 0;
+      const trial = sel.trialDays && sel.trialEligible !== false ? sel.trialDays : 0;
+      const perMonth = y.value ? `about ${(y.price.match(/^[^\d]*/)?.[0] || "$")}${(y.value / 12).toFixed(2)} a month` : "";
+      showDetail(`<div class="d-pad pw">
+        <div class="pw-hero"><span class="pw-logo" aria-hidden="true">⛺</span><h2 class="d-title">Camp Finder Pro</h2>
+          <p class="d-kind">${why && PRO_WHY[why] ? `${esc(PRO_WHY[why])} is part of Pro. ` : ""}Everything for the big lap.</p></div>
+        <ul class="pw-list">${FEATS.map(([e, t, d]) => `<li><span aria-hidden="true">${e}</span><div><b>${t}</b><small>${d}</small></div></li>`).join("")}</ul>
+        <div class="pw-plans" role="radiogroup" aria-label="Choose a plan">
+          <button type="button" role="radio" class="pw-plan${plan === "year" ? " is-on" : ""}" data-plan="year" aria-checked="${plan === "year"}">${save > 0 ? `<i class="pw-badge">Save ${save}%</i>` : ""}<b>Yearly</b><span>${esc(y.price)} a year</span><small>${perMonth}</small></button>
+          <button type="button" role="radio" class="pw-plan${plan === "month" ? " is-on" : ""}" data-plan="month" aria-checked="${plan === "month"}"><b>Monthly</b><span>${esc(m.price)} a month</span><small>Cancel any time</small></button>
+        </div>
+        ${nativeStore ? `<button class="cta pw-buy" type="button" id="pwBuy">${trial ? `Start ${trial}-day free trial` : `Subscribe for ${esc(sel.price)} a ${plan}`}</button>
+          <p class="pw-then">${trial ? `Free for ${trial} days, then ${esc(sel.price)} a ${plan}. ` : ""}Cancel any time in Settings → your name → Subscriptions.</p>
+          <button class="link pw-restore" type="button" id="pwRestore">Restore purchases</button>`
+        : `<p class="pw-then">Pro is bought in the Camp Finder iPhone app. <a href="https://gonelappin.au" target="_blank" rel="noopener">Get the app</a></p>`}
+        <p class="pw-legal">Payment is charged to your Apple ID when you confirm${trial ? " (after the free trial ends)" : ""}. The subscription renews automatically at the same price each ${plan} unless it's cancelled at least 24 hours before the end of the current period, and your account is charged for renewal within 24 hours before the period ends. Manage or cancel any time in your Apple ID settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://gonelappin.au/privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
+      </div>`);
+      $("#detailBody").querySelectorAll("[data-plan]").forEach((b) => b.addEventListener("click", () => { plan = b.dataset.plan; draw(); }));
+      $("#pwBuy")?.addEventListener("click", async (e) => {
+        const btn = e.currentTarget; btn.disabled = true; btn.textContent = "Connecting to the App Store…";
+        try {
+          const r = await nativeStore({ op: "buy", product: PRO_IDS[plan] }, 300000);
+          if (r === "ok") { setPro({ pro: true }); closeDetail(); then?.(); return; }
+          if (r === "pending") toast("Waiting for approval. Pro turns on as soon as it's approved.", 5000);
+        } catch (err) { toast(String(err.message || "Couldn't reach the App Store. Try again."), 4000); }
+        btn.disabled = false; draw();
+      });
+      $("#pwRestore")?.addEventListener("click", async (e) => {
+        e.currentTarget.disabled = true; e.currentTarget.textContent = "Checking your Apple ID…";
+        try { const st = await nativeStore({ op: "restore" }, 120000); setPro(st); if (st?.pro) { toast("Pro restored"); closeDetail(); then?.(); return; } toast("No Camp Finder Pro subscription found on this Apple ID", 4000); }
+        catch (err) { toast(String(err.message || "Couldn't reach the App Store"), 4000); }
+        draw();
+      });
+    };
+    draw();
+    if (nativeStore && !pro.products) {
+      try { const list = await nativeStore({ op: "products" }, 20000); if (Array.isArray(list) && list.length) { pro.products = list; if (!$("#detail").hidden && $("#detailBody .pw")) draw(); } } catch { /* keep the guide prices */ }
+    }
+  }
+
   // ---------------------------------------------------------------- data: Overpass
   const CAMP_SEL = 'nwr["tourism"~"^(camp_site|caravan_site)$"]';
   // Ask all public Overpass servers at once and use the first good answer (they're often busy).
@@ -1364,13 +1438,14 @@
   $("#trackKey").addEventListener("click", (e) => {
     const b = e.target.closest("[data-tk]"); if (!b) return;
     const k = b.dataset.tk;
+    if (!trackKinds.has(k) && !isPro()) { $("#layerMenu").hidden = true; showPaywall("tracks", () => showTracks([...trackKinds, k])); return; }
     const kinds = new Set(trackKinds); kinds.has(k) ? kinds.delete(k) : kinds.add(k);
     showTracks([...kinds]);
   });
-  $("#lmAllTracks").addEventListener("click", () => showTracks(TRACK_KINDS));
+  $("#lmAllTracks").addEventListener("click", () => { if (isPro()) showTracks(TRACK_KINDS); else { $("#layerMenu").hidden = true; showPaywall("tracks", () => showTracks(TRACK_KINDS)); } });
   $("#lmNoTracks").addEventListener("click", () => showTracks([]));
   paintTrackBar();
-  if (trackKinds.size) setTimeout(applyTracks, 0);
+  if (trackKinds.size) setTimeout(() => (isPro() ? applyTracks() : showTracks([])), 0);
   const openLayerMenu = (open) => { $("#layerMenu").hidden = !open; $("#layerBtn").setAttribute("aria-expanded", open); if (open) paintLayerMenu?.(); };
   $("#layerBtn").addEventListener("click", (e) => { e.stopPropagation(); openLayerMenu($("#layerMenu").hidden); });
   $("#lmClose").addEventListener("click", () => openLayerMenu(false));
@@ -1438,6 +1513,7 @@
   async function stateMapAction(e) {
     const b = e.target.closest("[data-sm-get],[data-sm-cancel],[data-sm-del]"); if (!b || !nativeMaps) return;
     if (b.dataset.smGet) {
+      if (!isPro() && mapsState.have.size + mapsState.busy.size >= 1) { showPaywall("states"); return; }
       const idx = await mapsIndex(), id = b.dataset.smGet;
       if (!idx?.files?.[id]) { toast("That map isn't ready to download yet"); return; }
       mapsState.busy.set(id, { state: id, done: 0, total: idx.files[id] }); renderStateMaps();
@@ -1776,8 +1852,9 @@
     store.set("cf-prefs", prefs); paintCars();
   }
   $("#rigs").addEventListener("change", () => { prefs.rig = radio("rig") || prefs.rig; store.set("cf-prefs", prefs); paintCars(); });
-  $("#fourwd").checked = !!prefs.fourwd;
-  $("#fourwd").addEventListener("change", () => { prefs.fourwd = $("#fourwd").checked; store.set("cf-prefs", prefs); if (prefs.fourwd && radio("rig") === "caravan") toast("4WD tracks: only take an off-road caravan or camper on these", 4000); });
+  $("#fourwd").checked = !!prefs.fourwd && isPro();
+  $("#fourwd").addEventListener("change", () => {
+    if ($("#fourwd").checked && !isPro()) { $("#fourwd").checked = false; showPaywall("fourwd", () => { $("#fourwd").checked = true; $("#fourwd").dispatchEvent(new Event("change")); }); return; } prefs.fourwd = $("#fourwd").checked; store.set("cf-prefs", prefs); if (prefs.fourwd && radio("rig") === "caravan") toast("4WD tracks: only take an off-road caravan or camper on these", 4000); });
 
   const nightsIn = $("#nights");
   function setNights(n) {
@@ -2455,6 +2532,7 @@
   $("#editTrip").addEventListener("click", () => { $("#planForm").hidden = false; $("#results").hidden = true; tripLayer.clearLayers(); legLayer.clearLayers(); try { if (journey) drawTravelled(); } catch {} });
   $("#saveTrip").addEventListener("click", (e) => {
     const trips = store.get("cf-trips", []);
+    if (trips.length >= 3 && !isPro()) { showPaywall("trips"); return; }
     trips.unshift({
       id: Date.now(), from: plan.from, to: plan.to, nights: plan.nights, opts: plan.opts, km: plan.route.distance,
       picks: plan.picks.map((p) => p.camp && { id: p.camp.id, name: p.camp.name }),
@@ -4741,6 +4819,7 @@
   $("#view-saved").addEventListener("click", async (e) => {
     const t = e.target;
     try {
+      if (t.closest("#famOn") && !isPro()) { showPaywall("family", () => setView("saved")); return; }
       if (t.closest("#famOn")) { const n = ($("#famName")?.value || "").trim(); if (!n) { $("#famName").focus(); return toast("Add your name so family know it's you"); } t.closest("#famOn").disabled = true; await famTurnOn(n); renderFamily(); if (famMe) toast("Family sharing is on. Send them your code!"); return; }
       if (t.closest("#famInvite")) return famInvite();
       if (t.closest("#famPause")) { famMe.paused = !famMe.paused; store.set(FAM_ME, famMe); await famCloud()?.updateFamily(famMe, { paused: famMe.paused }); await famNative(); if (!famMe.paused) { famLastPos = 0; famPushFull(); if (me) famOnPos({ latitude: me.lat, longitude: me.lon, speed: 0 }); } renderFamily(); toast(famMe.paused ? "Paused: family can't see where you are" : "Sharing again"); return; }
@@ -4947,6 +5026,7 @@
   }
   async function makeRecap(j) {
     if (!window.CFRecap) return toast("Trip videos aren't available in this version");
+    if (!isPro()) return showPaywall("video", () => makeRecap(j));
     await updateBadges();
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Your trip video</h2><p class="d-kind">${esc(j.name)}</p><div class="recap-stage" id="recapStage"><span class="spinner"></span></div>
       <div class="d-actions"><button class="cta" type="button" id="recapSave">⬇️ Save / share</button><button class="btn" type="button" id="recapPlay">▶ Play again</button></div>
@@ -5065,7 +5145,7 @@
   const sceneryOf = (c) => { const f = campFeat.get(c), t = textOf(c); return SCENERY.filter((s) => s.ok(f, t, c)); };
   setTimeout(() => campFeat.load(), 4000);
   function campTonight() {
-    const q = { hours: prefs.ctHours || 1, sunset: prefs.ctSunset !== false, fourwd: prefs.ctFourwd ?? !!prefs.fourwd, cost: prefs.ctCost || "cheap", to: null, want: new Set(prefs.ctWant || []), amen: new Set(prefs.ctAmen || []) };
+    const q = { hours: prefs.ctHours || 1, sunset: prefs.ctSunset !== false, fourwd: prefs.ctFourwd ?? !!prefs.fourwd, cost: prefs.ctCost || "cheap", to: null, want: new Set(isPro() ? prefs.ctWant || [] : []), amen: new Set(isPro() ? prefs.ctAmen || [] : []) };
     campFeat.load();
     const ask = (pt) => {
       const sun = sunTimes(pt.lat, pt.lon), leftMin = (sun - Date.now()) / 60000;
@@ -5081,7 +5161,7 @@
         <div class="place ct-place"><input class="ts-town" id="ctTo" type="text" placeholder="Or type a place, e.g. Agnes Water" autocomplete="off"><button type="button" class="clear-x" data-clear="ctTo" aria-label="Clear">✕</button><ul class="suggest" id="ctTo-suggest" role="listbox" hidden></ul></div>
         <h3 class="h2">What kind of camp?</h3>
         <div class="ct-chips" id="ctCost">${[["free", "Free only"], ["cheap", "Free first"], ["parks", "Caravan parks"], ["any", "Anything"]].map(([v, t]) => `<button type="button" class="chip${q.cost === v ? " is-on" : ""}" data-cost="${v}">${t}</button>`).join("")}</div>
-        <h3 class="h2">What do you want there?</h3>
+        <h3 class="h2">What do you want there? ${proTag()}</h3>
         <p class="help ct-help">Pick any. Leave them all off for anything.</p>
         <div class="ct-chips" id="ctWant">${SCENERY.map((x) => `<button type="button" class="chip${q.want.has(x.id) ? " is-on" : ""}" data-want="${x.id}" aria-pressed="${q.want.has(x.id)}">${x.em} ${x.label}</button>`).join("")}</div>
         <div class="ct-chips ct-amen" id="ctAmen">${CT_AMEN.map(([id, em, t]) => `<button type="button" class="chip${q.amen.has(id) ? " is-on" : ""}" data-amen="${id}" aria-pressed="${q.amen.has(id)}">${em} ${t}</button>`).join("")}</div>
@@ -5093,8 +5173,8 @@
       pick($("#ctWay"), "data-way", (v) => { q.to = v === "" ? null : places[+v]; $("#ctTo").value = ""; });
       pick($("#ctCost"), "data-cost", (v) => (q.cost = v));
       const multi = (box, attr, set) => box.addEventListener("click", (e) => { const b = e.target.closest(`[${attr}]`); if (!b) return; const v = b.getAttribute(attr); set.has(v) ? set.delete(v) : set.add(v); b.classList.toggle("is-on", set.has(v)); b.setAttribute("aria-pressed", set.has(v)); });
-      multi($("#ctWant"), "data-want", q.want);
-      multi($("#ctAmen"), "data-amen", q.amen);
+      if (isPro()) { multi($("#ctWant"), "data-want", q.want); multi($("#ctAmen"), "data-amen", q.amen); }
+      else ["#ctWant", "#ctAmen"].forEach((sel) => $(sel).addEventListener("click", (e) => { if (e.target.closest("[data-want],[data-amen]")) showPaywall("tonight", () => campTonight()); }));
       attachSuggest?.($("#ctTo"));
       $("#ctGo").addEventListener("click", async () => {
         q.sunset = $("#ctSun") ? $("#ctSun").checked : false; q.fourwd = $("#ctFour").checked;
@@ -5114,7 +5194,7 @@
       // how long can you drive? your choice, but not past dark if you asked for daylight
       let maxS = q.hours * 3600;
       if (q.sunset && leftMin > 0) maxS = Math.min(maxS, Math.max(20, leftMin - 15) * 60);
-      const reachM = Math.max(25000, maxS * 22);            // rough road metres in that time
+      const reachM = Math.max(25000, q.hours * 3600 * 22);  // search as far as you'd drive; daylight trims it below
       const straightM = reachM / 1.3;
       const d = straightM / 100000 + 0.1;
       const bb = [pt.lat - d, pt.lon - d, pt.lat + d, pt.lon + d];
@@ -5135,7 +5215,12 @@
         c._drive = (c._d * 1.3) / (isFourWD(c) ? 9 : 22);      // rough seconds (slower on 4WD tracks)
         c._toward = q.to ? (c._d + hav([c.lat, c.lon], [q.to.lat, q.to.lon])) / Math.max(toD, 1) : 1;   // 1 = right on the way
       });
-      list = list.filter((c) => c._drive <= maxS * 1.1 && c._d > 800 && (!q.to || c._toward < 1.35 || hav([c.lat, c.lon], [q.to.lat, q.to.lon]) < 25000));
+      const okWay = (c) => c._d > 800 && (!q.to || c._toward < 1.35 || hav([c.lat, c.lon], [q.to.lat, q.to.lon]) < 25000);
+      const inTime = list.filter((c) => c._drive <= maxS * 1.1 && okWay(c));
+      // not enough daylight left to reach anything: show the closest ones anyway and say they're after dark
+      const dusk = !inTime.length && maxS < q.hours * 3600;
+      if (dusk) maxS = q.hours * 3600;
+      list = dusk ? list.filter((c) => c._drive <= maxS * 1.1 && okWay(c)) : inTime;
       const rank = (c) => score(c, prefs.wants || [], q.cost) + (ratingCache.get(c.id)?.avg || 0) * 6 + (q.to ? (1.35 - c._toward) * 60 + Math.min(c._d, toD) / 8000 : -c._d / 4000) + (c.source === "rest" ? -10 : 0) + (q.fourwd && isFourWD(c) ? 4 : 0) + got(c) * 12 - unrec(c).length * 6;
       list.sort((a, b) => rank(b) - rank(a));
       let top = list.slice(0, 10);
@@ -5151,7 +5236,8 @@
       const tag = (c) => { const at = new Date(now + c._drive * 1000); const before = (sun - at) / 60000; return { at, txt: `Arrive about ${clock(at)}`, ok: before > 0, before }; };
       showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">Camp tonight</h2>
         <p class="d-kind">${q.to ? `Heading towards ${esc(q.to.name)} · ` : ""}up to ${CT_HOURS.find(([h]) => h === q.hours)?.[1] || ""}${q.sunset && leftMin > 0 ? ` · before sunset (${clock(sun)})` : ""}${q.fourwd ? " · incl. 4WD camps" : ""}${q.want.size ? ` · ${SCENERY.filter((x) => q.want.has(x.id)).map((x) => x.label.toLowerCase()).join(" or ")}` : ""}${amen.length ? ` · ${CT_AMEN.filter(([id]) => q.amen.has(id)).map(([, , t]) => t.toLowerCase()).join(", ")}` : ""}</p>
-        ${stretch ? `<p class="notice"><b>A bit further than you wanted</b><span>Nothing fits in that time, so these are the closest good camps.</span></p>` : ""}
+        ${dusk && top.length ? `<p class="notice"><b>Not enough daylight left</b><span>You can't reach a camp before dark, so these are the closest. Drive carefully: roos are out at dusk.</span></p>` : ""}
+        ${stretch && !dusk ? `<p class="notice"><b>A bit further than you wanted</b><span>Nothing fits in that time, so these are the closest good camps.</span></p>` : ""}
         ${top.length ? `<ul class="tonight-list">${top.map((c, k) => { const t = tag(c); return `<li data-id="${esc(c.id)}">
             <div class="tl-ph" id="tlPh${k}"></div>
             <div class="tl-body"><b>${esc(c.name)}</b><small>${km(c._road || c._d * 1.3)} · ${hrs(c._drive)} drive · ${t.txt}${leftMin > 0 ? (t.ok ? ` · <span class="ok-sun">${Math.round(t.before)} min before sunset</span>` : ` · <span class="late-sun">after dark</span>`) : ""}${isFourWD(c) ? " · 🛞 4WD" : ""}</small>
@@ -5422,6 +5508,7 @@
       set($("#from"), stops[0]); set($("#to"), stops.at(-1));
       viaStops = stops.slice(1, -1); renderVia();
       setNights(t.nights + Math.round(extraKm / 450));
+      if (t.fourwd && !isPro()) { showPaywall("fourwd"); return; }
       $("#fourwd").checked = !!t.fourwd; prefs.fourwd = !!t.fourwd; store.set("cf-prefs", prefs);
       closeDetail(); setView("plan");
       $("#results").hidden = true; $("#planForm").hidden = false;
@@ -5636,6 +5723,11 @@
     $("#stGoAccount").addEventListener("click", () => setView("saved"));
     $("#stFeedback").addEventListener("click", () => openFeedback());
     $("#stFamily").addEventListener("click", () => { setView("saved"); setSeg("family"); });
+    $("#stPro").addEventListener("click", async () => {
+      if (!isPro()) return showPaywall();
+      if (nativeStore) { try { setPro(await nativeStore({ op: "manage" }, 300000)); } catch { /* closed */ } }
+    });
+    paintPro();
     $("#stTerms").addEventListener("click", () => openLegal("terms"));
     $("#stPrivacy").addEventListener("click", () => openLegal("privacy"));
   })();

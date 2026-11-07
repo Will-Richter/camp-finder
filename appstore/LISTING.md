@@ -63,13 +63,21 @@ FAMILY CAN FOLLOW ALONG
 KEEP EVERY KILOMETRE
 • Your journey recorded, a travel journal, badges for famous roads, and a short video of your trip to share
 
+CAMP FINDER PRO (OPTIONAL SUBSCRIPTION)
+Planning trips, the camp map, fuel and water, Camp tonight and one state offline are free. Pro adds every 4WD track and 4WD trips, all of Australia offline, Camp tonight filters, unlimited saved trips, family sharing and trip videos.
+• Monthly or yearly, with a 7-day free trial for new subscribers
+• Payment is charged to your Apple ID when you confirm (after the free trial). The subscription renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel in your Apple ID settings.
+Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Privacy: https://gonelappin.au/privacy.html
+
 Camp and track details come from OpenStreetMap, Queensland Parks and Australian government open data, and other travellers. Camps close, tracks change and rules vary, so always check signs, tides, permits and local rules.
 
 ## What's new (1.0)
 First release. Tell us what's missing with the Send feedback button in Settings.
 
 ## App Review notes
-Camp Finder works fully without an account: plan a trip (e.g. "Bundaberg" to "Cairns"), explore camps on the map, try Camp tonight, switch the map to 4WD with the layers button. An account is only needed to add camps, rate them, upload photos and share your location with family.
+Camp Finder works fully without an account: plan a trip (e.g. "Bundaberg" to "Cairns"), explore camps on the map, try Camp tonight, and open the map button (top right) for map/satellite and what's shown.
+Camp Finder Pro (auto-renewing subscription, monthly au.com.gonelappin.campfinder.pro.monthly and yearly au.com.gonelappin.campfinder.pro.yearly, 7-day free trial): tap any 4WD track in the map menu, or Settings > Get Camp Finder Pro, to see the subscription screen with prices, the auto-renew terms, Terms of Use and Privacy Policy links, and Restore purchases. An account is only needed to add camps, rate them, upload photos and share your location with family.
 Demo account: review@gonelappin.au / (the password you set in Supabase). Go to My stuff > Saved > Sign in, type the email, then open "Sign in with a password".
 Background location: used only while the user has started a journey (to record the route and give "last fuel" alerts) or has turned on Family sharing (so family they invited can see where they are). Both are started by the user and can be stopped at any time; the blue location indicator is shown.
 Microphone/speech: voice search when the user taps the microphone.

@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import StoreKit
 import CoreLocation
 import MapKit
 import UniformTypeIdentifiers
@@ -24,7 +25,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile", "offlineMap"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile", "offlineMap", "store"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -105,6 +106,35 @@ struct WebAppView: UIViewRepresentable {
           try { Object.defineProperty(navigator, 'geolocation', {value: geo, configurable: true}); } catch (err) {}
         })();
         """
+
+        // MARK: Camp Finder Pro (in-app subscription)
+        private func handleStore(_ body: Any) {
+            guard let d = body as? [String: Any], let id = d["id"] as? Int, let op = d["op"] as? String else { return }
+            Task { @MainActor in
+                let store = ProStore.shared
+                if store.onChange == nil {
+                    store.onChange = { [weak self] json in self?.webView?.evaluateJavaScript("window.__cfProChanged && window.__cfProChanged(\(json))") }
+                    store.start()
+                }
+                do {
+                    switch op {
+                    case "products":
+                        let v = await store.load(); self.reply("__cfStoreDone", id, ok: true, v)
+                    case "status":
+                        let v = await store.status(); self.reply("__cfStoreDone", id, ok: true, v)
+                    case "buy":
+                        let v = try await store.buy(d["product"] as? String ?? ""); self.reply("__cfStoreDone", id, ok: true, v)
+                    case "restore":
+                        try await store.restore()
+                        let v = await store.status(); self.reply("__cfStoreDone", id, ok: true, v)
+                    case "manage":
+                        if let scene = UIApplication.shared.connectedScenes.first(where: { $0 is UIWindowScene }) as? UIWindowScene { try? await AppStore.showManageSubscriptions(in: scene) }
+                        let v = await store.status(); self.reply("__cfStoreDone", id, ok: true, v)
+                    default: self.reply("__cfStoreDone", id, ok: false, "Unknown")
+                    }
+                } catch { self.reply("__cfStoreDone", id, ok: false, error.localizedDescription) }
+            }
+        }
 
         // MARK: replies to the page
         private func reply(_ fn: String, _ id: Int, ok: Bool, _ value: Any) {
@@ -277,6 +307,7 @@ struct WebAppView: UIViewRepresentable {
                 guard let d = message.body as? [String: Any] else { return }
                 let result = JourneyRecorder.shared.handle(d) ?? NSNull()
                 if let id = d["reply"] as? Int { reply("__cfJourneyDone", id, ok: true, result) }
+            case "store": handleStore(message.body)
             case "log": cfLog("web \(message.body)")
             case "location":
                 if let d = message.body as? [String: Int] {
@@ -525,4 +556,78 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         task.didFinish()
     }
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
+}
+
+
+/// Camp Finder Pro: monthly and yearly auto-renewing subscriptions (StoreKit 2). Apple checks the purchases;
+/// the page asks for products, status, buy and restore over the "store" message handler.
+@MainActor
+final class ProStore {
+    static let shared = ProStore()
+    static let ids = ["au.com.gonelappin.campfinder.pro.monthly", "au.com.gonelappin.campfinder.pro.yearly"]
+    var products: [Product] = []
+    var onChange: ((String) -> Void)?
+    private var updates: Task<Void, Never>?
+
+    func start() {
+        guard updates == nil else { return }
+        updates = Task { [weak self] in
+            for await result in Transaction.updates {
+                if case .verified(let t) = result { await t.finish() }
+                await self?.push()
+            }
+        }
+        Task { await push() }
+    }
+
+    func load() async -> [[String: Any]] {
+        if products.isEmpty { products = (try? await Product.products(for: Self.ids)) ?? [] }
+        var out: [[String: Any]] = []
+        for p in products {
+            var d: [String: Any] = ["id": p.id, "price": p.displayPrice, "name": p.displayName, "value": NSDecimalNumber(decimal: p.price).doubleValue]
+            if let sub = p.subscription {
+                let u = sub.subscriptionPeriod.unit
+                d["unit"] = u == .year ? "year" : u == .month ? "month" : u == .week ? "week" : "day"
+                if let o = sub.introductoryOffer, o.paymentMode == .freeTrial {
+                    let v = o.period.value
+                    d["trialDays"] = o.period.unit == .day ? v : o.period.unit == .week ? v * 7 : o.period.unit == .month ? v * 30 : v * 365
+                    d["trialEligible"] = await sub.isEligibleForIntroOffer
+                }
+            }
+            out.append(d)
+        }
+        return out
+    }
+
+    func status() async -> [String: Any] {
+        var plan: [String: Any]? = nil
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let t) = result, Self.ids.contains(t.productID), t.revocationDate == nil {
+                plan = ["id": t.productID, "expires": (t.expirationDate?.timeIntervalSince1970 ?? 0) * 1000]
+            }
+        }
+        return ["pro": plan != nil, "plan": plan ?? NSNull()]
+    }
+
+    func push() async {
+        let s = await status()
+        if let data = try? JSONSerialization.data(withJSONObject: s) { onChange?(String(decoding: data, as: UTF8.self)) }
+    }
+
+    func buy(_ id: String) async throws -> String {
+        if products.isEmpty { _ = await load() }
+        guard let p = products.first(where: { $0.id == id }) else {
+            throw NSError(domain: "CampFinderPro", code: 1, userInfo: [NSLocalizedDescriptionKey: "That plan isn't available right now. Check your connection and try again."])
+        }
+        switch try await p.purchase() {
+        case .success(let verification):
+            guard case .verified(let t) = verification else { return "unverified" }
+            await t.finish(); await push(); return "ok"
+        case .userCancelled: return "cancelled"
+        case .pending: return "pending"
+        @unknown default: return "unknown"
+        }
+    }
+
+    func restore() async throws { try await AppStore.sync(); await push() }
 }

@@ -1472,3 +1472,28 @@ input:placeholder-shown + .clear-x { display: none; }
 .track-btn.is-on::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #7CF0A8; margin-left: 2px; animation: trackPulse 1.4s ease-in-out infinite; }
 @keyframes trackPulse { 50% { opacity: .3; } }
 @media (min-width: 900px) { .track-btn { left: auto; right: 74px; transform: none; } }
+/* Camp Finder Pro */
+.pro-tag { display: inline-block; vertical-align: middle; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--gold); color: var(--gold-ink); font: 800 10.5px var(--display); letter-spacing: .06em; font-style: normal; }
+.pro-tag[hidden] { display: none; }
+.pro-card { border: 2px solid var(--gold); }
+.pro-card.is-pro { border-color: var(--line); }
+.pw { padding-top: 18px; }
+.pw-hero { text-align: center; }
+.pw-logo { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: 18px; background: var(--sign); font-size: 34px; margin-bottom: 8px; }
+.pw-list { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 10px; }
+.pw-list li { display: flex; gap: 12px; align-items: flex-start; }
+.pw-list li > span { font-size: 22px; width: 30px; text-align: center; flex: none; }
+.pw-list b { display: block; font: 800 15px var(--display); }
+.pw-list small { color: var(--sub); font-size: 13px; }
+.pw-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
+.pw-plan { position: relative; border: 2px solid var(--line); background: var(--sheet); border-radius: 16px; padding: 16px 10px 12px; text-align: center; color: var(--ink); cursor: pointer; }
+.pw-plan.is-on { border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 30%, transparent); }
+.pw-plan b { display: block; font: 800 15px var(--display); }
+.pw-plan span { display: block; font: 800 18px var(--display); margin-top: 4px; }
+.pw-plan small { display: block; color: var(--sub); font-size: 12px; margin-top: 3px; min-height: 15px; }
+.pw-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--gold); color: var(--gold-ink); font: 800 11px var(--display); font-style: normal; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.pw-buy { width: 100%; }
+.pw-then { text-align: center; color: var(--sub); font-size: 13px; margin: 8px 0 2px; }
+.pw-restore { display: block; margin: 6px auto 0; border: 0; background: none; color: var(--free); font: 700 14px var(--display); padding: 8px; cursor: pointer; }
+.pw-legal { color: var(--sub); font-size: 11.5px; line-height: 1.45; margin-top: 14px; }
+.pw-legal a { color: var(--sub); }

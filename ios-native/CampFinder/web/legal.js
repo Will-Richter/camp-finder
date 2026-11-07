@@ -20,6 +20,9 @@ window.CF_LEGAL = {
 <p>You can use most of the app without an account. If you create one, keep access to your email secure. When you add camps, photos, ratings, reviews or check-ins, you confirm they're honest, based on your own experience, and that you own any photos you post. You give us a non-exclusive, royalty-free licence to show that content in the app.</p>
 <p>Don't post anything unlawful, misleading, offensive, private information about other people, or advertising. We can remove content or close accounts that break these rules. Other travellers can report content, and content with several reports is hidden automatically.</p>
 
+<h3>Camp Finder Pro</h3>
+<p>Most of the app is free. Camp Finder Pro is an optional subscription, monthly or yearly, bought through Apple in the iPhone app. New subscribers may get a free trial; if you don't cancel before it ends, the subscription starts and you're charged. Payment is charged to your Apple ID when you confirm the purchase (or when the trial ends). The subscription renews automatically at the same price unless you cancel at least 24 hours before the end of the current period. You can manage or cancel it any time in your Apple ID settings (Settings, your name, Subscriptions). Refunds are handled by Apple under its policies and the Australian Consumer Law. If we change the price we'll tell you before it applies to you.</p>
+
 <h3>Bookings and other businesses</h3>
 <p>Links to ferries, permits, caravan parks, motels, hotels and fuel stations take you to other businesses. We don't take bookings or payments and aren't responsible for those businesses, their prices or their services.</p>
 
