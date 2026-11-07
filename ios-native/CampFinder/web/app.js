@@ -13,7 +13,9 @@
       "https://overpass.kumi.systems/api/interpreter",
       "https://overpass.private.coffee/api/interpreter",
     ],
-    valhalla: "https://valhalla1.openstreetmap.de/route",
+    valhalla: "https://valhalla1.openstreetmap.de/route",   // free backup track router
+    // 4WD and island routes: Stadia Maps' routing (same key and plan as the map). Empty = use the free backup only
+    trackRouter: "https://api.stadiamaps.com/route/v1",
     mapsIndex: "data/maps.json",   // offline state map files (built by .github/workflows/offline-maps.yml)
     tracksUrl: "tiles/tracks.pmtiles",   // every 4WD track in Australia (built by .github/workflows/tracks.yml)
     mapsIndexLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/maps.json",
@@ -419,11 +421,19 @@
   }
   async function trackRoute(points, steps = false) {
     const body = { locations: points.map((p) => ({ lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), costing: "auto", costing_options: { auto: { use_tracks: 1, use_highways: fourWD ? 0.8 : 0.5, use_living_streets: 0.3 } }, units: "kilometers", directions_type: steps ? "instructions" : "none", language: "en-AU" };
-    const url = `${CFG.valhalla}?json=${encodeURIComponent(JSON.stringify(body))}`;
-    // straight from the page first (the track router allows it); the phone's own fetch as a backup
-    let j = null;
-    try { j = await fetchJSON(url, {}, 30000); } catch (e) { if (nativeFetch) j = JSON.parse(await nativeFetch(url, { timeout: 30000 })); else throw e; }
-    const legs = j?.trip?.legs; if (!legs?.length) throw new Error("No track route");
+    const q = `json=${encodeURIComponent(JSON.stringify(body))}`;
+    const urls = [];
+    if (CFG.trackRouter && CFG.stadiaKey) urls.push(`${CFG.trackRouter}?api_key=${CFG.stadiaKey}&${q}`);   // Stadia Maps (paid plan)
+    urls.push(`${CFG.valhalla}?${q}`);                                                                     // free backup
+    // each router straight from the page first, the phone's own fetch as a backup
+    let j = null, lastErr = null;
+    for (const url of urls) {
+      try { j = await fetchJSON(url, {}, 30000); } catch (e) { lastErr = e; try { if (nativeFetch) j = JSON.parse(await nativeFetch(url, { timeout: 30000 })); } catch (e2) { lastErr = e2; } }
+      if (j?.trip?.legs?.length) break;
+      j = null;
+    }
+    if (!j) throw lastErr || new Error("No track route");
+    const legs = j.trip.legs;
     const coordinates = [], outLegs = [];
     legs.forEach((l, k) => { const c = poly6(l.shape); coordinates.push(...(k ? c.slice(1) : c)); const dist = l.summary.length * 1000; outLegs.push({ steps: steps ? (l.maneuvers || []).map((m) => ({ distance: (m.length || 0) * 1000, text: m.instruction || "", maneuver: { type: "valhalla" } })) : [], distance: dist, duration: Math.min(l.summary.time, dist / (30 / 3.6))  /* Valhalla's time, but never slower than 30 km/h average (its sand-track guess is far too slow) */ }); });
     const distance = outLegs.reduce((a, l) => a + l.distance, 0), duration = outLegs.reduce((a, l) => a + l.duration, 0);

@@ -1,6 +1,6 @@
 /* Terms and conditions and privacy policy shown in Settings. Plain-English drafts: have them checked before launch. */
 window.CF_LEGAL = {
-  updated: "3 November 2026",
+  updated: "7 November 2026",
   contact: "hello@gonelappin.au",
   terms: `
 <h3>About these terms</h3>
@@ -57,7 +57,7 @@ window.CF_LEGAL = {
 <li><b>Google Maps (Places)</b> for camp photos, reviews, fuel prices and places to stay. The places you look at and points along your route are sent to Google.</li>
 <li><b>Stadia Maps and Esri</b> for the map and satellite background (map data © OpenStreetMap contributors), and Wikimedia Commons for some photos. The map area you're looking at is requested from them.</li>
 <li><b>Open-Meteo</b> for weather forecasts and <b>state fire and emergency services</b> for bushfire warnings, using points along your route.</li>
-<li><b>OpenStreetMap routing (FOSSGIS Valhalla)</b> for routes along 4WD tracks and on the islands. The start, end and stops of those routes are sent to it.</li>
+<li><b>Stadia Maps routing</b> (with OpenStreetMap's FOSSGIS router as a backup) for routes along 4WD tracks and on the islands. The start, end and stops of those routes are sent to it.</li>
 <li><b>Wikipedia</b> for descriptions of places to see. The name of the place you open is sent to it.</li>
 <li><b>GitHub</b>, which hosts the weekly camp list update and the state maps you download. No personal information is sent.</li>
 </ul>
