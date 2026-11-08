@@ -2925,19 +2925,32 @@
     const g = gPlace.get(c.id);
     return g?.rating ? `<span class="g-chip">★ ${g.rating.toFixed(1)} <small>Google (${g.count.toLocaleString("en-AU")})</small></span>` : "";
   }
-  // A photo on each night's camp card in a trip (one Google photo each)
-  async function cardPhotos() {
-    const cards = $$("#nightList .camp-card[data-id]:not([data-ph])");
-    await Promise.all(cards.map(async (el) => {
-      el.dataset.ph = "1";
+  // One photo for a camp or caravan park: its own, then travellers', then Google's, then a Wikimedia photo taken nearby
+  const firstPhotoCache = new Map();
+  async function firstPhoto(c) {
+    if (firstPhotoCache.has(c.id)) return firstPhotoCache.get(c.id);
+    let src = c.photo || "";
+    if (!src && window.CFCloud?.enabled) { try { src = (await window.CFCloud.photosFor(c.id))[0]?.url || ""; } catch {} }
+    if (!src) { try { src = (await soon(googlePhotos(c, 1), 8000, []))[0]?.src || ""; } catch {} }
+    if (!src) { try { src = (await soon(photosNear(c), 8000, []))[0]?.thumb || ""; } catch {} }
+    firstPhotoCache.set(c.id, src);
+    return src;
+  }
+  // A photo on every camp card (trip nights and the Explore list), fetched as each card scrolls into view
+  const photoSeen = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { photoSeen.unobserve(e.target); cardPhoto(e.target); } }), { rootMargin: "200px" }) : null;
+  function cardPhotos() {
+    const cards = $$("#nightList .camp-card[data-id]:not([data-ph]), #exploreList .camp-card[data-id]:not([data-ph])");
+    // trip nights load straight away (only a handful); the long Explore list loads as you scroll
+    cards.forEach((el) => { el.dataset.ph = "1"; photoSeen && el.closest("#exploreList") ? photoSeen.observe(el) : cardPhoto(el); });
+  }
+  async function cardPhoto(el) {
+    {
       const c = findCamp(el.dataset.id); if (!c) return;
-      let src = c.photo || "";
-      if (!src && window.CFCloud?.enabled) { try { src = (await window.CFCloud.photosFor(c.id))[0]?.url || ""; } catch {} }
-      if (!src) { try { src = (await soon(googlePhotos(c, 1), 8000, []))[0]?.src || ""; } catch {} }
+      const src = await firstPhoto(c);
       if (src && el.isConnected && !el.querySelector(".cc-photo")) el.insertAdjacentHTML("afterbegin", `<img class="cc-photo" src="${esc(src)}" alt="" loading="lazy">`);
       if (el.isConnected && !el.querySelector(".g-chip") && gPlace.get(c.id)?.rating) el.querySelector(".cc-meta")?.insertAdjacentHTML("beforeend", googleChip(c));
       const lm = el.closest(".stop-body")?.querySelector(`[data-learn="${CSS.escape(c.id)}"]`); if (lm) lm.href = learnUrl(c);
-    }));
+    }
     crowdTags();
   }
 
@@ -3182,7 +3195,7 @@
     if (exploreOffline) $("#exploreCount").textContent = `Offline: showing ${shown.length} downloaded camp${shown.length === 1 ? "" : "s"}`;
     // the list only redraws when what's in it changes (distances update once you stop moving)
     const top = shown.slice(0, 60), sig = top.map((c) => c.id).join(",") + "|" + Math.round(ctr.lat * 50) + "," + Math.round(ctr.lng * 50);
-    if (sig !== exListSig) { exListSig = sig; $("#exploreList").innerHTML = top.map((c) => `<li>${campCard(c, { fromCenter: c._d })}</li>`).join(""); }
+    if (sig !== exListSig) { exListSig = sig; $("#exploreList").innerHTML = top.map((c) => `<li>${campCard(c, { fromCenter: c._d })}</li>`).join(""); cardPhotos(); }
   }
   $("#exploreList").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(findCamp(card.dataset.id)); });
 
@@ -5154,6 +5167,24 @@
   const CT_AMEN = [["toilets", "🚻", "Toilets"], ["showers", "🚿", "Showers"], ["water", "💧", "Water"], ["dogs", "🐕", "Dogs OK"], ["fires", "🔥", "Campfires"]];
   const sceneryOf = (c) => { const f = campFeat.get(c), t = textOf(c); return SCENERY.filter((s) => s.ok(f, t, c)); };
   setTimeout(() => campFeat.load(), 4000);
+  // How good a spot is to wake up at: water, gorges and falls, national parks, and how far it is from the nearest town
+  function seclusion(c) {
+    const t = campDB.townNear?.(c.lat, c.lon);
+    if (!t) return 22;                                   // nothing within about 60 km
+    const d = t.d / (t.rank >= 2 ? 1.6 : 1);             // a real town counts as closer than a village
+    return d > 20000 ? 18 : d > 10000 ? 12 : d > 5000 ? 5 : d < 2500 ? -18 : 0;
+  }
+  function beauty(c) {
+    const sc = c._scene || sceneryOf(c);
+    const views = sc.filter((x) => x.id !== "bush").length;
+    const np = !!c.park || /^qpws\//.test(c.id) || PARK_OP.test(c.tags?.operator || "");   // national park and state forest camps
+    let b = Math.min(views, 3) * 14 + (sc.some((x) => x.id === "bush") ? 8 : 0) + (np ? 16 : 0) + seclusion(c);
+    if (np && c.cost !== "free") b += 30;                 // a few dollars for a park permit still counts as a cheap bush camp
+    if (isFourWD(c)) b += 6;
+    if (c.source === "rest") b -= 20;
+    c._quiet = seclusion(c) >= 12 && c.source !== "rest";
+    return b;
+  }
   function campTonight() {
     const q = { hours: prefs.ctHours || 1, sunset: prefs.ctSunset !== false, fourwd: prefs.ctFourwd ?? !!prefs.fourwd, cost: prefs.ctCost || "cheap", to: null, want: new Set(isPro() ? prefs.ctWant || [] : []), amen: new Set(isPro() ? prefs.ctAmen || [] : []) };
     campFeat.load();
@@ -5170,7 +5201,7 @@
         <div class="ct-chips" id="ctWay"><button type="button" class="chip is-on" data-way="">🧭 Any direction</button>${places.map((t, k) => `<button type="button" class="chip" data-way="${k}">Towards ${esc(t.name)} <small>${compass(t.br)}</small></button>`).join("")}</div>
         <div class="place ct-place"><input class="ts-town" id="ctTo" type="text" placeholder="Or type a place, e.g. Agnes Water" autocomplete="off"><button type="button" class="clear-x" data-clear="ctTo" aria-label="Clear">✕</button><ul class="suggest" id="ctTo-suggest" role="listbox" hidden></ul></div>
         <h3 class="h2">What kind of camp?</h3>
-        <div class="ct-chips" id="ctCost">${[["free", "Free only"], ["cheap", "Free first"], ["parks", "Caravan parks"], ["any", "Anything"]].map(([v, t]) => `<button type="button" class="chip${q.cost === v ? " is-on" : ""}" data-cost="${v}">${t}</button>`).join("")}</div>
+        <div class="ct-chips" id="ctCost">${[["cheap", "Bush and free camps"], ["free", "Free only"], ["parks", "Caravan parks"], ["any", "Anything"]].map(([v, t]) => `<button type="button" class="chip${q.cost === v ? " is-on" : ""}" data-cost="${v}">${t}</button>`).join("")}</div>
         <h3 class="h2">What do you want there? ${proTag()}</h3>
         <p class="help ct-help">Pick any. Leave them all off for anything.</p>
         <div class="ct-chips" id="ctWant">${SCENERY.map((x) => `<button type="button" class="chip${q.want.has(x.id) ? " is-on" : ""}" data-want="${x.id}" aria-pressed="${q.want.has(x.id)}">${x.em} ${x.label}</button>`).join("")}</div>
@@ -5210,7 +5241,8 @@
       const bb = [pt.lat - d, pt.lon - d, pt.lat + d, pt.lon + d];
       const res = campDB.inArea(bb, 0.1);
       let list = mergeSources(res.camps, userCampsIn(bb), res.ramps, res.dumps)
-        .filter((c) => !c.closed && (q.fourwd ? (rigOK(c, prefs.rig) || isFourWD(c)) : rigOK(c, prefs.rig) && !isFourWD(c)) && costOK(c, q.cost) && (!settings.dog || (c.a.dogs !== false && !c.park)));
+        .filter((c) => !c.closed && (q.fourwd ? (rigOK(c, prefs.rig) || isFourWD(c)) : rigOK(c, prefs.rig) && !isFourWD(c)) && costOK(c, q.cost) && (!settings.dog || (c.a.dogs !== false && !c.park))
+          && (q.cost === "parks" || q.cost === "any" || !c.cpark));   // caravan parks only when you ask for them
       // the kind of spot you asked for (any of them), and nothing that's recorded as missing what you need
       const amen = [...q.amen];
       const PARK_HAS = ["toilets", "showers", "water"];   // caravan parks always have these
@@ -5231,9 +5263,12 @@
       const dusk = !inTime.length && maxS < q.hours * 3600;
       if (dusk) maxS = q.hours * 3600;
       list = dusk ? list.filter((c) => c._drive <= maxS * 1.1 && okWay(c)) : inTime;
-      const rank = (c) => score(c, prefs.wants || [], q.cost) + (ratingCache.get(c.id)?.avg || 0) * 6 + (q.to ? (1.35 - c._toward) * 60 + Math.min(c._d, toD) / 8000 : -c._d / 4000) + (c.source === "rest" ? -10 : 0) + (q.fourwd && isFourWD(c) ? 4 : 0) + got(c) * 12 - unrec(c).length * 6;
+      const rank = (c) => score(c, prefs.wants || [], q.cost) + (q.cost === "parks" ? 0 : beauty(c)) + (ratingCache.get(c.id)?.avg || 0) * 6 + (q.to ? (1.35 - c._toward) * 60 + Math.min(c._d, toD) / 8000 : -c._d / 15000) + (c.source === "rest" ? -10 : 0) + (q.fourwd && isFourWD(c) ? 4 : 0) + got(c) * 12 - unrec(c).length * 6;
       list.sort((a, b) => rank(b) - rank(a));
-      let top = list.slice(0, 10);
+      // the same camp from two sources (e.g. "Wongi Waterholes" and "Wongi Waterholes Camping Area"): keep the better one
+      const kept = [];
+      for (const c of list) { if (!kept.some((k) => hav([k.lat, k.lon], [c.lat, c.lon]) < 600)) kept.push(c); if (kept.length >= 10) break; }
+      let top = kept;
       // real drive times for the best few (Apple Maps on the phone; tracks for 4WD camps), then drop any that are really too far
       await Promise.all(top.slice(0, 8).map(async (c) => {
         const r = await soon((isFourWD(c) ? trackRoute([pt, c]) : osrm([pt, c])), 9000, null);
@@ -5251,7 +5286,7 @@
         ${top.length ? `<ul class="tonight-list">${top.map((c, k) => { const t = tag(c); return `<li data-id="${esc(c.id)}">
             <div class="tl-ph" id="tlPh${k}"></div>
             <div class="tl-body"><b>${esc(c.name)}</b><small>${km(c._road || c._d * 1.3)} · ${hrs(c._drive)} drive · ${t.txt}${leftMin > 0 ? (t.ok ? ` · <span class="ok-sun">${Math.round(t.before)} min before sunset</span>` : ` · <span class="late-sun">after dark</span>`) : ""}${isFourWD(c) ? " · 🛞 4WD" : ""}</small>
-              ${c._scene?.length ? `<div class="tl-scene">${c._scene.filter((x) => x.id !== "bush" || c._scene.length === 1).slice(0, 3).map((x) => `<span>${x.em} ${x.label}</span>`).join("")}</div>` : ""}
+              ${c._quiet ? `<div class="tl-scene"><span>🤫 Secluded</span>${(c._scene || []).filter((x) => x.id !== "bush" || c._scene.length === 1).slice(0, 2).map((x) => `<span>${x.em} ${x.label}</span>`).join("")}</div>` : c._scene?.length ? `<div class="tl-scene">${c._scene.filter((x) => x.id !== "bush" || c._scene.length === 1).slice(0, 3).map((x) => `<span>${x.em} ${x.label}</span>`).join("")}</div>` : ""}
               ${unrec(c).length ? `<small class="tl-unk">${unrec(c).map((w) => SHORT_LABEL[w]).join(", ")} not recorded</small>` : ""}
               <div class="tl-tags">${priceTag(c)}${amenIcons(c)}</div>
               <div class="stop-actions"><a class="cta" href="${navUrl(c, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a><button class="btn" type="button" data-tl="${esc(c.id)}">Details</button></div>
@@ -5261,9 +5296,8 @@
         <p class="caveat">Drive times are from the route where we could get one, otherwise a rough guess. Check signs when you arrive.</p></div>`);
       $("#ctAgain").addEventListener("click", () => ask(pt));
       $$("[data-tl]").forEach((b) => b.addEventListener("click", () => openDetail(top.find((c) => c.id === b.dataset.tl))));
-      top.slice(0, 5).forEach(async (c, k) => {
-        let src = c.photo || "";
-        if (!src) { try { src = (await soon(googlePhotos(c, 1), 8000, []))[0]?.src || ""; } catch {} }
+      top.forEach(async (c, k) => {
+        const src = await firstPhoto(c);
         const el = $(`#tlPh${k}`); if (el && src) el.innerHTML = `<img src="${esc(src)}" alt="">`;
       });
       if (top.length) { legLayer.clearLayers(); top.forEach((c, k) => campMarker(c, { night: true, label: String(k + 1) }).addTo(legLayer)); map.fitBounds([[pt.lat, pt.lon], ...top.map((c) => [c.lat, c.lon])], fitPad()); }
