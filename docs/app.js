@@ -119,14 +119,15 @@
   // Pro: 4WD tracks and 4WD trips, every state offline, Camp tonight filters, unlimited saved trips, family sharing, trip videos.
   // Apple handles the purchase (StoreKit 2 over the "store" message handler); the page only asks and listens.
   const nativeStore = nativeCall("store", "__cfStoreDone");
-  const PRO_IDS = { month: "au.com.gonelappin.campfinder.pro.monthly", year: "au.com.gonelappin.campfinder.pro.yearly" };
-  const PRO_FALLBACK = { month: { price: "A$4.99", value: 4.99 }, year: { price: "A$29.99", value: 29.99 } };   // until the App Store answers
+  const PRO_IDS = { month: "au.com.gonelappin.campfinder.pro.monthly", year: "au.com.gonelappin.campfinder.pro.yearly", once: "au.com.gonelappin.campfinder.pro.lifetime" };
+  const PRO_FALLBACK = { month: { price: "A$4.99", value: 4.99 }, year: { price: "A$34.99", value: 34.99 }, once: { price: "A$99.00", value: 99 } };   // until the App Store answers
   const PRO_WHY = { tracks: "The 4WD tracks map", fourwd: "4WD trips along the tracks", states: "More than one state offline", tonight: "Camp tonight filters", trips: "More than 3 saved trips", family: "Family sharing", video: "Trip videos" };
-  const pro = { on: !!store.get("cf-pro", false), products: null };
+  const pro = { on: !!store.get("cf-pro", false), forever: !!store.get("cf-pro-forever", false), products: null };
   const isPro = () => pro.on || (!nativeStore && !!store.get("cf-pro-test", false));
   function setPro(st) {
     const on = !!st?.pro, was = pro.on;
     pro.on = on; store.set("cf-pro", on);
+    pro.forever = on && !!st?.plan?.lifetime; store.set("cf-pro-forever", pro.forever);
     try { paintPro(); } catch { /* still starting up */ }
     if (on && !was) toast("Camp Finder Pro is on. Enjoy the big lap! 🎉", 3500);
   }
@@ -140,16 +141,16 @@
     const c = document.getElementById("stPro"); if (!c) return;
     c.classList.toggle("is-pro", on);
     c.querySelector("b").textContent = on ? "Camp Finder Pro is on" : "Get Camp Finder Pro";
-    c.querySelector("small").textContent = on ? "Thanks for supporting the app. Tap to manage your subscription." : "Every 4WD track, all of Australia offline, Camp tonight filters and more. 7 days free.";
+    c.querySelector("small").textContent = on ? (pro.forever ? "Pro forever. Thanks for supporting the app." : "Thanks for supporting the app. Tap to manage your subscription.") : "Every 4WD track, all of Australia offline, Camp tonight filters and more. 7 days free.";
   }
   async function showPaywall(why, then) {
     let plan = "year";
     const FEATS = [["🛞", "Every 4WD track", "Beach runs, sand and hard 4WD on the map, and trips that follow the tracks"], ["📶", "All of Australia offline", "Download every state for when there's no signal"], ["🌅", "Camp tonight filters", "Beach, river, lake, dam or gorge, with toilets, showers or dogs OK"], ["🧭", "Unlimited saved trips", "Keep every trip you plan"], ["👨‍👩‍👧", "Family sharing", "Let family follow your trip live"], ["🎬", "Trip videos", "A short film of every trip to share"]];
     const P = (u) => pro.products?.find((p) => p.unit === u) || PRO_FALLBACK[u];
     const draw = () => {
-      const m = P("month"), y = P("year"), sel = P(plan);
+      const m = P("month"), y = P("year"), o = P("once"), sel = P(plan), once = plan === "once";
       const save = m.value && y.value ? Math.round((1 - y.value / (m.value * 12)) * 100) : 0;
-      const trial = sel.trialDays && sel.trialEligible !== false ? sel.trialDays : 0;
+      const trial = !once && sel.trialDays && sel.trialEligible !== false ? sel.trialDays : 0;
       const perMonth = y.value ? `about ${(y.price.match(/^[^\d]*/)?.[0] || "$")}${(y.value / 12).toFixed(2)} a month` : "";
       showDetail(`<div class="d-pad pw">
         <div class="pw-hero"><span class="pw-logo" aria-hidden="true">⛺</span><h2 class="d-title">Camp Finder Pro</h2>
@@ -158,26 +159,27 @@
         <div class="pw-plans" role="radiogroup" aria-label="Choose a plan">
           <button type="button" role="radio" class="pw-plan${plan === "year" ? " is-on" : ""}" data-plan="year" aria-checked="${plan === "year"}">${save > 0 ? `<i class="pw-badge">Save ${save}%</i>` : ""}<b>Yearly</b><span>${esc(y.price)} a year</span><small>${perMonth}</small></button>
           <button type="button" role="radio" class="pw-plan${plan === "month" ? " is-on" : ""}" data-plan="month" aria-checked="${plan === "month"}"><b>Monthly</b><span>${esc(m.price)} a month</span><small>Cancel any time</small></button>
+          <button type="button" role="radio" class="pw-plan pw-wide${once ? " is-on" : ""}" data-plan="once" aria-checked="${once}"><b>Pro forever</b><span>${esc(o.price)} once</span><small>Pay once and keep Pro. No subscription.</small></button>
         </div>
-        ${nativeStore ? `<button class="cta pw-buy" type="button" id="pwBuy">${trial ? `Start ${trial}-day free trial` : `Subscribe for ${esc(sel.price)} a ${plan}`}</button>
-          <p class="pw-then">${trial ? `Free for ${trial} days, then ${esc(sel.price)} a ${plan}. ` : ""}Cancel any time in Settings → your name → Subscriptions.</p>
+        ${nativeStore ? `<button class="cta pw-buy" type="button" id="pwBuy">${once ? `Buy Pro forever for ${esc(o.price)}` : trial ? `Start ${trial}-day free trial` : `Subscribe for ${esc(sel.price)} a ${plan}`}</button>
+          <p class="pw-then">${once ? "One payment. Pro stays on for good on your Apple ID." : `${trial ? `Free for ${trial} days, then ${esc(sel.price)} a ${plan}. ` : ""}Cancel any time in Settings → your name → Subscriptions.`}</p>
           <button class="link pw-restore" type="button" id="pwRestore">Restore purchases</button>`
         : `<p class="pw-then">Pro is bought in the Camp Finder iPhone app. <a href="https://gonelappin.au" target="_blank" rel="noopener">Get the app</a></p>`}
-        <p class="pw-legal">Payment is charged to your Apple ID when you confirm${trial ? " (after the free trial ends)" : ""}. The subscription renews automatically at the same price each ${plan} unless it's cancelled at least 24 hours before the end of the current period, and your account is charged for renewal within 24 hours before the period ends. Manage or cancel any time in your Apple ID settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://gonelappin.au/privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
+        <p class="pw-legal">${once ? "Pro forever is a one-off purchase charged to your Apple ID when you confirm. It doesn't renew. " : `Payment is charged to your Apple ID when you confirm${trial ? " (after the free trial ends)" : ""}. `}Subscriptions renew automatically at the same price each ${once ? "period" : plan} unless cancelled at least 24 hours before the end of the current period, and your account is charged for renewal within 24 hours before the period ends. Manage or cancel any time in your Apple ID settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://gonelappin.au/privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
       </div>`);
       $("#detailBody").querySelectorAll("[data-plan]").forEach((b) => b.addEventListener("click", () => { plan = b.dataset.plan; draw(); }));
       $("#pwBuy")?.addEventListener("click", async (e) => {
         const btn = e.currentTarget; btn.disabled = true; btn.textContent = "Connecting to the App Store…";
         try {
           const r = await nativeStore({ op: "buy", product: PRO_IDS[plan] }, 300000);
-          if (r === "ok") { setPro({ pro: true }); closeDetail(); then?.(); return; }
+          if (r === "ok") { setPro({ pro: true, plan: once ? { lifetime: true } : null }); closeDetail(); then?.(); return; }
           if (r === "pending") toast("Waiting for approval. Pro turns on as soon as it's approved.", 5000);
         } catch (err) { toast(String(err.message || "Couldn't reach the App Store. Try again."), 4000); }
         btn.disabled = false; draw();
       });
       $("#pwRestore")?.addEventListener("click", async (e) => {
         e.currentTarget.disabled = true; e.currentTarget.textContent = "Checking your Apple ID…";
-        try { const st = await nativeStore({ op: "restore" }, 120000); setPro(st); if (st?.pro) { toast("Pro restored"); closeDetail(); then?.(); return; } toast("No Camp Finder Pro subscription found on this Apple ID", 4000); }
+        try { const st = await nativeStore({ op: "restore" }, 120000); setPro(st); if (st?.pro) { toast("Pro restored"); closeDetail(); then?.(); return; } toast("No Camp Finder Pro purchase found on this Apple ID", 4000); }
         catch (err) { toast(String(err.message || "Couldn't reach the App Store"), 4000); }
         draw();
       });
@@ -5733,6 +5735,7 @@
     $("#stFamily").addEventListener("click", () => { setView("saved"); setSeg("family"); });
     $("#stPro").addEventListener("click", async () => {
       if (!isPro()) return showPaywall();
+      if (pro.forever) return toast("You have Camp Finder Pro forever. Thanks!", 3000);
       if (nativeStore) { try { setPro(await nativeStore({ op: "manage" }, 300000)); } catch { /* closed */ } }
     });
     paintPro();

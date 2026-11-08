@@ -616,7 +616,8 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
 @MainActor
 final class ProStore {
     static let shared = ProStore()
-    static let ids = ["au.com.gonelappin.campfinder.pro.monthly", "au.com.gonelappin.campfinder.pro.yearly"]
+    static let lifetime = "au.com.gonelappin.campfinder.pro.lifetime"   // one-off "Pro forever" (non-consumable)
+    static let ids = ["au.com.gonelappin.campfinder.pro.monthly", "au.com.gonelappin.campfinder.pro.yearly", lifetime]
     var products: [Product] = []
     var onChange: ((String) -> Void)?
     private var updates: Task<Void, Never>?
@@ -637,6 +638,7 @@ final class ProStore {
         var out: [[String: Any]] = []
         for p in products {
             var d: [String: Any] = ["id": p.id, "price": p.displayPrice, "name": p.displayName, "value": NSDecimalNumber(decimal: p.price).doubleValue]
+            if p.type == .nonConsumable { d["unit"] = "once" }
             if let sub = p.subscription {
                 let u = sub.subscriptionPeriod.unit
                 d["unit"] = u == .year ? "year" : u == .month ? "month" : u == .week ? "week" : "day"
@@ -655,6 +657,7 @@ final class ProStore {
         var plan: [String: Any]? = nil
         for await result in Transaction.currentEntitlements {
             if case .verified(let t) = result, Self.ids.contains(t.productID), t.revocationDate == nil {
+                if t.productID == Self.lifetime { plan = ["id": t.productID, "expires": 0, "lifetime": true]; break }
                 plan = ["id": t.productID, "expires": (t.expirationDate?.timeIntervalSince1970 ?? 0) * 1000]
             }
         }
