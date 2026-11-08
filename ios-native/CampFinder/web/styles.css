@@ -1526,3 +1526,13 @@ input:placeholder-shown + .clear-x { display: none; }
 .need-open { cursor: pointer; }
 .ad-chip { display: inline-block; font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 99px; background: #1E6FD9; color: #fff; vertical-align: 1px; }
 .price.paid.est { box-shadow: inset 0 0 0 1.5px var(--paid); border-style: dashed; opacity: .9; }
+/* fuel prices on the map and in Fuel nearby */
+.mk-price { display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 7px 0 5px; border-radius: 11px; background: #fff; color: #1A1F1C; font: 800 12px/1 system-ui, sans-serif; box-shadow: 0 1px 5px rgba(0,0,0,.3); white-space: nowrap; transform: translateX(calc(32px - 50%)); }
+.mk-price b { font-variant-numeric: tabular-nums; }
+.mk-price.cheap { background: #1F8A4C; color: #fff; }
+.fuel-sort { display: flex; gap: 6px; margin: 4px 0 10px; }
+.fuel-sort button { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1.5px solid var(--hair, #DCE3DD); background: transparent; color: inherit; font-weight: 700; font-size: 14px; }
+.fuel-sort button.on { background: var(--green, #0E5A3E); border-color: var(--green, #0E5A3E); color: #fff; }
+.fuel-pr { margin-left: auto; margin-right: 8px; font-weight: 800; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fuel-pr small { font-size: 11px; font-weight: 600; margin-left: 1px; }
+.fuel-pr.cheap { color: #1F8A4C; }

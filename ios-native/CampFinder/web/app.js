@@ -3347,11 +3347,40 @@
       // fuel, dump and water: one per small patch of screen until you're right in close
       const uCell = (360 / Math.pow(2, z)) * (26 / 256), uTaken = new Set();
       const utilsShown = z >= 14 ? utils : utils.filter((x) => { const k = `${x.k}|${Math.floor(x.lat / uCell)},${Math.floor(x.lon / uCell)}`; if (uTaken.has(k)) return false; uTaken.add(k); return true; });
-      syncLayer(utilLayer, scShown, utilsShown.slice(0, 600), (x) => `u|${x.k}|${x.id}`, (x) => {
-        const m = L.marker([x.lat, x.lon], { icon: utilIcon({ fuel: "⛽", dump: "🚽", water: "💧" }[x.k]), title: x.name || x.k, keyboard: true, zIndexOffset: 200 });
+      // fuel prices on the map (government price feeds), once you're zoomed in on a town
+      const priced = layers.fuel && z >= 12 ? mapFuelPrices(bb, utilsShown) : null;
+      syncLayer(utilLayer, scShown, utilsShown.slice(0, 600), (x) => `u|${x.k}|${x.id}|${x._p ? x._p.toFixed(3) + (x._cheap ? "c" : "") : ""}`, (x) => {
+        const m = L.marker([x.lat, x.lon], { icon: x._p ? priceIcon(x._p, x._cheap) : utilIcon({ fuel: "⛽", dump: "🚽", water: "💧" }[x.k]), title: x.name || x.k, keyboard: true, zIndexOffset: x._p ? 300 : 200 });
         m.on("click", () => openUtil(x, x.k)); return m;
       });
     }, 120);
+  }
+  // ---- fuel prices for the stations on screen, from the government feeds (cached for 15 minutes per area)
+  const fuelAreaCache = new Map();
+  const priceIcon = (v, cheap) => L.divIcon({ className: "", html: `<div class="mk-price${cheap ? " cheap" : ""}">⛽<b>${(v * 100).toFixed(1)}</b></div>`, iconSize: [64, 22], iconAnchor: [32, 11] });
+  function mapFuelPrices(bb, utils) {
+    if (isOffline() || !window.CFCloud?.fuelPricesIn) return null;
+    const lat = (bb[0] + bb[2]) / 2, lon = (bb[1] + bb[3]) / 2;
+    const key = `${lat.toFixed(1)},${lon.toFixed(1)}`, hit = fuelAreaCache.get(key);
+    const radius = Math.min(40000, Math.max(hav([bb[0], bb[1]], [bb[2], bb[3]]) / 2 + 2000, 8000));
+    if (!hit || Date.now() - hit.t > 15 * 60000) {
+      if (!hit?.loading) {
+        fuelAreaCache.set(key, { t: hit?.t || 0, rows: hit?.rows || [], loading: true });
+        CFCloud.fuelPricesIn(lat, lon, radius).then((rows) => { fuelAreaCache.set(key, { t: Date.now(), rows: rows || [] }); renderScope(); })
+          .catch(() => fuelAreaCache.set(key, { t: Date.now(), rows: [] }));
+      }
+      if (!hit?.rows?.length) return "loading";
+    }
+    const rows = fuelAreaCache.get(key).rows;
+    let best = Infinity;
+    for (const x of utils) {
+      if (x.k !== "fuel") continue;
+      const g = rows.find((r) => Math.abs(r.lat - x.lat) < 0.0015 && Math.abs(r.lon - x.lon) < 0.0015 && hav([x.lat, x.lon], [r.lat, r.lon]) < 150);
+      const pr = g && govPrice(g); x._p = pr?.price || 0; x._cheap = false;
+      if (x._p && x._p < best) best = x._p;
+    }
+    for (const x of utils) if (x._p && x._p <= best + 0.005) x._cheap = true;
+    return "ok";
   }
   map.on("moveend", renderScope);
   if (window.MutationObserver) new MutationObserver(renderScope).observe($("#results"), { attributes: true, attributeFilter: ["hidden"] });
@@ -4159,7 +4188,7 @@
     return { lat: line.pts[i][0], lon: line.pts[i][1] };
   }
 
-  // Government price schemes (WA FuelWatch, NSW/TAS FuelCheck, QLD) via Camp Finder's database: every station that has to report its prices
+  // Government price schemes (WA FuelWatch, NSW/TAS FuelCheck, QLD, SA) via Camp Finder's database: every station that has to report its prices
   const GOV_FUEL = { petrol: ["ulp", "e10", "p95", "p98"], diesel: ["diesel", "pdiesel"], lpg: ["lpg"] };
   const GOV_NAME = { ulp: "Unleaded 91", e10: "E10", p95: "Premium 95", p98: "Premium 98", diesel: "Diesel", pdiesel: "Premium diesel", lpg: "LPG" };
   function govPrice(row) {
@@ -4475,12 +4504,22 @@
     const title = { water: "Water nearby", dump: "Dump points nearby", fuel: "Fuel nearby" }[kind];
     const go = async (from, label) => {
       let list = nearbyNeeds(kind, from);
-      if (kind === "fuel" && (CFG.googleKey || window.CFCloud?.fuelPricesIn) && !isOffline()) { const live = await soon(stationsNear(from, 30000), 8000, []); if (live.length) list = live.map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6); }
+      if (kind === "fuel" && (CFG.googleKey || window.CFCloud?.fuelPricesIn) && !isOffline()) { const live = await soon(stationsNear(from, 30000), 8000, []); if (live.length) list = live.map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 10); }
+      // AdBlue flags from the map data for stations that came from Google or the price feeds
+      if (kind === "fuel" && campDB.fuelIn) for (const x of list) if (x.f == null) { const o = campDB.fuelIn(x, 200).find((y) => hav([x.lat, x.lon], [y.lat, y.lon]) < 150); x.f = o?.f || ""; }
+      const priced = list.filter((x) => x.fuel?.price), low = priced.length ? Math.min(...priced.map((x) => x.fuel.price)) : 0;
+      const sortBy = (store.get("cf-fuel-sort", "near") === "cheap" && priced.length) ? "cheap" : "near";
+      if (sortBy === "cheap") list = [...list].sort((a, b) => (a.fuel?.price || 9) - (b.fuel?.price || 9) || a.d - b.d);
+      const fuelName = { diesel: "diesel", petrol: "unleaded", lpg: "LPG" }[settings.fuel] || settings.fuel;
       showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${title}</h2><p class="d-kind">${esc(label)}</p>
-        ${list.length ? `<ul class="need-list">${list.map((x, k) => `<li><div${kind === "fuel" ? ` class="need-open" data-need-i="${k}" role="button" tabindex="0"` : ""}><b>${esc(x.name)}${kind === "fuel" && /A/.test(x.f || "") ? ' <span class="ad-chip">AdBlue</span>' : ""}</b><small>${x.along != null && journey ? `${km(Math.max(0, x.along - project(plan.line, from).along))} ahead on your route` : `${km(x.d)} away`}${x.fuel ? ` · ${money(x.fuel.price)}/L ${esc(settings.fuel)}` : ""}</small></div><a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
+        ${kind === "fuel" && priced.length > 1 ? `<div class="seg fuel-sort" role="group" aria-label="Sort"><button type="button" data-fsort="near" class="${sortBy === "near" ? "on" : ""}">Nearest</button><button type="button" data-fsort="cheap" class="${sortBy === "cheap" ? "on" : ""}">Cheapest ${esc(fuelName)}</button></div>` : ""}
+        ${list.length ? `<ul class="need-list">${list.map((x, k) => `<li><div${kind === "fuel" ? ` class="need-open" data-need-i="${k}" role="button" tabindex="0"` : ""}><b>${esc(x.name)}${kind === "fuel" && /A/.test(x.f || "") ? ' <span class="ad-chip">AdBlue</span>' : ""}</b><small>${x.along != null && journey ? `${km(Math.max(0, x.along - project(plan.line, from).along))} ahead on your route` : `${km(x.d)} away`}${x.fuel?.updated ? ` · ${esc(agoTime(x.fuel.updated))}` : ""}</small></div>${x.fuel?.price ? `<span class="fuel-pr${x.fuel.price <= low + 0.005 ? " cheap" : ""}">${(x.fuel.price * 100).toFixed(1)}<small>c/L</small></span>` : ""}<a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
           : `<p class="msg">Nothing found within about 90 km. ${kind === "water" ? "Town visitor centres, roadhouses and caravan parks usually let you fill up." : kind === "dump" ? "Caravan parks often allow dump use for a small fee." : ""}</p>`}
         <p class="caveat">From OpenStreetMap${kind === "fuel" && CFG.googleKey ? " and Google Maps" : ""}. ${kind === "fuel" ? "Tap a station for photos, every fuel price and AdBlue." : "Check water is drinkable and dump points are open before relying on them."}</p></div>`);
-      if (kind === "fuel") $$("[data-need-i]").forEach((el) => el.addEventListener("click", () => openUtil(list[+el.dataset.needI], "fuel")));
+      if (kind === "fuel") {
+        $$("[data-need-i]").forEach((el) => el.addEventListener("click", () => openUtil(list[+el.dataset.needI], "fuel")));
+        $$("[data-fsort]").forEach((b) => b.addEventListener("click", () => { store.set("cf-fuel-sort", b.dataset.fsort); go(from, label); }));
+      }
     };
     if (me) return go(me, journey ? "Ahead of you on your route" : "Closest to you");
     showDetail(`<div class="d-pad" style="padding-top:22px"><p class="msg"><span class="spinner"></span>Finding you</p></div>`);
