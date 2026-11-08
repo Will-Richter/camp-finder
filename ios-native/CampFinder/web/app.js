@@ -1039,7 +1039,7 @@
       d.camps.forEach((c) => put("camps", c[1], c[2], c));
       (d.ramps || []).forEach((p, i) => put("ramps", p[0], p[1], { id: `ramp/${i}`, lat: p[0], lon: p[1] }));
       (d.dumps || []).forEach((p, i) => put("dumps", p[0], p[1], { id: `dump/${i}`, lat: p[0], lon: p[1] }));
-      (d.fuel || []).forEach((p, i) => put("fuel", p[0], p[1], { id: `fuel/${i}`, lat: p[0], lon: p[1], name: p[2] || "Fuel station", addr: "", fuel: null }));
+      (d.fuel || []).forEach((p, i) => put("fuel", p[0], p[1], { id: `fuel/${i}`, lat: p[0], lon: p[1], name: p[2] || "Fuel station", addr: "", fuel: null, f: p[3] || "" }));
       (d.water || []).forEach((p, i) => put("water", p[0], p[1], { id: `water/${i}`, lat: p[0], lon: p[1], tank: !!p[2] }));
       (d.low || []).forEach((p, i) => put("low", p[0], p[1], { id: `low/${i}`, lat: p[0], lon: p[1], h: p[2] }));
       (d.towns || []).forEach((p) => put("towns", p[0], p[1], { lat: p[0], lon: p[1], name: p[2], rank: p[3] || 1 }));
@@ -1284,12 +1284,10 @@
 
   function priceTag(c) {
     if (c.cost === "free") return `<span class="price free">${c.donation ? "DONATION" : "FREE"}</span>`;
-    if (c.cost === "paid" || c.cpark) {
-      const amt = ((c.charge || "").match(/\$?\s?(\d+(?:\.\d+)?)/) || [])[1];
-      if (!amt && c.cpark) return `<span class="price paid" title="Estimate for a powered site">~$${Math.round(parkPriceGuide(c).powered)}</span>`;
-      return `<span class="price paid">${amt ? "$" + amt : "PAID"}</span>`;
-    }
-    return `<span class="price unknown">PRICE ?</span>`;
+    const f = typeof campFee === "function" ? campFee(c) : { v: 0, known: false, why: "" };
+    if (f.known && f.v > 0) return `<span class="price paid" title="${esc(f.why)}">$${Math.round(f.v)}</span>`;
+    if (f.v > 0) return `<span class="price paid est" title="${esc(f.why)}">~$${Math.round(f.v)}</span>`;
+    return `<span class="price unknown" title="${esc(f.why || "Price not recorded")}">FREE?</span>`;
   }
   function amenIcons(c) {
     const out = [];
@@ -1482,12 +1480,33 @@
       mapsState.have = new Map((e.have || []).map((h) => [h.state, h]));
       mapsState.busy = new Map((e.busy || []).map((b) => [b.state, b]));
       refreshOfflineMapLayer();
-    } else if (e.type === "progress") { mapsState.busy.set(e.state, e); delete mapsState.err[e.state]; }
+    } else if (e.type === "progress") {
+      // progress ticks only move that row's bar and number (redrawing the whole list on every tick made the panel jumpy and laggy)
+      const was = mapsState.busy.has(e.state);
+      mapsState.busy.set(e.state, e); delete mapsState.err[e.state];
+      if (was && $(`#stateMaps [data-sm-row="${e.state}"] .sm-bar`)) { queueMapProgress(e.state); return; }
+    }
     else if (e.type === "done") { mapsState.busy.delete(e.state); toast(`${nm} map downloaded. It shows with no signal.`, 4000); nativeMaps?.postMessage({ cmd: "list" }); }
     else if (e.type === "error") { mapsState.busy.delete(e.state); mapsState.err[e.state] = e.message; toast(`Couldn't download the ${nm} map. ${e.message || ""}`, 5000); }
     else if (e.type === "cancelled") mapsState.busy.delete(e.state);
     renderStateMaps(); exploreDownloadLabel?.(); refreshOfflinePill?.();
   };
+  const mapTicks = new Set();
+  function queueMapProgress(id) {
+    mapTicks.add(id);
+    if (queueMapProgress.raf) return;
+    queueMapProgress.raf = requestAnimationFrame(() => {
+      queueMapProgress.raf = 0;
+      for (const sid of mapTicks) {
+        const row = $(`#stateMaps [data-sm-row="${sid}"]`), busy = mapsState.busy.get(sid); if (!row || !busy) continue;
+        const pct = busy.total > 0 ? Math.min(100, Math.round((busy.done / busy.total) * 100)) : 0;
+        const bar = row.querySelector(".sm-bar > i"); if (bar) bar.style.width = `${pct}%`;
+        const txt = `Downloading… ${pct}%${busy.total > 0 ? ` of ${mb(busy.total)}` : ""}`, sm = row.querySelector("small");
+        if (sm && sm.textContent !== txt) sm.textContent = txt;
+      }
+      mapTicks.clear();
+    });
+  }
   function renderStateMaps(focus) {
     const ul = $("#stateMaps"); if (!ul) return;
     const saved = [...mapsState.have.keys()].map((id) => stateMapById(id)?.short).filter(Boolean), stat = $("#smStatus");
@@ -1503,7 +1522,7 @@
       const btn = busy ? `<button type="button" class="btn line" data-sm-cancel="${st.id}">Cancel</button>`
         : have ? `<button type="button" class="icon-btn" data-sm-del="${st.id}" aria-label="Delete the ${esc(st.name)} map">${icon("close")}</button>`
         : `<button type="button" class="btn${focus === st.id ? " gold" : ""}" data-sm-get="${st.id}"${size ? "" : " disabled"}>${icon("download")}Download</button>`;
-      return `<li class="sm-row${have ? " have" : ""}${focus === st.id ? " focus" : ""}"><span class="sm-ok">${have ? "✅" : busy ? "⏬" : "🗺️"}</span><div><b>${esc(st.name)}</b><small>${esc(sub)}</small>${busy ? `<i class="sm-bar"><i style="width:${pct}%"></i></i>` : ""}</div>${btn}</li>`;
+      return `<li class="sm-row${have ? " have" : ""}${focus === st.id ? " focus" : ""}" data-sm-row="${st.id}"><span class="sm-ok">${have ? "✅" : busy ? "⏬" : "🗺️"}</span><div><b>${esc(st.name)}</b><small>${esc(sub)}</small>${busy ? `<i class="sm-bar"><i style="width:${pct}%"></i></i>` : ""}</div>${btn}</li>`;
     }).join("");
   }
   async function stateMapAction(e) {
@@ -3230,13 +3249,69 @@
   }
   const tripOnScreen = () => !!plan && view === "plan" && !$("#results").hidden;
   const utilIcon = (em) => L.divIcon({ className: "", html: `<div class="mk-util">${em}</div>`, iconSize: [21, 21], iconAnchor: [10, 10] });
+  // ---- a fuel station: photos, every fuel and its price, AdBlue, opening hours
+  const GFUEL_NAME = { DIESEL: "Diesel", PREMIUM_DIESEL: "Premium diesel", TRUCK_DIESEL: "Truck diesel", BIO_DIESEL: "Bio diesel", REGULAR_UNLEADED: "Unleaded 91", SP91: "Unleaded 91", SP91_E10: "E10", SP95: "Premium 95", MIDGRADE: "Premium 95", SP98: "Premium 98", PREMIUM: "Premium 98", LPG: "LPG", E85: "E85", E80: "E80", METHANE: "Methane" };
+  const FUEL_ORDER = ["Diesel", "Premium diesel", "Truck diesel", "Unleaded 91", "E10", "Premium 95", "Premium 98", "LPG", "E85", "Bio diesel"];
+  const MY_FUEL = { diesel: /diesel/i, petrol: /unleaded|e10|premium 9/i, lpg: /lpg/i };
+  function adblueLine(x, g) {
+    const f = x.f || "", nm = `${x.name || ""} ${g?.name || ""}`;
+    if (/A/.test(f) || /adblue/i.test(nm)) return `<p class="fs-ad yes">🟦 <b>AdBlue sold here</b><span>Recorded on OpenStreetMap. Check it's in stock at the pump.</span></p>`;
+    if (/T/.test(f) || /truck ?stop|roadhouse|travel ?cent(re|er)|ampol foodary|bp truckstop/i.test(nm)) return `<p class="fs-ad maybe">🟦 <b>AdBlue likely</b><span>Truck stops and roadhouses usually sell AdBlue at the diesel pumps or in 10 L drums.</span></p>`;
+    return `<p class="fs-ad unknown">🟦 <b>AdBlue not recorded</b><span>Most major servos sell 10 L drums inside. Truck stops have it at the pump.</span></p>`;
+  }
+  async function fuelStationInfo(x) {
+    const box = $("#fsLive"); if (!box) return;
+    const [gov, g] = await Promise.all([
+      soon(govStationsNear({ lat: x.lat, lon: x.lon }, 250), 7000, []),
+      CFG.googleKey && !isOffline() ? soon((async () => {
+        const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", { method: "POST",
+          fieldMask: "places.id,places.displayName,places.location,places.fuelOptions,places.photos,places.formattedAddress,places.currentOpeningHours.openNow,places.regularOpeningHours.weekdayDescriptions,places.rating,places.userRatingCount,places.googleMapsUri",
+          body: { includedTypes: ["gas_station"], maxResultCount: 3, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: x.lat, longitude: x.lon }, radius: 150 } } } });
+        return (j.places || [])[0] || null;
+      })(), 9000, null) : null,
+    ]);
+    if (!$("#fsLive")) return;
+    const gs = gov.sort((a, b) => hav([x.lat, x.lon], [a.lat, a.lon]) - hav([x.lat, x.lon], [b.lat, b.lon]))[0];
+    // prices: the government scheme wins (stations must report it); Google fills in the rest
+    const rows = new Map();
+    for (const o of g?.fuelOptions?.fuelPrices || []) {
+      const nm = GFUEL_NAME[o.type]; if (!nm || !o.price) continue;
+      rows.set(nm, { v: (+o.price.units || 0) + (o.price.nanos || 0) / 1e9, at: o.updateTime, by: "Google Maps" });
+    }
+    if (gs) for (const [k, v] of Object.entries(gs.all || {})) { const nm = GOV_NAME[k]; if (nm && +v > 0.5 && +v < 5) rows.set(nm, { v: +v, at: gs.updated, by: `${gs.state || ""} government price scheme`.trim() }); }
+    const list = [...rows.entries()].sort((a, b) => FUEL_ORDER.indexOf(a[0]) - FUEL_ORDER.indexOf(b[0]));
+    const mine = MY_FUEL[settings.fuel];
+    const prices = list.length ? `<ul class="fs-prices">${list.map(([nm, r]) => `<li class="${mine?.test(nm) ? "mine" : ""}"><span>${esc(nm)}</span><b>${(r.v * 100).toFixed(1)}<small>c/L</small></b><em>${esc(agoTime(r.at))}${r.by ? ` · ${esc(r.by)}` : ""}</em></li>`).join("")}</ul>`
+      : `<p class="msg">${isOffline() ? "No signal, so live prices can't be loaded." : "No live prices for this station yet."}</p>`;
+    // photos (Google)
+    let photos = "";
+    if (g?.photos?.length) {
+      const ph = (await Promise.all(g.photos.slice(0, 4).map(async (p) => {
+        try { const m = await gfetch(`https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=900&skipHttpRedirect=true`); const who = (p.authorAttributions || [])[0]; return m.photoUri ? { src: m.photoUri, credit: `${who?.displayName || "Google user"} · Google` } : null; } catch { return null; }
+      }))).filter(Boolean);
+      if (ph.length) photos = `<div class="gallery fs-gallery">${ph.map((p) => `<figure><img src="${esc(p.src)}" alt="" loading="lazy"><figcaption>${esc(p.credit)}</figcaption></figure>`).join("")}</div>`;
+    }
+    const hours = g?.regularOpeningHours?.weekdayDescriptions;
+    const open = g?.currentOpeningHours?.openNow;
+    const el = $("#fsLive"); if (!el) return;
+    el.innerHTML = `${photos}
+      ${g?.formattedAddress || gs?.addr ? `<p class="fs-addr">${esc(g?.formattedAddress || gs.addr)}</p>` : ""}
+      ${open != null ? `<p class="fs-open ${open ? "ok" : "shut"}">${open ? "Open now" : "Closed now"}${/2/.test(x.f || "") ? " · open 24 hours" : ""}</p>` : /2/.test(x.f || "") ? `<p class="fs-open ok">Open 24 hours</p>` : ""}
+      <h3 class="h2">Fuel prices</h3>${prices}
+      ${adblueLine(x, { name: g?.displayName?.text })}
+      ${hours?.length ? `<details class="fs-hours"><summary>Opening hours</summary><ul>${hours.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></details>` : ""}
+      ${g?.rating ? `<p class="fs-rate">★ ${g.rating.toFixed(1)} <small>Google (${(g.userRatingCount || 0).toLocaleString("en-AU")})</small>${g.googleMapsUri ? ` · <a href="${esc(g.googleMapsUri)}" target="_blank" rel="noopener">Google Maps</a>` : ""}</p>` : ""}`;
+    if (g?.displayName?.text && (!x.name || x.name === "Fuel station")) { const t = $("#detailBody .d-title"); if (t) t.textContent = `⛽ ${g.displayName.text}`; }
+  }
   function openUtil(x, kind) {
     const name = x.name || { fuel: "Fuel station", dump: "Dump point", water: x.tank ? "Water fill point" : "Drinking water tap" }[kind];
     const where = campDB.townNear?.(x.lat, x.lon);
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${{ fuel: "⛽", dump: "🚽", water: "💧" }[kind]} ${esc(name)}</h2>
       <p class="d-kind">${where ? `${where.d < 2000 ? "In" : `${km(where.d)} from`} ${esc(where.name)}` : ""}${me ? `${where ? " · " : ""}${km(hav([me.lat, me.lon], [x.lat, x.lon]))} from you` : ""}</p>
+      ${kind === "fuel" ? `<div id="fsLive" class="fs-live"><p class="msg"><span class="spinner"></span>Loading photos and prices</p></div>` : ""}
       <div class="stop-actions" style="margin-top:12px"><a class="cta" href="${navUrl({ lat: x.lat, lon: x.lon, name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Directions</a></div>
-      <p class="caveat">From OpenStreetMap. ${kind === "water" ? "Check the water is drinkable before you rely on it." : kind === "dump" ? "Check it's open before you rely on it." : "Opening hours and prices can change."}</p></div>`);
+      <p class="caveat">${kind === "fuel" ? "Prices from the state government price schemes and Google Maps. " : "From OpenStreetMap. "}${kind === "water" ? "Check the water is drinkable before you rely on it." : kind === "dump" ? "Check it's open before you rely on it." : "Opening hours and prices can change."}</p></div>`);
+    if (kind === "fuel") fuelStationInfo(x);
   }
   let scT = 0;
   function renderScope() {
@@ -3948,11 +4023,46 @@
       if (pp) v *= 2;
       return { v, known: true, why: pp ? `Listed price for 2 people (${c.charge})` : `Listed price (${c.charge})` };
     }
-    if (c.park) return { v: (PRICES.stay.national_park_person || 7.75) * 2, known: false, why: `National park permit, about ${money(PRICES.stay.national_park_person || 7.75)} per person (2 people)` };
     if (c.cpark) { const g = parkPriceGuide(c); return { v: g.powered, known: false, why: `Price not listed: ${c.chain ? c.chain.name + " average" : "average"} powered site (estimate)` }; }
+    const np = parkFee(c); if (np) return np;
     if (c.kind === "Caravan / RV site") return { v: PRICES.stay.caravan_powered, known: false, why: "Price not listed: average powered site" };
-    if (c.cost === "unknown") return { v: 0, known: false, why: "Price not recorded, likely free" };
-    return { v: settings.campUnknown || PRICES.stay.camp_paid, known: false, why: "Paid camp, price not listed (your estimate)" };
+    const g = campGuess(c);
+    if (c.cost === "unknown") return g;
+    return g.v > 0 ? g : { v: settings.campUnknown || PRICES.stay.camp_paid, known: false, why: "Paid camp, price not listed (your estimate)" };
+  }
+  // National park and state forest camping fees, by state (2 adults, 1 site, off-peak), from each parks service's fee list
+  const PARK_FEES = {
+    QLD: { pp: 7.75, src: "Queensland Parks: $7.75 per person per night" },
+    NSW: { tiers: [0, 13, 20, 28, 38, 54], src: "NSW National Parks fee tiers from July 2026 (per site, off-peak)" },
+    VIC: { site: 20, src: "Parks Victoria (half-price fees), about $20 a site" },
+    WA: { pp: [10, 15, 20], src: "WA Parks: $10 to $20 per adult" },
+    NT: { pp: [10, 10, 15], src: "NT Parks: $10 to $15 per adult" },
+    SA: { site: 20, src: "National Parks SA, about $20 a vehicle" },
+    TAS: { site: 15, src: "Tasmanian parks, about $15 a site" },
+  };
+  function isParkCamp(c) {
+    return !!c.park || /^qpws\//.test(c.id) || (typeof PARK_OP !== "undefined" && PARK_OP.test(c.tags?.operator || "")) || /national park|conservation park|state forest|regional park|nature reserve/i.test(`${c.name} ${c.tags?.operator || ""}`);
+  }
+  function parkFee(c) {
+    if (!isParkCamp(c)) return null;
+    const st = stateOf(c.lat, c.lon), t = { ...PARK_FEES[st], ...(PRICES.parks?.[st] || {}) };
+    const forest = /state forest/i.test(`${c.name} ${c.tags?.operator || ""}`);
+    if (forest && /NSW|VIC|TAS|SA/.test(st)) return { v: 0, known: false, why: `${st} state forest camps are usually free` };
+    const lvl = c.a.showers === true ? 2 : c.a.toilets === true ? 1 : 0;   // no facilities, toilets, showers
+    if (t.tiers) { const v = t.tiers[[0, 1, 4][lvl]] ?? 0; return { v, known: false, why: v ? `${t.src}: about ${money(v)} for this kind of campground` : `${t.src}: campgrounds with no facilities are free` }; }
+    if (Array.isArray(t.pp)) { const v = t.pp[lvl] * 2; return { v, known: false, why: `${t.src}, about ${money(v)} for 2 people` }; }
+    if (t.pp) { const v = t.pp * 2; return { v, known: false, why: `${t.src}, ${money(v)} for 2 people` }; }
+    if (t.site) return { v: t.site, known: false, why: t.src };
+    return { v: (PRICES.stay.national_park_person || 7.75) * 2, known: false, why: "National park permit, estimate for 2 people" };
+  }
+  // A camp with no price recorded: a fair guess from what it is and what it has
+  function campGuess(c) {
+    const txt = `${c.name} ${c.tags?.operator || ""} ${c.desc || ""}`;
+    if (c.source === "rest" || c.kind === "Roadside rest area" || /rest area|truck bay|free ?camp/i.test(txt)) return { v: 0, known: false, why: "Rest areas and free camps don't charge" };
+    if (/showground|show ground|racecourse|recreation (ground|reserve)|sports ground|pony club|golf club|rodeo|pub|hotel|tavern/i.test(txt)) return { v: 20, known: false, why: "Showgrounds, sports grounds and pub camps usually charge about $15 to $30 (estimate)" };
+    if (c.a.showers === true || c.a.power === true) return { v: 20, known: false, why: "Camps with showers or power usually charge (estimate)" };
+    if (/council|reserve|camping (area|ground)|campground|caravan/i.test(txt) && (c.a.toilets === true || c.a.water === true)) return { v: 12, known: false, why: "Council camps with toilets often ask a small fee (estimate)" };
+    return { v: 0, known: false, why: "Price not recorded. Bush camps like this are usually free, but check the sign" };
   }
   function nightCost(pk) {
     if (pk.refresh) { const st = STAY[pk.refresh.style] || STAY.motel; return { v: st.price(), known: false, why: `${st.label}, average for the area (estimate)`, name: pk.refresh.options?.[0]?.name || st.label }; }
@@ -4061,7 +4171,7 @@
     try {
       const rows = await soon(CFCloud.fuelPricesIn(pt.lat, pt.lon, radius), 6000, []);
       return rows.filter((r) => hav([pt.lat, pt.lon], [r.lat, r.lon]) <= radius).map((r) => ({
-        id: `gov:${r.id}`, name: r.name || r.brand || "Fuel station", brand: r.brand || "", lat: r.lat, lon: r.lon, addr: r.address || "", fuel: govPrice(r) }));
+        id: `gov:${r.id}`, name: r.name || r.brand || "Fuel station", brand: r.brand || "", lat: r.lat, lon: r.lon, addr: r.address || "", fuel: govPrice(r), all: r.prices || {}, updated: r.updated_at, state: r.state }));
     } catch { return []; }
   }
   // Petrol stations near a point: government price feeds + Google Maps (with live prices) + the built-in map data, merged
@@ -4367,9 +4477,10 @@
       let list = nearbyNeeds(kind, from);
       if (kind === "fuel" && (CFG.googleKey || window.CFCloud?.fuelPricesIn) && !isOffline()) { const live = await soon(stationsNear(from, 30000), 8000, []); if (live.length) list = live.map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6); }
       showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${title}</h2><p class="d-kind">${esc(label)}</p>
-        ${list.length ? `<ul class="need-list">${list.map((x) => `<li><div><b>${esc(x.name)}</b><small>${x.along != null && journey ? `${km(Math.max(0, x.along - project(plan.line, from).along))} ahead on your route` : `${km(x.d)} away`}${x.fuel ? ` · ${money(x.fuel.price)}/L ${esc(settings.fuel)}` : ""}</small></div><a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
+        ${list.length ? `<ul class="need-list">${list.map((x, k) => `<li><div${kind === "fuel" ? ` class="need-open" data-need-i="${k}" role="button" tabindex="0"` : ""}><b>${esc(x.name)}${kind === "fuel" && /A/.test(x.f || "") ? ' <span class="ad-chip">AdBlue</span>' : ""}</b><small>${x.along != null && journey ? `${km(Math.max(0, x.along - project(plan.line, from).along))} ahead on your route` : `${km(x.d)} away`}${x.fuel ? ` · ${money(x.fuel.price)}/L ${esc(settings.fuel)}` : ""}</small></div><a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
           : `<p class="msg">Nothing found within about 90 km. ${kind === "water" ? "Town visitor centres, roadhouses and caravan parks usually let you fill up." : kind === "dump" ? "Caravan parks often allow dump use for a small fee." : ""}</p>`}
-        <p class="caveat">From OpenStreetMap${kind === "fuel" && CFG.googleKey ? " and Google Maps" : ""}. Check water is drinkable and dump points are open before relying on them.</p></div>`);
+        <p class="caveat">From OpenStreetMap${kind === "fuel" && CFG.googleKey ? " and Google Maps" : ""}. ${kind === "fuel" ? "Tap a station for photos, every fuel price and AdBlue." : "Check water is drinkable and dump points are open before relying on them."}</p></div>`);
+      if (kind === "fuel") $$("[data-need-i]").forEach((el) => el.addEventListener("click", () => openUtil(list[+el.dataset.needI], "fuel")));
     };
     if (me) return go(me, journey ? "Ahead of you on your route" : "Closest to you");
     showDetail(`<div class="d-pad" style="padding-top:22px"><p class="msg"><span class="spinner"></span>Finding you</p></div>`);

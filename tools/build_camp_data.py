@@ -30,6 +30,22 @@ LATS = [-44.0, -38.0, -34.0, -30.0, -26.0, -20.0, -9.0]
 LONS = [112.0, 120.0, 129.0, 138.0, 143.0, 147.0, 151.0, 160.0]
 
 
+
+def fuel_row(tags, pt):
+    """[lat, lon, name, flags]: A AdBlue, D diesel, L LPG, T truck stop, 2 open 24 hours"""
+    nm = (tags.get("brand") or tags.get("name") or "Fuel station")[:40]
+    if tags.get("name") and tags.get("brand") and tags["brand"] not in tags["name"]:
+        nm = f'{tags["brand"]} {tags["name"]}'[:50]
+    yes = lambda k: tags.get(k) in ("yes", "only")
+    text = " ".join(str(v) for v in (tags.get("name"), tags.get("description"), tags.get("note"))).lower()
+    f = ""
+    if yes("fuel:adblue") or yes("fuel:def") or "adblue" in text: f += "A"
+    if yes("fuel:diesel") or yes("fuel:HGV_diesel") or yes("fuel:hgv_diesel"): f += "D"
+    if yes("fuel:lpg"): f += "L"
+    if yes("hgv") or yes("fuel:HGV_diesel") or yes("fuel:hgv_diesel") or "truck stop" in text or "truckstop" in text: f += "T"
+    if (tags.get("opening_hours") or "").strip() == "24/7": f += "2"
+    return [*pt, nm, f] if f else [*pt, nm]
+
 def query(bbox, kind="core", tries=6):
     s, w, n, e = bbox
     b = f"{s},{w},{n},{e}"
@@ -206,10 +222,7 @@ def extras_only(out_path):
         if tags.get("place") in ("city", "town", "village") and tags.get("name"):
             towns.append([round(lat, 3), round(lon, 3), tags["name"][:40], {"city": 3, "town": 2}.get(tags["place"], 1)])
         elif tags.get("amenity") == "fuel":
-            nm = (tags.get("brand") or tags.get("name") or "Fuel station")[:40]
-            if tags.get("name") and tags.get("brand") and tags["brand"] not in tags["name"]:
-                nm = f'{tags["brand"]} {tags["name"]}'[:50]
-            fuel.append([*pt, nm])
+            fuel.append(fuel_row(tags, pt))
         elif tags.get("amenity") in ("water_point", "drinking_water"):
             if tags.get("access") in ("private", "no") or tags.get("drinking_water") == "no":
                 continue
@@ -269,10 +282,7 @@ def main(out_path):
                 # towns, so unnamed camps can be called "Free camp near Gin Gin"
                 towns.append([round(lat, 3), round(lon, 3), tags["name"][:40], {"city": 3, "town": 2}.get(tags["place"], 1)])
             elif tags.get("amenity") == "fuel":
-                nm = (tags.get("brand") or tags.get("name") or "Fuel station")[:40]
-                if tags.get("name") and tags.get("brand") and tags["brand"] not in tags["name"]:
-                    nm = f'{tags["brand"]} {tags["name"]}'[:50]
-                fuel.append([*pt, nm])
+                fuel.append(fuel_row(tags, pt))
             elif tags.get("maxheight") and tags.get("highway") not in ("service", "footway", "cycleway", "path") and tags.get("amenity") != "parking" and not tags.get("parking"):
                 h = parse_height(tags["maxheight"])
                 if h and h < 4.6:

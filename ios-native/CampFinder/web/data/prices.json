@@ -1,7 +1,11 @@
 {
-  "updated": "2026-10-31",
+  "updated": "2026-11-08",
   "note": "Rough Australian averages used when a place doesn't list its price. Reviewed monthly.",
-  "fuel": { "diesel": 2.81, "petrol": 2.37, "lpg": 1.20 },
+  "fuel": {
+    "diesel": 2.81,
+    "petrol": 2.37,
+    "lpg": 1.2
+  },
   "stay": {
     "camp_paid": 30,
     "national_park_person": 7.75,
@@ -17,6 +21,48 @@
     "Caravan park powered sites typically $40 to $80 a night (Jayco, May 2026) and $40 to $70 (OzRoadTrips, Oct 2026)",
     "Motels $100 to $180, 3-star hotels $150 to $250, 4-star $200 to $350 a night (GMTC, Aug 2026)",
     "Fuel late Oct 2026: diesel ~281c, unleaded ~236-240c, LPG ~116-123c (FuelRadar national average; NRMA weekly report 26 Oct 2026; myLPG.eu)",
-    "Fuel: live Google Maps prices along your route when available"
-  ]
+    "Fuel: live Google Maps prices along your route when available",
+    "NSW national park camping: six fee tiers per site from 1 July 2026, free (no facilities) to $54 off-peak (whatsupdownunder.com.au, 2026)",
+    "WA national park camping: $10 (no facilities), $15 (basic), $20 (showers) per adult per night (exploreparks.dbca.wa.gov.au, June 2026)",
+    "NT parks camping: Category B $10, Category A $15 per adult per night (nt.gov.au)",
+    "VIC, SA and TAS park camping: rough per-site estimates; check the parks booking site"
+  ],
+  "parks": {
+    "QLD": {
+      "pp": 7.75
+    },
+    "NSW": {
+      "tiers": [
+        0,
+        13,
+        20,
+        28,
+        38,
+        54
+      ]
+    },
+    "VIC": {
+      "site": 20
+    },
+    "WA": {
+      "pp": [
+        10,
+        15,
+        20
+      ]
+    },
+    "NT": {
+      "pp": [
+        10,
+        10,
+        15
+      ]
+    },
+    "SA": {
+      "site": 20
+    },
+    "TAS": {
+      "site": 15
+    }
+  }
 }

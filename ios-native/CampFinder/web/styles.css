@@ -1501,3 +1501,28 @@ input:placeholder-shown + .clear-x { display: none; }
 .wx-credit .wx-mark { height: 12px; width: auto; }
 @media (prefers-color-scheme: dark) { .wx-credit .wx-mark { filter: invert(1); } }
 .pw-plan.pw-wide { grid-column: 1 / -1; }
+/* fuel station details */
+.fs-live { margin-top: 10px; }
+.fs-gallery { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 0 10px; }
+.fs-gallery figure { margin: 0; flex: 0 0 78%; scroll-snap-align: start; position: relative; }
+.fs-gallery img { width: 100%; height: 170px; object-fit: cover; border-radius: 12px; display: block; }
+.fs-gallery figcaption { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+.fs-addr { margin: 4px 0; color: var(--sub, #5B655F); font-size: 14px; }
+.fs-open { margin: 2px 0 6px; font-weight: 700; font-size: 14px; }
+.fs-open.ok { color: #1F8A4C; } .fs-open.shut { color: #B3261E; }
+.fs-prices { list-style: none; margin: 6px 0 12px; padding: 0; display: grid; gap: 6px; }
+.fs-prices li { display: grid; grid-template-columns: 1fr auto; align-items: baseline; padding: 9px 12px; border-radius: 12px; background: color-mix(in srgb, var(--ink, #1A1F1C) 5%, transparent); }
+.fs-prices li.mine { background: color-mix(in srgb, #F5C518 28%, transparent); }
+.fs-prices span { font-weight: 700; }
+.fs-prices b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.fs-prices b small { font-size: 12px; font-weight: 600; margin-left: 2px; }
+.fs-prices em { grid-column: 1 / -1; font-style: normal; font-size: 12px; color: var(--sub, #5B655F); }
+.fs-ad { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; margin: 0 0 10px; }
+.fs-ad span { font-size: 13px; color: var(--sub, #5B655F); }
+.fs-ad.yes { background: color-mix(in srgb, #1E6FD9 14%, transparent); }
+.fs-ad.maybe, .fs-ad.unknown { background: color-mix(in srgb, var(--ink, #1A1F1C) 5%, transparent); }
+.fs-hours ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+.fs-rate { font-size: 14px; }
+.need-open { cursor: pointer; }
+.ad-chip { display: inline-block; font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 99px; background: #1E6FD9; color: #fff; vertical-align: 1px; }
+.price.paid.est { box-shadow: inset 0 0 0 1.5px var(--paid); border-style: dashed; opacity: .9; }
