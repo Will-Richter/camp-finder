@@ -1536,3 +1536,5 @@ input:placeholder-shown + .clear-x { display: none; }
 .fuel-pr { margin-left: auto; margin-right: 8px; font-weight: 800; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fuel-pr small { font-size: 11px; font-weight: 600; margin-left: 1px; }
 .fuel-pr.cheap { color: #1F8A4C; }
+.fs-ask { display: grid; gap: 6px; margin: -4px 0 12px; font-size: 13px; color: var(--sub, #5B655F); }
+.fs-ask > div { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -225,6 +225,19 @@
     async getFamily(code) { must(); const { data, error } = await sb.rpc("get_family", { p_code: code }); fail(error); return data || null; },
 
     // ---- live fuel prices from the state government schemes (refreshed inside Supabase)
+    // ---- travellers' AdBlue reports (no sign-in needed)
+    async adblueReport(lat, lon, adblue) {
+      if (!sb) throw new Error("Not connected");
+      const { error } = await sb.from("fuel_reports").insert({ lat: +lat.toFixed(5), lon: +lon.toFixed(5), adblue }); fail(error);
+    },
+    async adblueNear(lat, lon) {
+      if (!sb) return [];
+      const d = 0.0015, since = new Date(Date.now() - 365 * 864e5).toISOString();
+      const { data, error } = await sb.from("fuel_reports").select("adblue,created_at").gte("lat", lat - d).lte("lat", lat + d).gte("lon", lon - d).lte("lon", lon + d)
+        .gte("created_at", since).order("created_at", { ascending: false }).limit(20);
+      return error ? [] : (data || []);
+    },
+
     async fuelPricesIn(lat, lon, radiusM) {
       if (!sb) return [];
       const dLat = radiusM / 111000, dLon = radiusM / (111000 * Math.cos(lat * Math.PI / 180));

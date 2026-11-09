@@ -3253,6 +3253,31 @@
   const GFUEL_NAME = { DIESEL: "Diesel", PREMIUM_DIESEL: "Premium diesel", TRUCK_DIESEL: "Truck diesel", BIO_DIESEL: "Bio diesel", REGULAR_UNLEADED: "Unleaded 91", SP91: "Unleaded 91", SP91_E10: "E10", SP95: "Premium 95", MIDGRADE: "Premium 95", SP98: "Premium 98", PREMIUM: "Premium 98", LPG: "LPG", E85: "E85", E80: "E80", METHANE: "Methane" };
   const FUEL_ORDER = ["Diesel", "Premium diesel", "Truck diesel", "Unleaded 91", "E10", "Premium 95", "Premium 98", "LPG", "E85", "Bio diesel"];
   const MY_FUEL = { diesel: /diesel/i, petrol: /unleaded|e10|premium 9/i, lpg: /lpg/i };
+  // What travellers said most recently wins (the latest 5 reports within a year), then the map data
+  const AD_SAY = { pump: "AdBlue at the pump", drums: "AdBlue in drums only", none: "No AdBlue" };
+  function adblueVerdict(reports) {
+    const recent = (reports || []).slice(0, 5);
+    if (!recent.length) return null;
+    const n = {}; recent.forEach((r) => { n[r.adblue] = (n[r.adblue] || 0) + 1; });
+    const top = Object.keys(n).sort((a, b) => n[b] - n[a] || (recent.findIndex((r) => r.adblue === a) - recent.findIndex((r) => r.adblue === b)))[0];
+    return { say: top, count: reports.length, latest: recent[0].created_at };
+  }
+  function adblueBlock(x, g, reports) {
+    const v = adblueVerdict(reports);
+    const head = v ? `<p class="fs-ad ${v.say === "none" ? "unknown" : "yes"}">🟦 <b>${AD_SAY[v.say]}</b><span>From ${v.count} traveller report${v.count === 1 ? "" : "s"}, latest ${esc(agoTime(v.latest))}.</span></p>` : adblueLine(x, g);
+    const ask = window.CFCloud?.enabled && !isOffline() ? `<div class="fs-ask"><span>Been here? Help other vans:</span><div>${Object.entries({ pump: "At the pump", drums: "Drums only", none: "None" }).map(([k, t]) => `<button type="button" class="chip" data-adblue="${k}">${t}</button>`).join("")}</div></div>` : "";
+    return `<div id="fsAd">${head}${ask}</div>`;
+  }
+  function wireAdblue(x, g) {
+    $$("#fsAd [data-adblue]").forEach((b) => b.addEventListener("click", async () => {
+      try {
+        await CFCloud.adblueReport(x.lat, x.lon, b.dataset.adblue);
+        toast("Thanks, that helps everyone with a diesel van", 2500);
+        const reports = await soon(CFCloud.adblueNear(x.lat, x.lon), 6000, []);
+        const box = $("#fsAd"); if (box) { box.outerHTML = adblueBlock(x, g, reports); wireAdblue(x, g); }
+      } catch { toast("Couldn't send that. Check your signal and try again", 3000); }
+    }));
+  }
   function adblueLine(x, g) {
     const f = x.f || "", nm = `${x.name || ""} ${g?.name || ""}`;
     if (/A/.test(f) || /adblue/i.test(nm)) return `<p class="fs-ad yes">🟦 <b>AdBlue sold here</b><span>Recorded on OpenStreetMap. Check it's in stock at the pump.</span></p>`;
@@ -3261,7 +3286,7 @@
   }
   async function fuelStationInfo(x) {
     const box = $("#fsLive"); if (!box) return;
-    const [gov, g] = await Promise.all([
+    const [gov, g, adReports] = await Promise.all([
       soon(govStationsNear({ lat: x.lat, lon: x.lon }, 250), 7000, []),
       CFG.googleKey && !isOffline() ? soon((async () => {
         const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", { method: "POST",
@@ -3269,6 +3294,7 @@
           body: { includedTypes: ["gas_station"], maxResultCount: 3, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: x.lat, longitude: x.lon }, radius: 150 } } } });
         return (j.places || [])[0] || null;
       })(), 9000, null) : null,
+      window.CFCloud?.adblueNear && !isOffline() ? soon(CFCloud.adblueNear(x.lat, x.lon), 6000, []) : [],
     ]);
     if (!$("#fsLive")) return;
     const gs = gov.sort((a, b) => hav([x.lat, x.lon], [a.lat, a.lon]) - hav([x.lat, x.lon], [b.lat, b.lon]))[0];
@@ -3298,9 +3324,10 @@
       ${g?.formattedAddress || gs?.addr ? `<p class="fs-addr">${esc(g?.formattedAddress || gs.addr)}</p>` : ""}
       ${open != null ? `<p class="fs-open ${open ? "ok" : "shut"}">${open ? "Open now" : "Closed now"}${/2/.test(x.f || "") ? " · open 24 hours" : ""}</p>` : /2/.test(x.f || "") ? `<p class="fs-open ok">Open 24 hours</p>` : ""}
       <h3 class="h2">Fuel prices</h3>${prices}
-      ${adblueLine(x, { name: g?.displayName?.text })}
+      ${adblueBlock(x, { name: g?.displayName?.text }, adReports)}
       ${hours?.length ? `<details class="fs-hours"><summary>Opening hours</summary><ul>${hours.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></details>` : ""}
       ${g?.rating ? `<p class="fs-rate">★ ${g.rating.toFixed(1)} <small>Google (${(g.userRatingCount || 0).toLocaleString("en-AU")})</small>${g.googleMapsUri ? ` · <a href="${esc(g.googleMapsUri)}" target="_blank" rel="noopener">Google Maps</a>` : ""}</p>` : ""}`;
+    wireAdblue(x, { name: g?.displayName?.text });
     if (g?.displayName?.text && (!x.name || x.name === "Fuel station")) { const t = $("#detailBody .d-title"); if (t) t.textContent = `⛽ ${g.displayName.text}`; }
   }
   function openUtil(x, kind) {
