@@ -1,25 +1,61 @@
-<!-- Camp Finder sign-in email. Paste into Supabase: Authentication > Emails > Templates > Magic Link (needs custom SMTP). Subject: Your Camp Finder sign-in link -->
-<div style="margin:0;padding:24px 12px;background:#F6F7F4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#17201C">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 6px 24px rgba(18,36,28,.10)">
-    <tr><td style="background:linear-gradient(160deg,#0E5A3E,#1F8A4C);background-color:#0E5A3E;padding:28px 24px 26px;text-align:center">
-      <div style="display:inline-block;background:#F5C518;border:3px solid #1A1608;border-radius:10px;padding:7px 18px 6px;color:#1A1608">
-        <div style="font-size:10px;font-weight:800;letter-spacing:4px">GONE LAPPIN'</div>
-        <div style="font-size:24px;font-weight:900;letter-spacing:1px;line-height:1.1">CAMP FINDER</div>
-      </div>
-      <div style="color:#ffffff;opacity:.9;font-size:14px;margin-top:12px">Every free camp around Australia</div>
+<!-- Camp Finder sign-in email. Paste into Supabase: Authentication > Emails > Templates > Magic Link. Subject: Your Camp Finder sign-in code: {{ .Token }} -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>Camp Finder sign in</title>
+<style>
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  body { margin: 0; padding: 0; }
+  .code { -webkit-user-select: all; user-select: all; }
+  @media (prefers-color-scheme: dark) {
+    .bg { background: #0B110E !important; }
+    .card { background: #151C18 !important; box-shadow: none !important; border: 1px solid #26302B !important; }
+    .ink { color: #EEF3EF !important; }
+    .sub { color: #A9B6AF !important; }
+    .codebox { background: #1E2722 !important; border-color: #F5C518 !important; }
+    .code { color: #F5C518 !important; }
+    .foot { background: #111814 !important; color: #8E9B94 !important; }
+  }
+  [data-ogsc] .bg { background: #0B110E !important; }
+  [data-ogsc] .card { background: #151C18 !important; }
+  [data-ogsc] .ink { color: #EEF3EF !important; }
+  [data-ogsc] .sub { color: #A9B6AF !important; }
+  [data-ogsc] .codebox { background: #1E2722 !important; }
+  [data-ogsc] .code { color: #F5C518 !important; }
+  [data-ogsc] .foot { background: #111814 !important; color: #8E9B94 !important; }
+</style>
+</head>
+<body style="margin:0;padding:0">
+<div class="bg" style="margin:0;padding:24px 12px;background:#F2F4F0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
+  <table role="presentation" class="card" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:22px;overflow:hidden;box-shadow:0 6px 24px rgba(18,36,28,.10)">
+    <tr><td style="background:#0E5A3E;padding:30px 24px 26px;text-align:center">
+      <img src="https://gonelappin.au/icons/icon-192.png" width="76" height="76" alt="Camp Finder" style="display:block;margin:0 auto 14px;width:76px;height:76px;border:2px solid #2E8A5F;border-radius:20px;box-shadow:0 6px 18px rgba(0,0,0,.35)">
+      <div style="font-size:11px;font-weight:800;letter-spacing:4px;color:#F5C518">GONE LAPPIN'</div>
+      <div style="font-size:26px;font-weight:900;letter-spacing:.5px;line-height:1.15;color:#ffffff">Camp Finder</div>
+      <div style="color:#CFE3D8;font-size:14px;margin-top:6px">Every free camp around Australia</div>
     </td></tr>
     <tr><td style="padding:28px 26px 8px">
-      <h1 style="margin:0 0 10px;font-size:24px;line-height:1.2">G'day! Tap below to sign in</h1>
-      <p style="margin:0 0 22px;font-size:16px;line-height:1.5;color:#3E4A44">Open this email on the phone with Camp Finder and tap the button. It signs you straight in, no password needed.</p>
-      <p style="text-align:center;margin:0 0 22px">
-        <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#F5C518;color:#1A1608;text-decoration:none;font-weight:800;font-size:17px;padding:15px 34px;border-radius:14px;border-bottom:3px solid #C79A06">Sign in to Camp Finder</a>
+      <h1 class="ink" style="margin:0 0 10px;font-size:24px;line-height:1.2;color:#17201C">G'day! Here's your code</h1>
+      <p class="sub" style="margin:0 0 20px;font-size:16px;line-height:1.5;color:#4A5650">Type or paste this code in Camp Finder to sign in. No password needed.</p>
+      <p class="sub" style="margin:0 0 8px;font-size:14px;color:#4A5650;text-align:center">Your sign-in code</p>
+      <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto 10px"><tr>
+        <td class="codebox" style="background:#F6F1DC;border:2px solid #E3B70F;border-radius:16px;padding:14px 22px;text-align:center">
+          <span class="code" style="font-size:36px;font-weight:900;letter-spacing:9px;color:#0E5A3E;font-family:'SF Mono',Menlo,Consolas,monospace">{{ .Token }}</span>
+        </td></tr></table>
+      <p class="sub" style="margin:0 0 24px;font-size:13px;color:#4A5650;text-align:center">Tap and hold the code to copy it, then tap <b>Paste</b> in the app.</p>
+      <p style="text-align:center;margin:0 0 24px">
+        <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#F5C518;color:#1A1608;text-decoration:none;font-weight:800;font-size:17px;padding:15px 34px;border-radius:14px">Sign in to Camp Finder</a>
       </p>
-      <p style="margin:0 0 6px;font-size:14px;color:#5B6761;text-align:center">Or type this code in the app:</p>
-      <p style="margin:0 0 24px;text-align:center;font-size:30px;font-weight:900;letter-spacing:8px;color:#0E5A3E">{{ .Token }}</p>
-      <p style="margin:0 0 20px;font-size:13px;line-height:1.5;color:#5B6761">This link works once and expires in an hour. If you didn't ask to sign in, you can ignore this email.</p>
+      <p class="sub" style="margin:0 0 22px;font-size:13px;line-height:1.5;color:#4A5650">Or open this email on the phone with Camp Finder and tap the button. The code and button work once and expire in an hour. If you didn't ask to sign in, you can ignore this email.</p>
     </td></tr>
-    <tr><td style="background:#EEF1ED;padding:16px 26px;font-size:12px;line-height:1.5;color:#5B6761;text-align:center">
-      Camp Finder by Gone Lappin' Co. · Bundaberg, Queensland<br>Safe travels and happy camping 🏕️
+    <tr><td class="foot" style="background:#EAEEE9;padding:16px 26px;font-size:12px;line-height:1.5;color:#5B6761;text-align:center">
+      Camp Finder by Gone Lappin' · Bundaberg, Queensland<br>Safe travels and happy camping
     </td></tr>
   </table>
 </div>
+</body>
+</html>

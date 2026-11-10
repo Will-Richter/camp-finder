@@ -374,7 +374,7 @@
     if (c.kind === "Roadside rest area") return 1;
     return null;
   }
-  const isFourWD = (c) => c.tags?.["4wd_only"] === "yes" || /\b(4wd|4x4|four.?wheel.?drive|high clearance)\b/i.test(textOf(c));
+  const isFourWD = (c) => c.tags?.["4wd_only"] === "yes" || /\b(4wd|4x4|four.?wheel.?drive|high.?clearance)\b/i.test(textOf(c));
   function bigRigOK(c) {
     const txt = textOf(c);
     if (c.caravans === false || c.backcountry || c.access === "no" || c.access === "private" || isFourWD(c)) return false;
@@ -817,13 +817,25 @@
 
   // ---------------------------------------------------------------- photos (Wikimedia Commons, near the camp)
   const photoCache = new Map();
+  // Photos taken nearby can be anything (selfies, kids pulling faces, a car part). Keep only ones about the place:
+  // scenery, or named after the camp. Never people.
+  const PEOPLE_RX = /selfie|portrait|people|person|child|children|\bkids?\b|\bboy\b|\bgirl\b|\bman\b|\bwoman\b|\bmen\b|\bwomen\b|family|wedding|\bfaces?\b|crowd|baby|toddler|player|team|\bband\b|concert|headshot|mugshot|funny|group photo|me and|\bmy (son|daughter|wife|husband|mum|dad)/i;
+  const SCENE_RX = /beach|river|creek|lake|\bdam\b|falls|waterfall|gorge|camp|park|\bbay\b|coast|island|mount|range|forest|view|landscape|sunset|sunrise|lookout|ocean|\bsea\b|\bpoint\b|headland|estuary|wetland|lagoon|bush|outback|jetty|inlet|harbour|reserve|scenery|panorama|cliff|rock|valley|spring|billabong|dune|sand|reef|swamp|track|trail|walk/i;
+  function commonsOK(p, c) {
+    const m = p.imageinfo?.[0]?.extmetadata || {};
+    const txt = `${p.title || ""} ${m.ObjectName?.value || ""} ${m.ImageDescription?.value || ""} ${m.Categories?.value || ""}`.replace(/<[^>]+>/g, " ");
+    if (PEOPLE_RX.test(txt)) return false;
+    const words = (c.name || "").toLowerCase().split(/[^a-z']+/).filter((w) => w.length >= 4 && !/^(camp|camping|area|ground|park|rest|reserve|caravan|national|free|site|beach|river|creek|road)$/.test(w));
+    return SCENE_RX.test(txt) || words.some((w) => txt.toLowerCase().includes(w));
+  }
   async function photosNear(c) {
     if (photoCache.has(c.id)) return photoCache.get(c.id);
-    const url = `${CFG.commons}?action=query&generator=geosearch&ggscoord=${c.lat}|${c.lon}&ggsradius=1500&ggslimit=10&ggsnamespace=6&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=520&format=json&origin=*`;
+    const url = `${CFG.commons}?action=query&generator=geosearch&ggscoord=${c.lat}|${c.lon}&ggsradius=1500&ggslimit=20&ggsnamespace=6&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=520&format=json&origin=*`;
     let out = [];
     try {
       const j = await fetchJSON(url, {}, 12000);
       out = Object.values(j.query?.pages || {})
+        .filter((p) => commonsOK(p, c))
         .map((p) => p.imageinfo?.[0]).filter(Boolean)
         .filter((i) => /\.(jpe?g|png|webp)$/i.test(i.url))
         .map((i) => ({ thumb: i.thumburl, page: i.descriptionurl, by: (i.extmetadata?.Artist?.value || "").replace(/<[^>]+>/g, "").trim() }))
@@ -1197,6 +1209,22 @@
     return { line, camps: camps.filter((c) => c.off <= detourM * 1.15), offline: usedOffline };
   }
 
+  const isRestArea = (c) => c.source === "rest" || c.kind === "Roadside rest area" || /\b(rest (area|stop)|truck (bay|stop|parking)|parking bay|roadside stop|driver reviver|roadhouse|servo|service station|truckstop|puma|caltex|ampol|bp|shell|united|liberty)\b/i.test(c.name || "");
+  const hasInfo = (c) => !!((c.rating && c.ratingN >= 3) || c.photo || c.desc || (typeof ratingCache !== "undefined" && ratingCache.get(c.id)?.n) || (typeof gPlace !== "undefined" && gPlace.get(c.id)?.count));
+  // a camp worth recommending for a night: a real, named camp or a national park camp, not a highway stop
+  const genericName = (c) => /^(beach|meadow|boat ramp|bush camp|camp(ing)?( area| ground| site| spot)?( \d+| [a-z])?|reserve|park|picnic area)$/i.test((c.name || "").trim());
+  const goodCamp = (c) => !!c && (c.cpark || (!isRestArea(c) && !islandCamp(c) && (isParkCamp(c) || (c.named && !genericName(c)))));
+  // an island camp you'd need a barge or boat to reach (Curtis Island, the Keppels, Hinchinbrook...)
+  const islandCamp = (c) => /\/parks\/[^/]*island|islands?\b/i.test(`${c.website || c.tags?.website || ""} ${c.name}`) || !!c.backcountry;
+  function nightQuality(c, cost, opts = {}) {
+    let q = beauty(c);
+    if (!opts.fourwd && isFourWD(c)) q -= 150;  // 4WD-only camps only when you've turned on 4WD (or there's nothing else)
+    if (islandCamp(c)) q -= 80;                  // not reachable by road
+    if (isRestArea(c)) q -= 70;
+    if (!hasInfo(c)) q -= c.named && !genericName(c) ? 6 : 18;    // no photos, reviews or description: less likely to be a good spot
+    if (c.cpark && cost === "cheap") q -= 10;  // a camp first, a caravan park when there's no good camp
+    return q;
+  }
   function makePlan({ from, to, route, nights, opts, data }) {
     const { line, camps } = data;
     // a caravan or motorhome can't camp on a 4WD-only island (K'gari, Moreton) or one with no vehicles at all
@@ -1220,16 +1248,14 @@
         target = k <= outN ? prevAlong + (line.turn - prevAlong) / (outN - k + 1) : Math.max(prevAlong, line.turn) + (line.total - Math.max(prevAlong, line.turn)) / (nights - k + 2);
       }
       const win = isTurn ? Math.max(25000, Math.min(60000, seg * 0.45)) : Math.max(25000, seg * 0.45);
+      // the best spot to wake up at, not just the cheapest: beaches, rivers, national parks, quiet,
+      // well reviewed. Highway rest areas only when there's nothing else.
       const rank = (list) => list
-        .map((c) => ({ c, s: score(c, opts.wants, opts.cost) - Math.abs(c.along - target) / 1500 - c.off / 2500 }))
+        .map((c) => ({ c, s: score(c, opts.wants, opts.cost) + (opts.cost === "parks" ? 0 : nightQuality(c, opts.cost, opts)) - Math.abs(c.along - target) / 1500 - c.off / 2500 }))
         .sort((a, b) => b.s - a.s).map((x) => x.c);
       const ukey = (c) => c.id + (c._leg || "");
       const inWin = usable.filter((c) => Math.abs(c.along - target) <= win && !used.has(ukey(c)) && (!legRule || legRule(c)));
       let strict = rank(inWin.filter((c) => costOK(c, opts.cost) && ruledOut(c, opts.wants).length === 0));
-      if (opts.cost === "cheap") { // free or unknown first, paid only if nothing else
-        const freeish = strict.filter((c) => c.cost !== "paid");
-        if (freeish.length) strict = [...freeish, ...strict.filter((c) => c.cost === "paid")];
-      }
       let warn = "";
       let list = strict;
       if (!list.length) {
@@ -1249,8 +1275,13 @@
         list = rank(wide);
         if (list.length) warn = "Nothing close to the ideal stop. Nearest camp shown, so this day will be longer or shorter.";
       }
+      // nothing worth camping at near this stop (only rest areas or unknown roadside spots): a well-rated caravan park instead
+      if ((opts.cost === "cheap" || opts.cost === "any") && list.length && !goodCamp(list[0])) {
+        const parks = rank(usable.filter((c) => c.cpark && !used.has(ukey(c)) && Math.abs(c.along - target) <= Math.max(win, seg * 0.6) && (!legRule || legRule(c)) && ruledOut(c, opts.wants).length === 0));
+        if (parks.length) { list = [parks[0], ...list.filter((c) => c !== parks[0])]; warn = "No good camps around here, so a well-rated caravan park is shown. Free spots and rest areas are under other options."; }
+        else if (isRestArea(list[0])) warn = "No good camps or caravan parks around here, so this is a roadside rest area. Fine for a night's sleep.";
+      }
       const camp = list[0] || null;
-      if (camp && !warn && opts.cost === "cheap" && camp.cost === "paid") warn = "No free camp with your must-haves near here, so the best paid one is shown. Free options without them are under other options.";
       if (camp && opts.cost === "cheap" && camp.cost === "paid") {
         const freeAlt = rank(inWin.filter((c) => c.cost !== "paid" && c.id !== camp.id)).slice(0, 2);
         list.splice(1, 0, ...freeAlt.filter((c) => !list.slice(1, 4).includes(c)));
@@ -1258,7 +1289,8 @@
       if (camp && !warn) { const u = unrecorded(camp, opts.wants); if (u.length) warn = `Not recorded whether it has ${u.map((w) => SHORT_LABEL[w] || w).join(" or ").toLowerCase()}. Check before you rely on it.`; }
       if (camp) used.add(ukey(camp));
       prevAlong = camp ? camp.along : target;
-      picks.push({ target, camp, alts: list.slice(1, 4), ...(isTurn ? { turnPick: true } : {}), warn: camp ? warn : "No camps found for this night. Try a bigger detour or fewer must-haves." });
+      const altPool = list.slice(1);
+      picks.push({ target, camp, alts: [...altPool.filter(goodCamp), ...altPool.filter((c) => !goodCamp(c))].slice(0, 6), ...(isTurn ? { turnPick: true } : {}), warn: camp ? warn : "No camps found for this night. Try a bigger detour or fewer must-haves." });
     }
     // "Need a refresh" nights: a real bed instead of camping
     const want = new Set();
@@ -2401,7 +2433,7 @@
           <a class="btn line" href="${navUrl(pk.camp, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a>
           <a class="btn line learn" href="${esc(learnUrl(pk.camp))}" target="_blank" rel="noopener" data-learn="${esc(pk.camp.id)}">${icon("search")}Learn more</a>
         </div>
-        ${pk.alts.length ? `<details class="alt-wrap"><summary>${pk.alts.length} other camp${pk.alts.length > 1 ? "s" : ""} near here ${icon("chev", "ic sm")}</summary>
+        ${pk.alts.length ? `<details class="alt-wrap change-spot"><summary><span><b>Don't like this spot?</b><small>Tap to pick from ${pk.alts.length} other camp${pk.alts.length > 1 ? "s" : ""} in this area</small></span>${icon("chev", "ic sm")}</summary>
           ${pk.alts.map((c) => `<div class="alt">${campCard(c)}<button class="btn" data-act="swap" data-i="${i}" data-id="${esc(c.id)}" type="button">${icon("swap")}Stay here instead</button></div>`).join("")}
         </details>` : ""}
       </div></li>`);
@@ -3793,6 +3825,8 @@
         <div class="coord-row"><label class="sr" for="acctPw">Password</label><input id="acctPw" type="password" autocomplete="current-password" placeholder="Password"><button class="btn line" type="button" id="acctPwGo">Sign in</button></div>
       </details></form>`;
     const msg = $("#acctMsg");
+    liftInput($("#acctEmail"), { title: "Your email", hint: "We'll email you a sign-in link and a 6-digit code.", action: "Send", check: emailCheck, onGo: () => $("#acctForm").requestSubmit() });
+    liftInput($("#acctCode"), () => ({ title: "Sign-in code", hint: `Type or paste the 6-digit code we sent to <b>${esc($("#acctEmail").value.trim())}</b>.`, action: "Sign in", code: true, check: codeCheck, onGo: () => $("#acctVerify").click() }));
     $("#acctPwGo").addEventListener("click", async () => {
       const email = $("#acctEmail").value.trim(), pw = $("#acctPw").value;
       if (!email || !pw) { msg.className = "msg is-error"; msg.textContent = "Enter your email above and your password."; return; }
@@ -4144,7 +4178,8 @@
     const camps = nightsList.filter((n) => !p.picks[n.i].refresh).reduce((a, n) => a + n.v, 0);
     const stays = nightsList.filter((n) => p.picks[n.i].refresh).reduce((a, n) => a + n.v, 0);
     const days = totalDays(p), daily = (settings.daily || 0) * days;
-    return { f, live, price, fuel, nightsList, camps, stays, daily, days, total: fuel + camps + stays + daily };
+    const nightsN = nightsList.reduce((a, n) => a + n.n, 0);
+    return { f, live, price, fuel, nightsList, nightsN, camps, stays, daily, days, total: fuel + camps + stays + daily };
   }
   function renderBudget() {
     const box = $("#tripBudget"); if (!box || !plan) return;
@@ -4158,7 +4193,7 @@
       <div class="bg-rows">
         <div><b id="bgFuel">$0</b><small>Fuel · ${Math.round(t.f.litres)} L</small></div>
         <div><b>${money(t.camps)}</b><small>Camps</small></div>
-        <div><b>${refreshN ? money(t.stays) : t.daily ? money(t.daily) : "—"}</b><small>${refreshN ? `${refreshN} refresh night${refreshN > 1 ? "s" : ""}` : t.daily ? `Spending · ${t.days} days` : "Beds"}</small></div>
+        <div><b>${refreshN ? money(t.stays) : t.daily ? money(t.daily) : money(t.nightsN ? (t.camps + t.stays) / t.nightsN : 0)}</b><small>${refreshN ? `Motels · ${refreshN} night${refreshN > 1 ? "s" : ""}` : t.daily ? `Spending · ${t.days} days` : "Average a night"}</small></div>
       </div>
       <p class="bg-note">${esc(vname)}, ${settings.use} L/100 km${towing(plan.opts.rig) && settings.tow ? ` +${settings.tow}% towing` : ""} at ${money(t.price)}/L ${t.live ? "(live prices on your route)" : "(your set price)"}${fills >= 0.5 ? ` · about ${fills < 1.5 ? "1 tank" : Math.round(fills) + " tanks"}` : ""}. <button type="button" id="bgMore">See breakdown</button></p>
     </div>`;
@@ -4177,7 +4212,7 @@
       ${row(`${Math.round(t.f.litres)} litres of ${esc(settings.fuel)}`, money(t.fuel), `${km(plan.route.distance)} at ${settings.use} L/100 km${towing(plan.opts.rig) && settings.tow ? `, +${settings.tow}% for towing` : ""}, ${money(t.price)}/L ${t.live ? "average of live prices at your fuel stops" : "from your Settings"}`)}
       ${(plan.fuel || []).filter((f) => f.options?.[0]).map((f, k) => row(`Fuel stop ${k + 1}: ${esc(f.options[0].name)}`, f.options[0].fuel ? `${money(f.options[0].fuel.price)}/L` : "—", `${km(f.along)} from the start`)).join("")}
       <h3 class="h2">Nights</h3>
-      ${t.nightsList.map((n) => row(`Night ${n.i + 1}: ${esc(n.name)}${n.n > 1 ? ` × ${n.n}` : ""}`, n.v ? (n.known ? money(n.v) : "~" + money(n.v)) : "$0", esc(n.why))).join("")}
+      ${t.nightsList.map((n) => row(`Night ${n.i + 1}: ${esc(n.name)}${n.n > 1 ? ` × ${n.n}` : ""}`, n.v ? (n.known ? money(n.v) : "~" + money(n.v)) : "Free", esc(n.why))).join("")}
       ${t.daily ? `<h3 class="h2">Spending money</h3>${row(`${t.days} days at ${money(settings.daily)}`, money(t.daily))}` : ""}
       <p class="caveat">Prices marked ~ are estimates from Camp Finder's price guide (updated ${esc(PRICES.updated || "regularly")}), used when a place doesn't list its price. Fuel uses live government price feeds (WA, NSW, TAS, QLD) and Google Maps prices where available. Always check the price when you book.</p>
       <button class="btn" type="button" id="brSettings">${icon("gear")}Change vehicle, fuel price or budget</button>
@@ -4282,8 +4317,8 @@
     if (fs.warn) return `<li class="stop fuel"><div class="plate fuel warn" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="note">${esc(fs.text)}</p></div></li>`;
     const o = fs.options[0];
     const litres = settings.tank ? Math.round(settings.tank * 0.8) : 0;
-    return `<li class="stop fuel"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body">
-      <p class="stop-leg">Fuel stop · ${km(fs.along)} from the start</p>
+    return `<li class="stop fuel mini"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body">
+      <details class="fuel-mini"><summary><span><span class="fm-line"><b>Fuel stop</b> · ${esc(o.name)}${o.fuel ? ` · <em>${money(o.fuel.price)}/L</em>` : ""}</span><small>${km(fs.along)} from the start${o.off >= 400 ? `, ${km(o.off)} off your route` : ""}</small></span>${icon("chev", "ic sm")}</summary>
       <div class="fuel-card">
         <div class="fc-top"><div><b>${esc(o.name)}</b><small>${o.off < 400 ? "On your route" : `${km(o.off)} off your route`}${o.open === false ? " · closed now" : ""}</small></div>
           ${o.fuel ? `<div class="fc-price"><b>${money(o.fuel.price)}</b><small>${esc(settings.fuel)} /L</small></div>` : `<div class="fc-price none"><small>No price listed</small></div>`}</div>
@@ -4291,6 +4326,7 @@
         <div class="stop-actions"><a class="btn" href="${navUrl({ lat: o.lat, lon: o.lon, name: o.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Navigate</a></div>
       </div>
       ${fs.options.length > 1 ? `<details class="alt-wrap"><summary>${fs.options.length - 1} other station${fs.options.length > 2 ? "s" : ""} here ${icon("chev", "ic sm")}</summary>${fs.options.slice(1).map((x) => `<div class="alt fuel-alt"><span><b>${esc(x.name)}</b><small>${x.fuel ? `${money(x.fuel.price)}/L · ` : ""}${x.off < 400 ? "on route" : km(x.off) + " off route"}</small></span><button class="btn" type="button" data-act="fuelpick" data-f="${f}" data-id="${esc(x.id)}">Use this</button></div>`).join("")}</details>` : ""}
+      </details>
     </div></li>`;
   }
 
@@ -5743,6 +5779,68 @@
   ["#from", "#to"].forEach((sel) => $(sel).addEventListener("input", () => { seeIds.clear(); homePick = null; for (const k of Object.keys(bargePick)) delete bargePick[k]; if (viaStops.some((v) => !v.mine)) { viaStops = viaStops.filter((v) => v.mine); renderVia(); } }));
   $("#tripType").addEventListener("change", () => { seeIds.clear(); if (viaStops.some((v) => v.poi)) { viaStops = viaStops.filter((v) => !v.poi); renderVia(); } });
 
+
+  // ================================================================ big typing sheet
+  // On a phone, tapping the email or code box opens it large at the top of the screen over a blurred
+  // background, so the keyboard never hides what you're typing. Paste button for codes.
+  const touchUI = () => matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  let typeEl = null;
+  function typeSheet(src, o) {
+    if (!typeEl) {
+      typeEl = document.createElement("div"); typeEl.className = "typesheet"; typeEl.hidden = true;
+      typeEl.innerHTML = `<div class="ts-veil"></div><div class="ts-card" role="dialog" aria-modal="true" aria-labelledby="tsTitle">
+        <div class="ts-top"><b id="tsTitle"></b><button type="button" class="ts-x" aria-label="Close">Done</button></div>
+        <p class="ts-hint" id="tsHint"></p>
+        <input id="tsInput" class="ts-input">
+        <p class="ts-msg" id="tsMsg" role="status"></p>
+        <div class="ts-btns"><button type="button" class="btn line ts-paste" id="tsPaste">Paste</button><button type="button" class="cta ts-go" id="tsGo"></button></div></div>`;
+      document.body.appendChild(typeEl);
+    }
+    const inp = $("#tsInput"), go = $("#tsGo"), paste = $("#tsPaste"), m = $("#tsMsg");
+    for (const a of ["type", "inputmode", "autocomplete", "maxlength", "placeholder"]) { const v = src.getAttribute(a); if (v == null) inp.removeAttribute(a); else inp.setAttribute(a, v); }
+    inp.setAttribute("autocapitalize", "off"); inp.setAttribute("autocorrect", "off"); inp.spellcheck = false;
+    inp.classList.toggle("code", !!o.code);
+    if (o.code) inp.placeholder = "000000";
+    inp.value = src.value; m.textContent = "";
+    $("#tsTitle").textContent = o.title; $("#tsHint").innerHTML = o.hint || "";
+    go.textContent = o.action; paste.hidden = !o.code;
+    typeEl.hidden = false; document.documentElement.classList.add("typing");
+    requestAnimationFrame(() => typeEl.classList.add("on"));
+    inp.focus({ preventScroll: true }); // inside the tap, so the keyboard comes up
+    const clean = (v) => o.code ? v.replace(/\D/g, "").slice(0, +(src.getAttribute("maxlength") || 8)) : v.trim();
+    const sync = () => { src.value = o.code ? clean(inp.value) : inp.value; };
+    const close = () => {
+      sync(); inp.blur(); typeEl.classList.remove("on"); document.documentElement.classList.remove("typing");
+      setTimeout(() => { if (!typeEl.classList.contains("on")) typeEl.hidden = true; }, 220);
+    };
+    const submit = () => {
+      sync();
+      const bad = o.check?.(src.value);
+      if (bad) { m.textContent = bad; inp.focus(); return; }
+      close(); o.onGo?.();
+    };
+    inp.oninput = () => { if (o.code) { const c = clean(inp.value); if (c !== inp.value) inp.value = c; } sync(); m.textContent = ""; };
+    inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } };
+    go.onclick = submit;
+    $(".ts-x", typeEl).onclick = close; $(".ts-veil", typeEl).onclick = close;
+    paste.onclick = async () => {
+      try {
+        const t = clean(await navigator.clipboard.readText());
+        if (!t) { m.textContent = "No code copied yet. Copy the code from the email first."; return; }
+        inp.value = t; sync(); if (t.length >= 6) submit();
+      } catch { m.textContent = "Press and hold in the box above, then tap Paste."; inp.focus(); }
+    };
+  }
+  // the box on the page stays as-is with a mouse; on a phone tapping it opens the big typing sheet
+  function liftInput(src, o) {
+    if (!src || src.dataset.lift) return; src.dataset.lift = "1";
+    if (!touchUI()) return;
+    src.readOnly = true; src.classList.add("lift-src");
+    src.addEventListener("click", (e) => { e.preventDefault(); typeSheet(src, typeof o === "function" ? o() : o); });
+  }
+  const emailCheck = (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? "" : "That doesn't look like an email address yet.";
+  const codeCheck = (v) => v.length >= 6 ? "" : "The code is 6 numbers. Check the email we sent.";
+
   // ================================================================ first-time sign in
   // shows every time the app opens until you're signed in (Skip just closes it for now)
   async function showLogin() {
@@ -5774,6 +5872,8 @@
         catch { msg.textContent = "That code didn't work. Check it, or send a new link."; }
       };
       $("#lgBack").onclick = () => { $("#lgStep2").hidden = true; $("#lgStep1").hidden = false; msg.textContent = ""; };
+      liftInput($("#lgEmail"), { title: "Your email", hint: "We'll email you a sign-in link and a 6-digit code.", action: "Continue", check: emailCheck, onGo: () => $("#lgSend").click() });
+      liftInput($("#lgCode"), () => ({ title: "Sign-in code", hint: `Type or paste the 6-digit code we sent to <b>${esc($("#lgEmail").value.trim())}</b>.`, action: "Sign in", code: true, check: codeCheck, onGo: () => $("#lgVerify").click() }));
       $("#lgSkip").onclick = () => finish(false);
       $("#lgTerms").onclick = () => { w.hidden = true; openLegal("terms"); const back = () => { w.hidden = false; $("#detailClose").removeEventListener("click", back); }; $("#detailClose").addEventListener("click", back); };
       $("#lgPrivacy").onclick = () => { w.hidden = true; openLegal("privacy"); const back = () => { w.hidden = false; $("#detailClose").removeEventListener("click", back); }; $("#detailClose").addEventListener("click", back); };
@@ -6019,7 +6119,18 @@
     $(".ar-rig use").setAttribute("href", `#i-${prefs.rig}`);
     fillMakes($("#wlMake"), settings.make); fillModels($("#wlModel"), settings.make, settings.model);
     $("#wlMake").onchange = (e) => { pickVehicle(e.target.value, ""); fillModels($("#wlModel"), settings.make, settings.model); };
-    $("#wlModel").onchange = (e) => pickVehicle(settings.make, e.target.value);
+    $("#wlModel").onchange = (e) => { pickVehicle(settings.make, e.target.value); paintWlFuel(); };
+    const paintWlFuel = () => {
+      const r = $(`#wlFuel input[value="${settings.fuel}"]`); if (r) r.checked = true;
+      $("#wlUse").value = settings.use;
+    };
+    paintWlFuel();
+    $("#wlMake").addEventListener("change", paintWlFuel);
+    $("#wlFuel").onchange = (e) => { settings.fuel = e.target.value; saveSettings(); };
+    const setUse = (v) => { v = Math.round(Math.min(40, Math.max(3, v)) * 10) / 10; if (!isFinite(v)) return; settings.use = v; $("#wlUse").value = v; saveSettings(); };
+    $("#wlUse").onchange = (e) => setUse(parseFloat(e.target.value));
+    $("#wlUseDn").onclick = () => setUse((+settings.use || 10) - 0.5);
+    $("#wlUseUp").onclick = () => setUse((+settings.use || 10) + 0.5);
     const wm = $(`#wlMode input[value="${settings.simple ? "simple" : "full"}"]`); if (wm) wm.checked = true;
     $("#wlMode").onchange = (e) => { settings.simple = e.target.value === "simple"; saveSettings(); applyMode(); };
     const at = () => Math.round(track.scrollLeft / track.clientWidth);
@@ -6058,5 +6169,5 @@
     </div>`);
   }
 
-  window.__cf = { campDB, settings, fuelFor, campFee, parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
+  window.__cf = { campDB, settings, fuelFor, campFee, campsAlong, nightQuality, goodCamp, parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
 })();
