@@ -1538,3 +1538,58 @@ input:placeholder-shown + .clear-x { display: none; }
 .fuel-pr.cheap { color: #1F8A4C; }
 .fs-ask { display: grid; gap: 6px; margin: -4px 0 12px; font-size: 13px; color: var(--sub, #5B655F); }
 .fs-ask > div { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* big typing sheet (email and code boxes on a phone) */
+.typesheet { position: fixed; inset: 0; z-index: 6000; }
+.ts-veil { position: absolute; inset: 0; background: rgba(8, 20, 14, .55); -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2); opacity: 0; transition: opacity .22s ease; }
+.ts-card { position: absolute; left: 12px; right: 12px; top: calc(14px + env(safe-area-inset-top, 0px)); max-width: 520px; margin: 0 auto;
+  background: var(--sheet); color: var(--ink); border-radius: 24px; padding: 18px 18px 16px; box-shadow: 0 24px 60px rgba(0,0,0,.4);
+  display: flex; flex-direction: column; gap: 10px; opacity: 0; transform: translateY(-14px) scale(.96); transition: opacity .22s ease, transform .3s var(--spring); }
+.typesheet.on .ts-veil, .typesheet.on .ts-card { opacity: 1; }
+.typesheet.on .ts-card { transform: none; }
+.ts-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ts-top b { font: 900 22px var(--display); }
+.ts-x { background: var(--well); border: 0; color: var(--ink); font: 800 15px var(--display); padding: 9px 14px; border-radius: 12px; }
+.ts-hint { margin: 0; color: var(--sub); font-size: 15px; line-height: 1.4; word-break: break-word; }
+.ts-hint b { color: var(--ink); }
+.ts-input { width: 100%; box-sizing: border-box; border: 2px solid var(--gold); background: var(--well); color: var(--ink); -webkit-text-fill-color: var(--ink);
+  border-radius: 16px; padding: 16px; font: 800 21px var(--display); outline: none; }
+.ts-input.code { text-align: center; font-size: 34px; letter-spacing: .32em; padding: 14px 8px 14px calc(8px + .32em); font-variant-numeric: tabular-nums; }
+.ts-msg { margin: 0; min-height: 1.2em; color: #C0392B; font-weight: 700; font-size: 14px; }
+.ts-msg:empty { display: none; }
+.ts-btns { display: flex; gap: 10px; }
+.ts-btns .ts-paste { flex: none; min-width: 96px; min-height: 54px; font-size: 16px; }
+.ts-btns .ts-go { flex: 1; min-height: 54px; font-size: 17px; }
+.lift-src { cursor: text; caret-color: transparent; }
+@media (prefers-reduced-motion: reduce) { .ts-veil, .ts-card { transition: none; } }
+
+/* welcome: fuel type and fuel use */
+.wl-fuel { display: flex; flex-direction: column; gap: 8px; width: min(100%, 340px); }
+.wl-fuelpick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.wl-fuelpick input { position: absolute; opacity: 0; pointer-events: none; }
+.wl-fuelpick span { display: block; text-align: center; padding: 10px 6px; border-radius: 12px; background: rgba(255,255,255,.14); color: #fff; font: 800 15px var(--display); border: 2px solid transparent; transition: background .2s, transform .2s var(--spring); }
+.wl-fuelpick input:checked + span { background: var(--gold); color: var(--gold-ink); transform: scale(1.04); }
+.wl-fuelpick input:focus-visible + span { border-color: #fff; }
+.wl-use { display: grid; grid-template-columns: 48px 1fr 48px; gap: 6px; align-items: stretch; }
+.wl-use button { border: 0; border-radius: 12px; background: rgba(255,255,255,.14); color: #fff; font: 900 22px var(--display); }
+.wl-use label { display: flex; align-items: baseline; justify-content: center; gap: 6px; background: #fff; border-radius: 12px; padding: 8px 10px; }
+.wl-use input { width: 4.2em; border: 0; background: none; text-align: right; font: 900 20px var(--display); color: #17201C; -webkit-text-fill-color: #17201C; padding: 0; }
+.wl-use small { font: 800 13px var(--display); color: #4A5650; }
+
+/* itinerary: change this night's spot, slim fuel stops */
+.change-spot > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: color-mix(in srgb, var(--gold) 16%, var(--sheet)); border: 1.5px dashed color-mix(in srgb, var(--gold) 70%, transparent); border-radius: 14px; padding: 10px 12px; margin-top: 8px; cursor: pointer; list-style: none; }
+.change-spot > summary::-webkit-details-marker { display: none; }
+.change-spot > summary span { display: flex; flex-direction: column; gap: 2px; }
+.change-spot > summary b { font: 800 15px var(--display); color: var(--ink); }
+.change-spot > summary small { color: var(--sub); font-size: 13px; }
+.change-spot[open] > summary .ic { transform: rotate(180deg); }
+.stop.fuel.mini .plate { transform: scale(.78); }
+.fuel-mini > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; cursor: pointer; list-style: none; color: var(--ink); font-size: 14px; }
+.fuel-mini > summary::-webkit-details-marker { display: none; }
+.fuel-mini > summary span { display: flex; flex-direction: column; gap: 1px; }
+.fuel-mini > summary em { font-style: normal; font-weight: 800; color: #1F8A4C; }
+.fuel-mini > summary small { color: var(--sub); font-size: 12.5px; }
+.fuel-mini[open] > summary .ic { transform: rotate(180deg); }
+.fuel-mini .fuel-card { margin-top: 6px; }
+.fuel-mini .fm-line { display: block; }
+.ts-input.code::placeholder { color: color-mix(in srgb, var(--sub) 45%, transparent); -webkit-text-fill-color: color-mix(in srgb, var(--sub) 45%, transparent); }
