@@ -226,6 +226,16 @@
 
     // ---- live fuel prices from the state government schemes (refreshed inside Supabase)
     // ---- travellers' AdBlue reports (no sign-in needed)
+    // Google place IDs for camps, looked up once by any phone and shared with everyone (Google allows keeping place IDs)
+    async gplaceGet(ids) {
+      if (!sb || !ids.length) return {};
+      const { data, error } = await sb.from("camp_gplace").select("camp_id,place_id").in("camp_id", ids);
+      const out = {}; if (!error) (data || []).forEach((r) => { out[r.camp_id] = r.place_id; }); return out;
+    },
+    async gplacePut(campId, placeId) {
+      if (!sb) return;
+      try { await sb.from("camp_gplace").upsert({ camp_id: campId, place_id: placeId || "", updated_at: new Date().toISOString() }); } catch {}
+    },
     async adblueReport(lat, lon, adblue) {
       if (!sb) throw new Error("Not connected");
       const { error } = await sb.from("fuel_reports").insert({ lat: +lat.toFixed(5), lon: +lon.toFixed(5), adblue }); fail(error);

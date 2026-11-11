@@ -33,7 +33,7 @@
     priceData: "data/prices.json",
     priceDataLive: "https://raw.githubusercontent.com/Will-Richter/camp-finder/main/docs/data/prices.json",
     googleReviews: true, // also show the Google star rating and up to 5 Google reviews (needs googleKey)
-    googlePhotos: 4, // photos per camp (each one shown is billed by Google after the free monthly allowance)
+    googlePhotos: 10, // photos per camp in the gallery, Google's maximum (each one shown is billed after the free monthly allowance)
     exploreMinZoom: 9,
     boatRampKm: 5,
     dumpKm: 10,
@@ -2851,7 +2851,8 @@
         e.preventDefault(); const p = shots.find((x) => String(x.id) === b.dataset.del);
         try { await window.CFCloud.deletePhoto(p); shots.splice(shots.indexOf(p), 1); render(true); toast("Photo removed"); } catch { toast("Couldn't remove it right now"); }
       }));
-      $("#photoNote").textContent = shots.some((p) => p.google) ? "Some photos from Google. Photographer shown on each." : "";
+      const gUri = gPlace.get(c.id)?.uri;
+      $("#photoNote").innerHTML = shots.some((p) => p.google) ? `Photos from Google Maps, photographer shown on each.${gUri ? ` <a href="${esc(gUri)}" target="_blank" rel="noopener">See every photo on Google Maps</a>` : ""}` : "";
     };
     g.dataset.key = key; g.scrollLeft = 0;
     if (c.photo) add([{ src: c.photo, credit: "Added by a traveller" }]);
@@ -2859,13 +2860,26 @@
     render(false);
     const jobs = [
       soon(window.CFCloud?.enabled ? window.CFCloud.photosFor(key) : Promise.resolve([]), 8000, []).then((l) => l.map((p) => ({ src: p.url, credit: "Traveller photo", mine: p.mine, id: p.id }))),
-      soon(googlePhotos(c), 12000, []),
+      soon(googlePhotos(c, 3), 12000, []),
       soon(photosNear(c), 10000, []).then((l) => l.map((p) => ({ src: p.thumb, href: p.page, credit: p.by ? `Nearby · ${p.by} · Wikimedia` : "Nearby · Wikimedia Commons" }))),
     ];
     // travellers first, then Google, then nearby free photos
     const [mine, goog, wiki] = await Promise.all(jobs.map((j, i) => j.then((v) => { if (i === 0) { add(v); render(false); } return v; })));
     add(mine); add(goog); add(wiki);
     render(true);
+    // more Google photos (up to 10) only when someone swipes towards the end
+    const g2 = $("#gallery");
+    if (g2 && goog.length >= 3) {
+      const more = async () => {
+        if (g2.scrollLeft + g2.clientWidth < g2.scrollWidth - g2.clientWidth * 1.2) return;
+        g2.removeEventListener("scroll", more);
+        const all = await soon(googlePhotos(c), 12000, []);
+        if ($("#gallery")?.dataset.key !== key) return;
+        const before = shots.length; add(all);
+        if (shots.length > before) { const x = g2.scrollLeft; render(true); g2.scrollLeft = x; }
+      };
+      g2.addEventListener("scroll", more, { passive: true });
+    }
   }
   function wirePhotoAdd(c) {
     const btn = $("#phAdd"); if (!btn) return;
@@ -2890,39 +2904,53 @@
   function goSignIn() { closeDetail(); $("#tab-saved")?.click(); setTimeout(() => $("#acctEmail")?.focus(), 300); }
 
   // Google Places photos (licensed; switched on by CFG.googleKey). Place IDs are kept; photo links are not.
-  const gIds = store.get("cf-gpid2", {});   // v2: unnamed camps now matched to nearby campgrounds
+  const gIds = store.get("cf-gpid3", {});   // v3: forget misses recorded while Google's daily limit was hit
   async function gfetch(url, { method = "GET", body, fieldMask } = {}) {
     const headers = { "X-Goog-Api-Key": CFG.googleKey };
     if (fieldMask) headers["X-Goog-FieldMask"] = fieldMask;
     if (body) headers["Content-Type"] = "application/json";
-    if (nativeFetch) return JSON.parse(await nativeFetch(url, { method, body: body && JSON.stringify(body), contentType: body && "application/json", headers, timeout: 10000 }));
-    return fetchJSON(url, { method, headers, body: body && JSON.stringify(body) }, 10000);
+    const j = nativeFetch ? JSON.parse(await nativeFetch(url, { method, body: body && JSON.stringify(body), contentType: body && "application/json", headers, timeout: 10000 }))
+      : await fetchJSON(url, { method, headers, body: body && JSON.stringify(body) }, 10000);
+    // a quota or key error is not "no such place": throw, so the camp isn't remembered as having no photos
+    if (j && j.error) throw new Error(`Google ${j.error.code || ""} ${j.error.status || ""}`);
+    return j;
   }
   const gCache = new Map(), gPlace = new Map();
+  // shared lookups: ask the cloud for many camps at once, so a trip's camps cost one request, not one each
+  let gShareQ = null;
+  function sharedPlaceId(campId) {
+    if (!window.CFCloud?.enabled || !window.CFCloud.gplaceGet) return Promise.resolve(undefined);
+    if (!gShareQ) {
+      gShareQ = { ids: new Set(), p: null };
+      gShareQ.p = new Promise((res) => setTimeout(async () => {
+        const q = gShareQ; gShareQ = null;
+        try { res(await window.CFCloud.gplaceGet([...q.ids].slice(0, 200))); } catch { res({}); }
+      }, 60));
+    }
+    gShareQ.ids.add(campId);
+    return gShareQ.p.then((m) => m[campId]);
+  }
   async function googlePlaceId(c) {
     if (c.gid) return c.gid;   // a park that came from Google Maps in the first place
     let id = gIds[c.id];
-    if (id === undefined || (id === "" && Date.now() - (gIds[c.id + "@t"] || 0) > 14 * 864e5)) {
+    if (id === undefined || id === "") {
+      const shared = await sharedPlaceId(c.id);
+      if (shared) { id = shared; gIds[c.id] = id; store.set("cf-gpid3", gIds); return id; }
+    }
+    if (id === undefined || (id === "" && Date.now() - (gIds[c.id + "@t"] || 0) > 3 * 864e5)) {
       let hit = null;
-      if (c.named) {
-        const j = await gfetch("https://places.googleapis.com/v1/places:searchText", {
-          method: "POST", fieldMask: "places.id,places.location",
-          body: { textQuery: c.name, pageSize: 3, regionCode: "AU", locationBias: { circle: { center: { latitude: c.lat, longitude: c.lon }, radius: c.sight ? 10000 : 3000 } } },
-        });
-        // only accept a match that's actually at this camp (sights' map spots are approximate, so allow more)
-        hit = (j.places || []).find((p) => p.location && hav([c.lat, c.lon], [p.location.latitude, p.location.longitude]) <= (c.sight ? 12000 : 3600));
-      }
-      if (!hit && !c.sight) {
-        // no name (or no match by name): the nearest campground or RV park Google knows right at this spot
-        const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
-          method: "POST", fieldMask: "places.id,places.location",
-          body: { includedTypes: ["campground", "rv_park"], maxResultCount: 3, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: c.lat, longitude: c.lon }, radius: c.named ? 800 : 1200 } } },
-        });
-        hit = (j.places || []).find((p) => p.location && hav([c.lat, c.lon], [p.location.latitude, p.location.longitude]) <= (c.named ? 900 : 1300));
-      }
+      // IDs-only searches are free with Google; the box keeps the match right at this camp
+      const box = (m) => { const dLat = m / 111000, dLon = m / (111000 * Math.cos(c.lat * Math.PI / 180));
+        return { rectangle: { low: { latitude: c.lat - dLat, longitude: c.lon - dLon }, high: { latitude: c.lat + dLat, longitude: c.lon + dLon } } }; };
+      const idsOnly = async (q, m) => (await gfetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST", fieldMask: "places.id", body: { textQuery: q, pageSize: 1, regionCode: "AU", locationRestriction: box(m) } })).places?.[0] || null;
+      if (c.named) hit = await idsOnly(c.name, c.sight ? 12000 : 3500);
+      // no name (or no match by name): the campground or caravan park Google knows right at this spot
+      if (!hit && !c.sight) hit = await idsOnly(c.cpark ? "caravan park" : "campground", c.named ? 900 : 1300);
       id = hit?.id || "";
       gIds[c.id] = id; if (!id) gIds[c.id + "@t"] = Date.now();
-      store.set("cf-gpid2", gIds);
+      store.set("cf-gpid3", gIds);
+      if (id) window.CFCloud?.gplacePut?.(c.id, id);   // share it so no other phone has to look this camp up again
     }
     return id;
   }
