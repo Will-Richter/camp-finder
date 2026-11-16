@@ -1593,3 +1593,8 @@ input:placeholder-shown + .clear-x { display: none; }
 .fuel-mini .fuel-card { margin-top: 6px; }
 .fuel-mini .fm-line { display: block; }
 .ts-input.code::placeholder { color: color-mix(in srgb, var(--sub) 45%, transparent); -webkit-text-fill-color: color-mix(in srgb, var(--sub) 45%, transparent); }
+/* free users: Google photos and reviews come with Pro */
+.gallery .ph-pro { background: color-mix(in srgb, var(--gold) 22%, var(--well)); color: var(--ink); }
+.gallery .ph-pro span:first-child { font-size: 26px; }
+.fs-pro { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--gold) 16%, var(--well)); font-size: 13.5px; line-height: 1.4; }
+.fs-pro .linkish { font-weight: 800; }

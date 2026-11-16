@@ -116,12 +116,13 @@
 
   // ================================================================ Camp Finder Pro (monthly or yearly subscription in the iPhone app)
   // Free: plan trips with a camp every night, the full camp map, fuel and water, Camp tonight and one state offline.
-  // Pro: 4WD tracks and 4WD trips, every state offline, Camp tonight filters, unlimited saved trips, family sharing, trip videos.
+  // Pro: 4WD tracks and 4WD trips, every state offline, Camp tonight filters, unlimited saved trips, family sharing, trip videos,
+  // and Google Maps photos, reviews and extra places (every Google call costs money, so only Pro makes them; free uses free data).
   // Apple handles the purchase (StoreKit 2 over the "store" message handler); the page only asks and listens.
   const nativeStore = nativeCall("store", "__cfStoreDone");
   const PRO_IDS = { month: "au.com.gonelappin.campfinder.pro.monthly", year: "au.com.gonelappin.campfinder.pro.yearly", once: "au.com.gonelappin.campfinder.pro.lifetime" };
   const PRO_FALLBACK = { month: { price: "A$4.99", value: 4.99 }, year: { price: "A$34.99", value: 34.99 }, once: { price: "A$99.00", value: 99 } };   // until the App Store answers
-  const PRO_WHY = { tracks: "The 4WD tracks map", fourwd: "4WD trips along the tracks", states: "More than one state offline", tonight: "Camp tonight filters", trips: "More than 3 saved trips", family: "Family sharing", video: "Trip videos" };
+  const PRO_WHY = { photos: "Google photos and reviews", tracks: "The 4WD tracks map", fourwd: "4WD trips along the tracks", states: "More than one state offline", tonight: "Camp tonight filters", trips: "More than 3 saved trips", family: "Family sharing", video: "Trip videos" };
   const pro = { on: !!store.get("cf-pro", false), forever: !!store.get("cf-pro-forever", false), products: null };
   const isPro = () => pro.on || (!nativeStore && !!store.get("cf-pro-test", false));
   function setPro(st) {
@@ -130,6 +131,7 @@
     pro.forever = on && !!st?.plan?.lifetime; store.set("cf-pro-forever", pro.forever);
     try { paintPro(); } catch { /* still starting up */ }
     if (on && !was) toast("Camp Finder Pro is on. Enjoy the big lap! 🎉", 3500);
+    if (on && !was) { try { firstPhotoCache.clear(); gCache.clear(); document.querySelectorAll("[data-ph]").forEach((el) => delete el.dataset.ph); cardPhotos(); } catch { /* still starting up */ } }
   }
   window.__cfProChanged = (st) => setPro(st);
   if (nativeStore) nativeStore({ op: "status" }, 30000).then(setPro).catch(() => {});
@@ -141,11 +143,11 @@
     const c = document.getElementById("stPro"); if (!c) return;
     c.classList.toggle("is-pro", on);
     c.querySelector("b").textContent = on ? "Camp Finder Pro is on" : "Get Camp Finder Pro";
-    c.querySelector("small").textContent = on ? (pro.forever ? "Pro forever. Thanks for supporting the app." : "Thanks for supporting the app. Tap to manage your subscription.") : "Every 4WD track, all of Australia offline, Camp tonight filters and more. 7 days free.";
+    c.querySelector("small").textContent = on ? (pro.forever ? "Pro forever. Thanks for supporting the app." : "Thanks for supporting the app. Tap to manage your subscription.") : "Google photos and reviews, every 4WD track, all of Australia offline and more. 7 days free.";
   }
   async function showPaywall(why, then) {
     let plan = "year";
-    const FEATS = [["🛞", "Every 4WD track", "Beach runs, sand and hard 4WD on the map, and trips that follow the tracks"], ["📶", "All of Australia offline", "Download every state for when there's no signal"], ["🌅", "Camp tonight filters", "Beach, river, lake, dam or gorge, with toilets, showers or dogs OK"], ["🧭", "Unlimited saved trips", "Keep every trip you plan"], ["👨‍👩‍👧", "Family sharing", "Let family follow your trip live"], ["🎬", "Trip videos", "A short film of every trip to share"]];
+    const FEATS = [["📸", "Google photos and reviews", "Photos and reviews of every camp, caravan park, servo and must-see"], ["🛞", "Every 4WD track", "Beach runs, sand and hard 4WD on the map, and trips that follow the tracks"], ["📶", "All of Australia offline", "Download every state for when there's no signal"], ["🌅", "Camp tonight filters", "Beach, river, lake, dam or gorge, with toilets, showers or dogs OK"], ["🧭", "Unlimited saved trips", "Keep every trip you plan"], ["👨‍👩‍👧", "Family sharing", "Let family follow your trip live"], ["🎬", "Trip videos", "A short film of every trip to share"]];
     const P = (u) => pro.products?.find((p) => p.unit === u) || PRO_FALLBACK[u];
     const draw = () => {
       const m = P("month"), y = P("year"), o = P("once"), sel = P(plan), once = plan === "once";
@@ -2174,8 +2176,8 @@
   }
   // the most-reviewed attractions on Google Maps along the route (only when online with the key)
   async function googlePois(p) {
-    if (!CFG.googleKey || p._gpois) return p._gpois || [];
-    const centers = []; const step = Math.max(90000, p.line.total / 22);
+    if (!CFG.googleKey || !isPro() || p._gpois) return p._gpois || [];
+    const centers = []; const step = Math.max(150000, p.line.total / 10);
     for (let a = 0; a <= p.line.total; a += step) centers.push(pointAt(p.line, a));
     const found = new Map();
     await Promise.all(centers.map(async (c) => {
@@ -2225,7 +2227,7 @@
     draw();
     if (focusId) setTimeout(() => { const el = document.getElementById(`row-${CSS.escape(focusId)}`); el?.scrollIntoView({ block: "center" }); el?.classList.add("flash"); }, 60);
     $("#poiList").addEventListener("change", (e) => { const cb = e.target.closest("input[type=checkbox]"); if (!cb) return; cb.checked ? draft.add(cb.value) : draft.delete(cb.value); cb.closest(".poi-row").classList.toggle("on", cb.checked); updateBtn(); });
-    if (CFG.googleKey) googlePois(p).then((g) => { if (!$("#poiMore")) return; $("#poiMore").textContent = g.length ? `Includes ${g.length} of the most-reviewed spots on Google Maps.` : ""; draw(); }).catch(() => { if ($("#poiMore")) $("#poiMore").textContent = ""; });
+    if (CFG.googleKey && isPro()) googlePois(p).then((g) => { if (!$("#poiMore")) return; $("#poiMore").textContent = g.length ? `Includes ${g.length} of the most-reviewed spots on Google Maps.` : ""; draw(); }).catch(() => { if ($("#poiMore")) $("#poiMore").textContent = ""; });
     $("#poiApply").addEventListener("click", () => applySights(draft));
   }
   // re-plan the trip so it routes past the sights you picked
@@ -2285,11 +2287,13 @@
     $("#pdAll")?.addEventListener("click", () => openPois(x.id));
     const g = { id: `poi:${x.id}`, name: x.name, named: true, sight: true, lat: x.lat, lon: x.lon };
     // photos (a swipeable strip), Google rating and reviews, and a description
-    soon(googlePhotos(g, 6), 10000, []).then((phs) => {
+    soon(googlePhotos(g, 6), 10000, []).then(async (phs) => {
+      if (!phs.length) phs = (await soon(photosNear(g), 9000, [])).slice(0, 6).map((p) => ({ src: p.thumb, credit: p.by ? `${p.by} · Wikimedia` : "Wikimedia Commons" }));
       const el = $("#pdPhoto"); if (!el || !phs.length || !el.isConnected) return;
       el.classList.add("pd-strip");
       el.innerHTML = phs.map((ph) => `<img src="${esc(ph.src)}" alt="" loading="lazy">`).join("");
-      $("#pdCredit").textContent = `Photos: ${[...new Set(phs.map((ph) => ph.credit.replace(/ · Google$/, "")))].slice(0, 3).join(", ")} · Google`;
+      const goog = phs.some((ph) => / · Google$/.test(ph.credit));
+      $("#pdCredit").textContent = `Photos: ${[...new Set(phs.map((ph) => ph.credit.replace(/ · (Google|Wikimedia)$/, "")))].slice(0, 3).join(", ")} · ${goog ? "Google" : "Wikimedia"}`;
       const gp = gPlace.get(g.id); if (gp) renderGoogleRating(g, gp);
     }).catch(() => {});
     if (!info.about) {
@@ -2845,8 +2849,9 @@
       if (!$("#gallery") || $("#gallery").dataset.key !== key) return;
       const tiles = shots.map((p, i) => `<figure class="ph">${p.href ? `<a href="${esc(p.href)}" target="_blank" rel="noopener">` : ""}<img ${i ? 'loading="lazy"' : ""} src="${esc(p.src)}" alt="Photo of ${esc(c.name)}">${p.href ? "</a>" : ""}${p.credit ? `<figcaption>${esc(p.credit)}</figcaption>` : ""}${p.mine ? `<button class="ph-del" type="button" data-del="${p.id}" aria-label="Remove my photo">×</button>` : ""}</figure>`).join("");
       const addTile = `<button type="button" class="ph-add" id="phAdd">${icon("photo")}<span>${shots.length ? "Add your photo" : "Be the first to add a photo"}</span></button>`;
-      g.innerHTML = tiles + (done ? addTile : `<div class="none"><span class="spinner"></span></div>`);
-      if (done) wirePhotoAdd(c);
+      const proTile = !isPro() && CFG.googleKey && !isOffline() ? `<button type="button" class="ph-add ph-pro" id="phPro"><span aria-hidden="true">📸</span><span>See Google photos and reviews with Pro</span></button>` : "";
+      g.innerHTML = tiles + (done ? proTile + addTile : `<div class="none"><span class="spinner"></span></div>`);
+      if (done) { wirePhotoAdd(c); $("#phPro")?.addEventListener("click", () => showPaywall("photos", () => openDetail(c))); }
       g.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async (e) => {
         e.preventDefault(); const p = shots.find((x) => String(x.id) === b.dataset.del);
         try { await window.CFCloud.deletePhoto(p); shots.splice(shots.indexOf(p), 1); render(true); toast("Photo removed"); } catch { toast("Couldn't remove it right now"); }
@@ -2906,6 +2911,9 @@
   // Google Places photos (licensed; switched on by CFG.googleKey). Place IDs are kept; photo links are not.
   const gIds = store.get("cf-gpid3", {});   // v3: forget misses recorded while Google's daily limit was hit
   async function gfetch(url, { method = "GET", body, fieldMask } = {}) {
+    // Google charges for every request, so only Pro (and the free trial) uses it. Free uses the built-in data,
+    // the government fuel prices and free photos.
+    if (!isPro()) throw new Error("Google Maps extras are part of Pro");
     const headers = { "X-Goog-Api-Key": CFG.googleKey };
     if (fieldMask) headers["X-Goog-FieldMask"] = fieldMask;
     if (body) headers["Content-Type"] = "application/json";
@@ -2955,16 +2963,21 @@
     return id;
   }
   const gPhotoNames = new Map(), gAbout = new Map();
+  const gFull = new Set();
   async function googlePhotos(c, limit = CFG.googlePhotos) {
-    if (!CFG.googleKey) return [];
+    if (!CFG.googleKey || !isPro()) return [];
     const have = gCache.get(c.id);
     if (have && (have.length >= limit || have.done)) return have.slice(0, limit);
     const id = await googlePlaceId(c);
     if (!id) { const e = []; e.done = true; gCache.set(c.id, e); return []; }
     let names = gPhotoNames.get(c.id);
-    if (!names) {
-      const wantContact = c.cpark && (!c.website || !c.phone) && !c.gWeb;
-      const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: (CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos") + (c.named ? "" : ",displayName") + (wantContact ? ",websiteUri,nationalPhoneNumber" : "") + (c.sight ? ",editorialSummary" : "") });
+    // a camp card needs one photo: ask for photos only (Google's cheapest lookup). Opening a camp asks for the rating and reviews too.
+    const wantFull = limit > 1 || !!c.sight;
+    if (!names || (wantFull && !gFull.has(c.id))) {
+      const wantContact = wantFull && c.cpark && (!c.website || !c.phone) && !c.gWeb;
+      const det = await gfetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, { fieldMask: !wantFull ? "photos"
+        : (CFG.googleReviews ? "photos,rating,userRatingCount,reviews,googleMapsUri" : "photos,googleMapsUri") + (c.named ? "" : ",displayName") + (wantContact ? ",websiteUri,nationalPhoneNumber" : "") + (c.sight ? ",editorialSummary" : "") });
+      if (wantFull) gFull.add(c.id);
       if (c.sight && det.editorialSummary?.text) gAbout.set(c.id, det.editorialSummary.text);
       if (!c.named && det.displayName?.text) nameFromGoogle(c, det.displayName.text);
       if (wantContact && (det.websiteUri || det.nationalPhoneNumber)) parkContactFromGoogle(c, det.websiteUri || "", det.nationalPhoneNumber || "");
@@ -3128,7 +3141,8 @@
 
   // ---------------------------------------------------------------- EXPLORE
   // ---- Caravan parks Google Maps knows about but OpenStreetMap doesn't (checked once per area, kept a week)
-  const gParkCache = new Map(Object.entries(store.get("cf-gparks", {})).filter(([, v]) => Date.now() - v.t < 7 * 864e5));
+  const gParkCache = new Map();
+  try { localStorage.removeItem("cf-gparks"); } catch { /* not kept any more */ }
   function gParkToCamp(g) {
     const name = g.displayName?.text || "Caravan park";
     const t = { name };
@@ -3140,8 +3154,9 @@
       image: "", commons: "", hours: "", rating: g.rating || 0, ratingN: g.userRatingCount || 0, gUri: g.googleMapsUri || "", rampM: Infinity, dumpM: Infinity };
   }
   async function googleParksNear(lat, lon, radius) {
-    if (!CFG.googleKey || isOffline()) return [];
-    const key = `${lat.toFixed(2)},${lon.toFixed(2)},${Math.round(radius / 5000)}`;
+    if (!CFG.googleKey || !isPro() || isOffline()) return [];
+    // one lookup per ~20 km square, so moving the map around an area doesn't ask Google again
+    const key = `${(Math.round(lat * 5) / 5).toFixed(1)},${(Math.round(lon * 5) / 5).toFixed(1)},${Math.round(radius / 10000)}`;
     const hit = gParkCache.get(key); if (hit) return hit.list;
     try {
       const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
@@ -3151,7 +3166,6 @@
       const list = (j.places || []).filter((g) => g.businessStatus !== "CLOSED_PERMANENTLY" && g.location && ((g.types || []).includes("rv_park") || PARK_RE.test(g.displayName?.text || "")))
         .filter((g) => !NOT_PARK_RE.test(g.displayName?.text || "")).map(gParkToCamp);
       gParkCache.set(key, { t: Date.now(), list });
-      try { store.set("cf-gparks", Object.fromEntries([...gParkCache.entries()].slice(-150))); } catch { /* full */ }
       return list;
     } catch { return []; }
   }
@@ -3167,6 +3181,7 @@
   }
   let topUpT = 0;
   function topUpParks(b) {
+    if (!isPro() || !CFG.googleKey) return;
     clearTimeout(topUpT);
     topUpT = setTimeout(async () => {
       const ctr = b.getCenter ? b.getCenter() : map.getCenter();
@@ -3348,7 +3363,7 @@
     const box = $("#fsLive"); if (!box) return;
     const [gov, g, adReports] = await Promise.all([
       soon(govStationsNear({ lat: x.lat, lon: x.lon }, 250), 7000, []),
-      CFG.googleKey && !isOffline() ? soon((async () => {
+      CFG.googleKey && isPro() && !isOffline() ? soon((async () => {
         const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", { method: "POST",
           fieldMask: "places.id,places.displayName,places.location,places.fuelOptions,places.photos,places.formattedAddress,places.currentOpeningHours.openNow,places.regularOpeningHours.weekdayDescriptions,places.rating,places.userRatingCount,places.googleMapsUri",
           body: { includedTypes: ["gas_station"], maxResultCount: 3, rankPreference: "DISTANCE", locationRestriction: { circle: { center: { latitude: x.lat, longitude: x.lon }, radius: 150 } } } });
@@ -3386,7 +3401,9 @@
       <h3 class="h2">Fuel prices</h3>${prices}
       ${adblueBlock(x, { name: g?.displayName?.text }, adReports)}
       ${hours?.length ? `<details class="fs-hours"><summary>Opening hours</summary><ul>${hours.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></details>` : ""}
-      ${g?.rating ? `<p class="fs-rate">★ ${g.rating.toFixed(1)} <small>Google (${(g.userRatingCount || 0).toLocaleString("en-AU")})</small>${g.googleMapsUri ? ` · <a href="${esc(g.googleMapsUri)}" target="_blank" rel="noopener">Google Maps</a>` : ""}</p>` : ""}`;
+      ${g?.rating ? `<p class="fs-rate">★ ${g.rating.toFixed(1)} <small>Google (${(g.userRatingCount || 0).toLocaleString("en-AU")})</small>${g.googleMapsUri ? ` · <a href="${esc(g.googleMapsUri)}" target="_blank" rel="noopener">Google Maps</a>` : ""}</p>` : ""}
+      ${!isPro() && CFG.googleKey && !isOffline() ? `<p class="fs-pro">📸 Photos, opening hours and Google ratings for every servo come with Pro. <button type="button" class="linkish" id="fsPro">See Pro</button></p>` : ""}`;
+    $("#fsPro")?.addEventListener("click", () => showPaywall("photos", () => openUtil(x, "fuel")));
     wireAdblue(x, { name: g?.displayName?.text });
     if (g?.displayName?.text && (!x.name || x.name === "Fuel station")) { const t = $("#detailBody .d-title"); if (t) t.textContent = `⛽ ${g.displayName.text}`; }
   }
@@ -3395,9 +3412,9 @@
     const where = campDB.townNear?.(x.lat, x.lon);
     showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${{ fuel: "⛽", dump: "🚽", water: "💧" }[kind]} ${esc(name)}</h2>
       <p class="d-kind">${where ? `${where.d < 2000 ? "In" : `${km(where.d)} from`} ${esc(where.name)}` : ""}${me ? `${where ? " · " : ""}${km(hav([me.lat, me.lon], [x.lat, x.lon]))} from you` : ""}</p>
-      ${kind === "fuel" ? `<div id="fsLive" class="fs-live"><p class="msg"><span class="spinner"></span>Loading photos and prices</p></div>` : ""}
+      ${kind === "fuel" ? `<div id="fsLive" class="fs-live"><p class="msg"><span class="spinner"></span>${isPro() ? "Loading photos and prices" : "Loading prices"}</p></div>` : ""}
       <div class="stop-actions" style="margin-top:12px"><a class="cta" href="${navUrl({ lat: x.lat, lon: x.lon, name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Directions</a></div>
-      <p class="caveat">${kind === "fuel" ? "Prices from the state government price schemes and Google Maps. " : "From OpenStreetMap. "}${kind === "water" ? "Check the water is drinkable before you rely on it." : kind === "dump" ? "Check it's open before you rely on it." : "Opening hours and prices can change."}</p></div>`);
+      <p class="caveat">${kind === "fuel" ? `Prices from the state government price schemes${isPro() && CFG.googleKey ? " and Google Maps" : ""}. ` : "From OpenStreetMap. "}${kind === "water" ? "Check the water is drinkable before you rely on it." : kind === "dump" ? "Check it's open before you rely on it." : "Opening hours and prices can change."}</p></div>`);
     if (kind === "fuel") fuelStationInfo(x);
   }
   let scT = 0;
@@ -4295,9 +4312,10 @@
   }
   // Petrol stations near a point: government price feeds + Google Maps (with live prices) + the built-in map data, merged
   async function stationsNear(pt, radius) {
-    const govP = govStationsNear(pt, radius);
+    // the government price schemes first (free). Google only for Pro, and only where there are no government prices (VIC, NT)
+    const gov = await govStationsNear(pt, radius);
     let list = [];
-    if (CFG.googleKey) {
+    if (CFG.googleKey && isPro() && !gov.some((g) => g.fuel)) {
       try {
         const j = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
           method: "POST", fieldMask: "places.id,places.displayName,places.location,places.fuelOptions,places.formattedAddress,places.googleMapsUri,places.currentOpeningHours.openNow",
@@ -4307,7 +4325,6 @@
       } catch { /* fall through to the built-in list */ }
     }
     if (!list.length) list = campDB.fuelIn ? campDB.fuelIn(pt, radius) : [];
-    const gov = await govP;
     // the government price wins (stations must report it); unmatched government stations are added
     for (const g of gov) {
       const m = list.find((x) => hav([x.lat, x.lon], [g.lat, g.lon]) < 150);
@@ -6197,5 +6214,5 @@
     </div>`);
   }
 
-  window.__cf = { campDB, settings, fuelFor, campFee, campsAlong, nightQuality, goodCamp, parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
+  window.__cf = { campDB, settings, fuelFor, campFee, campsAlong, nightQuality, goodCamp, openUtil, parseCoords, normalise, rigOK, has, score, stepText, makePlan, buildLine, project, sample, parseElements, enrich };
 })();
