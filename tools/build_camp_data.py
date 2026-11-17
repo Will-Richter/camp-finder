@@ -109,11 +109,58 @@ def ohsome(filt, attempts=4, timeout=600):
     raise RuntimeError(f"ohsome failed: {last}")
 
 
+def geojsonseq_elements(path):
+    """Elements from an `osmium export -f geojsonseq` of the Geofabrik Australia extract (no busy servers needed).
+    Same shape as Overpass `out center tags`: lines and areas use the centre of their bounding box."""
+    out = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip().lstrip("\x1e")
+            if not line:
+                continue
+            try:
+                ft = json.loads(line)
+            except ValueError:
+                continue
+            props = ft.get("properties") or {}
+            typ, oid = props.get("@type"), props.get("@id")
+            geom = ft.get("geometry") or {}
+            if not typ or oid is None or not geom:
+                continue
+            xs, ys = [], []
+            def walk(c):
+                if c and isinstance(c[0], (int, float)):
+                    xs.append(c[0]); ys.append(c[1])
+                else:
+                    for k in c:
+                        walk(k)
+            walk(geom.get("coordinates") or [])
+            if not xs:
+                continue
+            if geom.get("type") == "Point":
+                lon, lat = xs[0], ys[0]
+            else:
+                lon, lat = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+            tags = {k: str(v) for k, v in props.items() if not k.startswith("@")}
+            out.append({"type": typ, "id": oid, "lat": lat, "lon": lon, "tags": tags})
+    return out
+
+
+GEOJSONSEQ = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--geojsonseq=")), None)
+
+
 FAILED_CORE, FAILED_EXTRA = [], []
 FAILED_KINDS = set()   # towns / fuel / water that couldn't be fetched this time
 
 
 def all_elements():
+    if GEOJSONSEQ and os.path.exists(GEOJSONSEQ):
+        els = geojsonseq_elements(GEOJSONSEQ)
+        n = sum(1 for e in els if e["tags"].get("tourism") in ("camp_site", "caravan_site"))
+        print(f"OpenStreetMap extract: {len(els)} features, {n} camps", file=sys.stderr)
+        if n >= 3000:
+            return els
+        print("  too few camps in the extract; trying the online servers", file=sys.stderr)
     try:
         els = ohsome("tourism in (camp_site, caravan_site)")
         print(f"ohsome: {len(els)} camps", file=sys.stderr)
@@ -240,6 +287,34 @@ def extras_only(out_path):
     os.replace(tmp, out_path)
 
 
+def report_changes(old, camps, fuel):
+    """Log camps and caravan parks that moved, closed or appeared since the last build."""
+    import math
+    def km(a, b, c, d):
+        r = math.pi / 180
+        x = math.sin((c - a) * r / 2) ** 2 + math.cos(a * r) * math.cos(c * r) * math.sin((d - b) * r / 2) ** 2
+        return 12742 * math.asin(math.sqrt(min(1, x)))
+    was = {r[0]: r for r in old.get("camps", [])}
+    now = {r[0]: r for r in camps}
+    nm = lambda r: (r[3].get("name") or r[3].get("tourism") or "?")[:60]
+    moved = sorted(((km(was[k][1], was[k][2], now[k][1], now[k][2]), k) for k in now if k in was), reverse=True)
+    big = [(d, k) for d, k in moved if d >= 0.15]
+    gone = [k for k in was if k not in now]
+    new = [k for k in now if k not in was]
+    print(f"changes: {len(big)} camps moved 150 m or more, {len(gone)} gone, {len(new)} new", file=sys.stderr)
+    for d, k in big[:80]:
+        print(f"  moved {d:6.2f} km  {k}  {nm(now[k])}  {was[k][1]},{was[k][2]} -> {now[k][1]},{now[k][2]}", file=sys.stderr)
+    for k in gone[:80]:
+        print(f"  gone   {k}  {nm(was[k])}  {was[k][1]},{was[k][2]}", file=sys.stderr)
+    near = lambda r: -25.3 < r[1] < -24.4 and 151.9 < r[2] < 152.7   # around Bundaberg, for a spot check
+    for k in new:
+        if near(now[k]):
+            print(f"  new near Bundaberg  {k}  {nm(now[k])}  {now[k][1]},{now[k][2]}", file=sys.stderr)
+    of = {(round(r[0], 3), round(r[1], 3)) for r in old.get("fuel", [])}
+    nf = [r for r in fuel if (round(r[0], 3), round(r[1], 3)) not in of]
+    print(f"fuel: {len(fuel)} now, {len(old.get('fuel', []))} last time, {len(nf)} at new spots", file=sys.stderr)
+
+
 def parse_height(v):
     """'3.5', '3.5 m', "12'6\"" -> metres"""
     import re
@@ -309,10 +384,15 @@ def main(out_path):
             rows[:] = old.get(key, rows)
     if FAILED_CORE or FAILED_EXTRA:
         print(f"kept previous data for {len(FAILED_CORE)} camp tiles and {len(FAILED_EXTRA)} extra tiles", file=sys.stderr)
+    if old.get("camps"):   # camp ids are what ratings, photos and saved camps hang off: never let them all change at once
+        same = len({r[0] for r in camps} & {r[0] for r in old["camps"]})
+        if same < len(old["camps"]) * 0.85:
+            raise SystemExit(f"Only {same} of {len(old['camps'])} camp ids carried over; keeping the old file.")
     if old.get("camps") and len(camps) < len(old["camps"]) * 0.97:
         raise SystemExit(f"Only {len(camps)} camps vs {len(old['camps'])} last time; keeping the old file.")
     if len(camps) < 3000:
         raise SystemExit(f"Only {len(camps)} camps found; keeping the old file.")
+    report_changes(old, camps, fuel)
     out = {
         "built": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": "OpenStreetMap contributors (ODbL)",
