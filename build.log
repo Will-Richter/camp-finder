@@ -1,0 +1,87 @@
+OpenStreetMap extract: 53488 features, 13335 camps
+  towns: using last time's 5859 (got 3052)
+changes: 2 camps moved 150 m or more, 111 gone, 44 new
+  moved   0.31 km  node/1811167037  Comeroo Campground  -29.24333,145.13972 -> -29.24206,145.13684
+  moved   0.24 km  node/1811187675  Mt Gambier Showgrounds  -37.83787,140.79762 -> -37.8391,140.79982
+  gone   node/600598671  Barwon Heads Caravan Park  -38.28369,144.49385
+  gone   node/621862076  Korumburra Tourist Park  -38.42666,145.82999
+  gone   node/1339114127  High Moor Campsite  -43.1649,146.2994
+  gone   node/1811162250  Bethune Park  -42.53553,146.73104
+  gone   node/1811190739  Nive River Rest Area  -42.29833,146.45806
+  gone   node/3513966926  Camp Fire Circle  -38.3986,144.21453
+  gone   way/249321743  Port Sorell Lions Caravan Park  -41.16364,146.55552
+  gone   way/261476615  Port Sorell Lions Caravan Park  -41.16483,146.55702
+  gone   way/261476616  Port Sorell Lions Caravan Park  -41.16634,146.55891
+  gone   way/276752555  High Moor Campsite  -43.16494,146.29943
+  gone   node/316590298  Triabunna Caravan Park  -42.50834,147.91115
+  gone   node/1808392044  Paradise Beach Campground  -38.19417,147.42222
+  gone   node/316602358  Port Vincent Seaside Flats and Caravan Park  -34.77883,137.86351
+  gone   node/1811175175  Fisherman Point Campground  -34.75685,135.98558
+  gone   node/1811192475  Point Turton Caravan Park  -34.93417,137.35111
+  gone   node/1811192688  Port Vincent Seaside Flats & Caravan Pa  -34.7792,137.86372
+  gone   node/1811192804  Price Caravan Park  -34.28722,137.99667
+  gone   node/5572678021  Spalding Cove  -34.78441,135.96153
+  gone   node/595572962  Halls Gap Caravan Park  -37.14124,142.51851
+  gone   node/1010039365  Wannon Crossing Campground  -37.43375,142.47565
+  gone   node/1808391740  Brim Lakeside Park (Book and pay at pub)  -36.07576,142.40627
+  gone   node/1808391841  Fort O'Hare Campground  -37.92583,141.285
+  gone   node/1811193485  Rapid Bay Camping Area  -35.52472,138.19167
+  gone   way/47012159  Dartmoor - Fort O'Hare Tourist Camping Reserve  -37.92559,141.28392
+  gone   way/228626856  Cavendish Recreation Reserve  -37.52161,142.0441
+  gone   node/244768900  Lake Sambell Caravan Park  -36.35903,146.69965
+  gone   node/316597086  Erica Caravan Park  -37.97855,146.37344
+  gone   node/316598295  Waterfalls Campground  -37.09855,143.36685
+  gone   node/1777698401  Mafeking Rover Park  -37.06479,145.50347
+  gone   node/1789876876  Rawson Caravan Park  -37.95561,146.40507
+  gone   node/1808392075  Pyramid Hill Caravan Park  -36.05528,144.125
+  gone   node/1808393411  Hunts Bridge Camping Area  -37.71028,144.09472
+  gone   node/1808394728  Upper Yarra Reservoir Park  -37.66944,145.89028
+  gone   node/1872572959  camp_site  -37.99903,146.47167
+  gone   node/1872576614  camp_site  -37.99952,146.47292
+  gone   node/2151189283  camp_site  -37.999,146.47168
+  gone   node/2389520854  Jamieson Caravan Park  -37.30395,146.13585
+  gone   node/3365555445  Noonameena Scout Camp  -37.24568,144.36879
+  gone   node/6684205795  Ditchfield Camp  -37.31699,143.27308
+  gone   node/9580325629  Barkly Bridge  -37.55878,146.568
+  gone   node/10855673205  Erica caravan park  -37.97897,146.3733
+  gone   node/13832217905  8 Muttonwood Camp  -37.52982,146.61265
+  gone   node/13919236980  9 Cockatoo Camp  -37.52141,146.6131
+  gone   relation/7358008  The Forest Camp  -36.22162,146.17898
+  gone   node/1586542019  Long Plain Hut Camping Area  -35.69668,148.53836
+  gone   node/1808391889  Italian Flat Campground  -37.40932,147.2639
+  gone   node/1811181833  Lake Mannus  -35.81215,147.97991
+  gone   node/1811197702  The Shanty Reserve  -35.1125,147.52083
+  gone   node/2201358436  Bentley Plain Camping Area  -37.22766,147.92367
+  gone   node/2264006305  Dogmans Hut camping area  -36.53895,148.13298
+  gone   node/4670385829  Browns Creek Campsite  -35.45125,148.24156
+  gone   node/4797405128  Mount Werong Campground  -34.07973,149.92711
+  gone   node/243672852  Hammersley Inlet  -33.95626,119.91702
+  gone   node/1811177093  Glen Eagle Rest Area  -32.28913,116.19145
+  gone   node/2002213950  Yalgarup Echo Park  -32.63782,115.62009
+  gone   node/4221286089  Ledge Point Holiday Park  -31.10275,115.37839
+  gone   node/13413020001  Pinjarra 24hrs RV Stop (s/c)  -32.62939,115.87901
+  gone   node/1811158709  Airport Caravan Park  -32.12339,133.69081
+  gone   node/1811199713  Trezona Campground  -31.33242,138.62373
+  gone   node/9731574868  Peechara Hills Bush Camping 4WD Tracks A  -32.86033,139.14458
+  gone   node/9731574893  Peechara Hills Bush Camping 4WD Tracks B  -32.86365,139.14055
+  gone   relation/19452721  Darling River Campground  -32.43156,142.37954
+  gone   node/966774018  Riverside Cabin and Van Park  -32.26756,150.88544
+  gone   node/1811163919  Carcoar Dam  -33.61083,149.17972
+  gone   node/1811177515  Greens Point  -33.09555,149.73246
+  gone   node/1811181752  Lake Liddell Recreation Area  -32.35261,150.99569
+  gone   node/1811185206  Manilla Rivergums Caravan Park  -30.74455,150.7289
+  gone   way/574598389  Jenolan Holiday Park  -33.70056,149.85797
+  gone   node/25981404  Darlington Beach Resort, unpowered camping area  -30.04713,153.19225
+  gone   node/295230664  North Coast Holiday Parks Urunga Heads  -30.49642,153.02259
+  gone   node/2270117416  Lostock Dam Caravan Park  -32.32606,151.45304
+  gone   node/7727925523  Ingenia Holidays South West Rocks  -30.88909,153.0336
+  gone   node/8320322785  Woolomin Reserve  -31.30388,151.14729
+  gone   node/13659701047  camp_site  -33.2615,151.26486
+  gone   node/1915198718  Explorers Caravan Park  -27.9973,143.81937
+  gone   node/408838698  Yamba Waters Caravan Park  -29.43936,153.34157
+  gone   node/434298173  Tenterfield Lodge Caravan Park  -29.0535,152.00654
+  gone   node/1343293319  Burnside Hill - Dunethin Rock Scout Campsite  -26.5792,153.01112
+  gone   node/1682656557  First Sun  -28.64108,153.61151
+  gone   node/1811185242  Mann River Campground & Picnic Area  -29.6875,152.09862
+fuel: 7676 now, 7727 last time, 50 at new spots
+9996 camps, 2926 boat ramps, 690 dump points, 7676 fuel stations, 11629 water points, 1500 low clearances, 5859 towns -> /home/runner/work/camp-finder/camp-finder/tools/../docs/data/camps-au.json
