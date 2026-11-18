@@ -72,6 +72,11 @@ Privacy: https://gonelappin.au/privacy.html
 
 Camp and track details come from OpenStreetMap, Queensland Parks and Australian government open data, and other travellers. Camps close, tracks change and rules vary, so always check signs, tides, permits and local rules.
 
+## What's new (1.0.4)
+• Every must-see checked against the map and moved to the spot you actually go to: the lookout, car park, entrance or beach access. 140 fixed, including the Bundaberg Rum Distillery, Mon Repos Turtle Centre, Shell Beach, Wineglass Bay Lookout, the Bunda Cliffs lookouts and the Breakaways.
+• Barge and ferry landings for K'gari, Straddie, Kangaroo Island, Bruny Island and the Spirit of Tasmania are now in the right place.
+• Fresh camps, caravan parks and servos from OpenStreetMap, now updated every week.
+
 ## What's new (1.0.3)
 • Google photos and reviews are now part of Camp Finder Pro: up to 10 photos of every camp, caravan park, servo and must-see, plus Google ratings, reviews and servo opening hours. Try it free for 7 days.
 • Official fuel prices first: servos and fuel stops show the government-reported pump price wherever the state publishes it.
