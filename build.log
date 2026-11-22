@@ -1,0 +1,7 @@
+OpenStreetMap extract: 53535 features, 13338 camps
+  towns: using last time's 5859 (got 3051)
+changes: 0 camps moved 150 m or more, 2 gone, 4 new
+  gone   node/1808392100  Sea Lake Caravan & Camping Park  -35.50317,142.84611
+  gone   way/190136643  Ettalong Beach Village Tourist Park  -33.50985,151.33492
+fuel: 7680 now, 7676 last time, 6 at new spots
+9998 camps, 2926 boat ramps, 690 dump points, 7680 fuel stations, 11659 water points, 1506 low clearances, 5859 towns -> /home/runner/work/camp-finder/camp-finder/tools/../docs/data/camps-au.json
