@@ -135,11 +135,25 @@
   }
   window.__cfProChanged = (st) => setPro(st);
   if (nativeStore) nativeStore({ op: "status" }, 30000).then(setPro).catch(() => {});
+  // Tester and gift codes are App Store offer codes: Apple's own sheet takes the code and the App Store hands
+  // over Pro like any purchase (codes that unlock things outside the App Store aren't allowed in iPhone apps).
+  async function redeemCode(btn) {
+    if (!nativeStore) return false;
+    const label = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = "Opening the App Store…"; }
+    try {
+      const st = await nativeStore({ op: "redeem" }, 600000);
+      setPro(st);
+      if (!st?.pro) toast("If you redeemed a code, Pro switches on in a moment.", 4000);
+      return !!st?.pro;
+    } catch (err) { toast(String(err.message || "Couldn't open the App Store"), 4000); return false; }
+    finally { if (btn) { btn.disabled = false; btn.textContent = label; } }
+  }
   function requirePro(why, then) { if (isPro()) { then?.(); return true; } showPaywall(why, then); return false; }
   const proTag = () => (isPro() ? "" : `<i class="pro-tag">PRO</i>`);
   function paintPro() {
     const on = isPro();
     document.querySelectorAll("[data-pro-tag]").forEach((el) => { el.hidden = on; });
+    const r = document.getElementById("stRedeem"); if (r) r.hidden = !nativeStore || on;
     const c = document.getElementById("stPro"); if (!c) return;
     c.classList.toggle("is-pro", on);
     c.querySelector("b").textContent = on ? "Camp Finder Pro is on" : "Get Camp Finder Pro";
@@ -165,7 +179,8 @@
         </div>
         ${nativeStore ? `<button class="cta pw-buy" type="button" id="pwBuy">${once ? `Buy Pro forever for ${esc(o.price)}` : trial ? `Start ${trial}-day free trial` : `Subscribe for ${esc(sel.price)} a ${plan}`}</button>
           <p class="pw-then">${once ? "One payment. Pro stays on for good on your Apple ID." : `${trial ? `Free for ${trial} days, then ${esc(sel.price)} a ${plan}. ` : ""}Cancel any time in Settings → your name → Subscriptions.`}</p>
-          <button class="link pw-restore" type="button" id="pwRestore">Restore purchases</button>`
+          <button class="link pw-restore" type="button" id="pwRestore">Restore purchases</button>
+          <button class="link pw-restore pw-code" type="button" id="pwRedeem">Have a tester or gift code? Redeem it</button>`
         : `<p class="pw-then">Pro is bought in the Camp Finder iPhone app. <a href="https://gonelappin.au" target="_blank" rel="noopener">Get the app</a></p>`}
         <p class="pw-legal">${once ? "Pro forever is a one-off purchase charged to your Apple ID when you confirm. It doesn't renew. " : `Payment is charged to your Apple ID when you confirm${trial ? " (after the free trial ends)" : ""}. `}Subscriptions renew automatically at the same price each ${once ? "period" : plan} unless cancelled at least 24 hours before the end of the current period, and your account is charged for renewal within 24 hours before the period ends. Manage or cancel any time in your Apple ID settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://gonelappin.au/privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
       </div>`);
@@ -179,6 +194,7 @@
         } catch (err) { toast(String(err.message || "Couldn't reach the App Store. Try again."), 4000); }
         btn.disabled = false; draw();
       });
+      $("#pwRedeem")?.addEventListener("click", async (e) => { if (await redeemCode(e.currentTarget)) { closeDetail(); then?.(); } });
       $("#pwRestore")?.addEventListener("click", async (e) => {
         e.currentTarget.disabled = true; e.currentTarget.textContent = "Checking your Apple ID…";
         try { const st = await nativeStore({ op: "restore" }, 120000); setPro(st); if (st?.pro) { toast("Pro restored"); closeDetail(); then?.(); return; } toast("No Camp Finder Pro purchase found on this Apple ID", 4000); }
@@ -6089,6 +6105,7 @@
     $("#stGoAccount").addEventListener("click", () => setView("saved"));
     $("#stFeedback").addEventListener("click", () => openFeedback());
     $("#stFamily").addEventListener("click", () => { setView("saved"); setSeg("family"); });
+    $("#stRedeem").addEventListener("click", (e) => redeemCode(e.currentTarget.querySelector("b")));
     $("#stPro").addEventListener("click", async () => {
       if (!isPro()) return showPaywall();
       if (pro.forever) return toast("You have Camp Finder Pro forever. Thanks!", 3000);

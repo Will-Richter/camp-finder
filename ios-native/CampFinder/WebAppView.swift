@@ -128,6 +128,19 @@ struct WebAppView: UIViewRepresentable {
                     case "restore":
                         try await store.restore()
                         let v = await store.status(); self.reply("__cfStoreDone", id, ok: true, v)
+                    case "redeem":
+                        // Apple's offer code sheet (tester and gift codes made in App Store Connect). A redeemed code
+                        // arrives like a purchase through Transaction.updates; wait a few seconds for it before answering.
+                        if let scene = UIApplication.shared.connectedScenes.first(where: { $0 is UIWindowScene }) as? UIWindowScene {
+                            try await AppStore.presentOfferCodeRedeemSheet(in: scene)
+                        }
+                        var v = await store.status()
+                        var tries = 0
+                        while (v["pro"] as? Bool) != true && tries < 8 {
+                            try? await Task.sleep(nanoseconds: 1_000_000_000)
+                            v = await store.status(); tries += 1
+                        }
+                        self.reply("__cfStoreDone", id, ok: true, v)
                     case "manage":
                         if let scene = UIApplication.shared.connectedScenes.first(where: { $0 is UIWindowScene }) as? UIWindowScene { try? await AppStore.showManageSubscriptions(in: scene) }
                         let v = await store.status(); self.reply("__cfStoreDone", id, ok: true, v)
