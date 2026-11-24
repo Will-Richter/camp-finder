@@ -1,0 +1,829 @@
+[
+ {
+  "backend": "apple",
+  "from": "Bundaberg",
+  "to": "Exmouth",
+  "secs": 10.988,
+  "requests": 20,
+  "options": [
+   {
+    "title": "Via Broken Hill and the Nullarbor",
+    "km": 5598,
+    "h": 58.2,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Katherine and Broome",
+    "km": 5823,
+    "h": 60,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Katherine",
+     "Halls Creek"
+    ]
+   },
+   {
+    "title": "Via Alice Springs and Uluru",
+    "km": 6076,
+    "h": 65,
+    "fastest": false,
+    "dirt": [
+     "the Great Central Road"
+    ],
+    "through": [
+     "Tennant Creek",
+     "Warburton",
+     "Mount Magnet"
+    ]
+   },
+   {
+    "title": "Via Brisbane and Sydney",
+    "km": 6336,
+    "h": 65.6,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Newcastle",
+     "Hay"
+    ]
+   },
+   {
+    "title": "Via the Birdsville Track and the Nullarbor",
+    "km": 6048,
+    "h": 69.8,
+    "fastest": false,
+    "dirt": [
+     "the Birdsville Track"
+    ],
+    "through": [
+     "Birdsville",
+     "Norseman"
+    ]
+   }
+  ],
+  "summary": "Port Augusta and the Nullarbor"
+ },
+ {
+  "backend": "apple",
+  "from": "Exmouth",
+  "to": "Bundaberg",
+  "secs": 8.995,
+  "requests": 20,
+  "options": [
+   {
+    "title": "Via Port Hedland and Broome",
+    "km": 5400,
+    "h": 57.4,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via the Nullarbor and Broken Hill",
+    "km": 5574,
+    "h": 58.6,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Ceduna"
+    ]
+   },
+   {
+    "title": "Via Uluru and Alice Springs",
+    "km": 6085,
+    "h": 65.7,
+    "fastest": false,
+    "dirt": [
+     "the Great Central Road"
+    ],
+    "through": [
+     "Mount Magnet",
+     "Laverton",
+     "Warburton",
+     "Tennant Creek"
+    ]
+   },
+   {
+    "title": "Via Adelaide and Sydney",
+    "km": 6446,
+    "h": 67.7,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Adelaide",
+     "Sydney",
+     "Port Macquarie"
+    ]
+   },
+   {
+    "title": "Via the Nullarbor and the Birdsville Track",
+    "km": 6022,
+    "h": 71.7,
+    "fastest": false,
+    "dirt": [
+     "the Birdsville Track"
+    ],
+    "through": [
+     "Ceduna",
+     "Birdsville"
+    ]
+   }
+  ],
+  "summary": "Broome and Mount Isa"
+ },
+ {
+  "backend": "apple",
+  "from": "Brisbane",
+  "to": "Perth",
+  "secs": 47.882,
+  "requests": 13,
+  "options": [
+   {
+    "title": "Via Broken Hill and the Nullarbor",
+    "km": 4308,
+    "h": 45.7,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Dubbo and Mildura",
+    "km": 4565,
+    "h": 48.2,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Hay"
+    ]
+   },
+   {
+    "title": "Via Melbourne and Adelaide",
+    "km": 5329,
+    "h": 56,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Bairnsdale"
+    ]
+   },
+   {
+    "title": "Via Coober Pedy and Uluru",
+    "km": 5238,
+    "h": 57,
+    "fastest": false,
+    "dirt": [
+     "the Great Central Road"
+    ],
+    "through": [
+     "Yunta",
+     "Uluru",
+     "Warburton"
+    ]
+   },
+   {
+    "title": "Via the Birdsville Track and the Nullarbor",
+    "km": 4861,
+    "h": 58.1,
+    "fastest": false,
+    "dirt": [
+     "the Birdsville Track"
+    ],
+    "through": [
+     "Birdsville"
+    ]
+   }
+  ],
+  "summary": "Port Augusta and the Nullarbor"
+ },
+ {
+  "backend": "apple",
+  "from": "Cairns",
+  "to": "Perth",
+  "secs": 7.586,
+  "requests": 18,
+  "options": [
+   {
+    "title": "Via Townsville and the Nullarbor",
+    "km": 5252,
+    "h": 55.3,
+    "fastest": false,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Alice Springs and Uluru",
+    "km": 4732,
+    "h": 51.8,
+    "fastest": true,
+    "dirt": [
+     "the Great Central Road"
+    ],
+    "through": [
+     "Tennant Creek",
+     "Warburton"
+    ]
+   },
+   {
+    "title": "Via Alice Springs and the Nullarbor",
+    "km": 5854,
+    "h": 60.6,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Tennant Creek",
+     "Port Augusta"
+    ]
+   }
+  ],
+  "summary": "Townsville and the Nullarbor"
+ },
+ {
+  "backend": "apple",
+  "from": "Melbourne",
+  "to": "Darwin",
+  "secs": 8.51,
+  "requests": 18,
+  "options": [
+   {
+    "title": "Via Adelaide and Alice Springs",
+    "km": 3756,
+    "h": 37.7,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Winton and Mount Isa",
+    "km": 4270,
+    "h": 44.2,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Barcaldine"
+    ]
+   },
+   {
+    "title": "Via Sydney and Brisbane",
+    "km": 5240,
+    "h": 54.4,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Port Macquarie",
+     "Brisbane"
+    ]
+   }
+  ],
+  "summary": "Adelaide and Alice Springs"
+ },
+ {
+  "backend": "apple",
+  "from": "Sydney",
+  "to": "Darwin",
+  "secs": 47.965,
+  "requests": 12,
+  "options": [
+   {
+    "title": "Via Longreach and Winton",
+    "km": 3958,
+    "h": 41.3,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Adelaide and Alice Springs",
+    "km": 4401,
+    "h": 44.4,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Adelaide"
+    ]
+   },
+   {
+    "title": "Via Brisbane and Rockhampton",
+    "km": 4539,
+    "h": 47.5,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Maryborough"
+    ]
+   },
+   {
+    "title": "Via Mackay and Charters Towers",
+    "km": 4599,
+    "h": 48.1,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Mackay"
+    ]
+   }
+  ],
+  "summary": "Longreach and Winton"
+ },
+ {
+  "backend": "apple",
+  "from": "Bundaberg",
+  "to": "Broome",
+  "secs": 4.142,
+  "requests": 11,
+  "options": [
+   {
+    "title": "Via Winton and Mount Isa",
+    "km": 4100,
+    "h": 45.5,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   }
+  ],
+  "summary": "Winton and Mount Isa"
+ },
+ {
+  "backend": "apple",
+  "from": "Adelaide",
+  "to": "Darwin",
+  "secs": 1.881,
+  "requests": 3,
+  "options": [
+   {
+    "title": "Via Coober Pedy and Alice Springs",
+    "km": 3029,
+    "h": 29.8,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   }
+  ],
+  "summary": "Coober Pedy and Alice Springs"
+ },
+ {
+  "backend": "apple",
+  "from": "Brisbane",
+  "to": "Sydney",
+  "secs": 18.085,
+  "requests": 17,
+  "options": [
+   {
+    "title": "Via Coffs Harbour and Port Macquarie",
+    "km": 907,
+    "h": 9.6,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Tenterfield and Tamworth",
+    "km": 979,
+    "h": 11.4,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Tamworth"
+    ]
+   },
+   {
+    "title": "Via Warwick and Armidale",
+    "km": 998,
+    "h": 11.5,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Ashford"
+    ]
+   },
+   {
+    "title": "Via Warwick and Tamworth",
+    "km": 1023,
+    "h": 11.7,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Barraba"
+    ]
+   },
+   {
+    "title": "Via Moree and Narrabri",
+    "km": 1104,
+    "h": 12.2,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Moree"
+    ]
+   }
+  ],
+  "summary": "Coffs Harbour and Port Macquarie"
+ },
+ {
+  "backend": "apple",
+  "from": "Bundaberg",
+  "to": "Melbourne",
+  "secs": 9.302,
+  "requests": 14,
+  "options": [
+   {
+    "title": "Via Coonabarabran and Dubbo",
+    "km": 1885,
+    "h": 20.3,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Brisbane and Sydney",
+    "km": 2134,
+    "h": 21.6,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Brisbane"
+    ]
+   },
+   {
+    "title": "Via Walgett and Dubbo",
+    "km": 2124,
+    "h": 23,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Roma"
+    ]
+   },
+   {
+    "title": "Via Brisbane, Sydney and the Blue Mountains",
+    "km": 2356,
+    "h": 25.8,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Port Macquarie",
+     "Sydney",
+     "Parkes"
+    ]
+   },
+   {
+    "title": "Via Broken Hill and Mildura",
+    "km": 2516,
+    "h": 26.6,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Broken Hill"
+    ]
+   }
+  ],
+  "summary": "Coonabarabran and Dubbo"
+ },
+ {
+  "backend": "apple",
+  "from": "Melbourne",
+  "to": "Adelaide",
+  "secs": 52.664,
+  "requests": 13,
+  "options": [
+   {
+    "title": "Via Horsham and Bordertown",
+    "km": 727,
+    "h": 7.9,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Bendigo and Ouyen",
+    "km": 817,
+    "h": 8.8,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Ouyen"
+    ]
+   },
+   {
+    "title": "Via Bendigo and Bordertown",
+    "km": 823,
+    "h": 9.2,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Rainbow"
+    ]
+   },
+   {
+    "title": "Via Mount Gambier",
+    "km": 855,
+    "h": 9.5,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Mount Gambier"
+    ]
+   },
+   {
+    "title": "Via Mildura and Renmark",
+    "km": 940,
+    "h": 10.2,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Mildura"
+    ]
+   }
+  ],
+  "summary": "Horsham and Bordertown"
+ },
+ {
+  "backend": "apple",
+  "from": "Perth",
+  "to": "Darwin",
+  "secs": 4.294,
+  "requests": 11,
+  "options": [
+   {
+    "title": "Via Port Hedland and Broome",
+    "km": 4024,
+    "h": 41.3,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Karratha and Broome",
+    "km": 4158,
+    "h": 41.7,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Carnarvon",
+     "Halls Creek"
+    ]
+   },
+   {
+    "title": "Via Uluru and Alice Springs",
+    "km": 3977,
+    "h": 43,
+    "fastest": false,
+    "dirt": [
+     "the Great Central Road"
+    ],
+    "through": [
+     "Warburton",
+     "Alice Springs"
+    ]
+   },
+   {
+    "title": "Via the Nullarbor and Alice Springs",
+    "km": 5106,
+    "h": 51.5,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Port Augusta"
+    ]
+   }
+  ],
+  "summary": "Port Hedland and Broome"
+ },
+ {
+  "backend": "apple",
+  "from": "Townsville",
+  "to": "Alice Springs",
+  "secs": 2.143,
+  "requests": 7,
+  "options": [
+   {
+    "title": "Via Mount Isa and the Plenty Highway",
+    "km": 1740,
+    "h": 20.3,
+    "fastest": true,
+    "dirt": [
+     "the Plenty Highway"
+    ],
+    "through": []
+   },
+   {
+    "title": "Via Cloncurry and Mount Isa",
+    "km": 2073,
+    "h": 21.2,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Tennant Creek"
+    ]
+   },
+   {
+    "title": "Via Winton and the Plenty Highway",
+    "km": 1918,
+    "h": 22.4,
+    "fastest": false,
+    "dirt": [
+     "the Plenty Highway"
+    ],
+    "through": [
+     "Boulia",
+     "the Plenty Highway"
+    ]
+   },
+   {
+    "title": "Via Georgetown and Normanton",
+    "km": 2399,
+    "h": 25,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Normanton",
+     "Tennant Creek"
+    ]
+   }
+  ],
+  "summary": "Mount Isa and the Plenty Highway"
+ },
+ {
+  "backend": "apple",
+  "from": "Sydney",
+  "to": "Perth",
+  "secs": 6.073,
+  "requests": 7,
+  "options": [
+   {
+    "title": "Via Wagga Wagga and Mildura",
+    "km": 3932,
+    "h": 41.4,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Dubbo and Broken Hill",
+    "km": 3951,
+    "h": 42.2,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Nyngan"
+    ]
+   },
+   {
+    "title": "Via Melbourne and Adelaide",
+    "km": 4451,
+    "h": 48.3,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Bega",
+     "Melbourne"
+    ]
+   }
+  ],
+  "summary": "Port Augusta and the Nullarbor"
+ },
+ {
+  "backend": "valhalla",
+  "from": "Brisbane",
+  "to": "Sydney",
+  "secs": 10.056,
+  "requests": 9,
+  "options": [
+   {
+    "title": "Via Coffs Harbour and Port Macquarie",
+    "km": 916,
+    "h": 9.9,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Armidale and Tamworth",
+    "km": 988,
+    "h": 12.9,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Tamworth"
+    ]
+   },
+   {
+    "title": "Via Moree and Narrabri",
+    "km": 1113,
+    "h": 14.3,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Moree"
+    ]
+   }
+  ],
+  "summary": "Coffs Harbour and Port Macquarie"
+ },
+ {
+  "backend": "valhalla",
+  "from": "Bundaberg",
+  "to": "Melbourne",
+  "error": "Path distance exceeds the max distance limit: 1500000 meters"
+ },
+ {
+  "backend": "valhalla",
+  "from": "Melbourne",
+  "to": "Adelaide",
+  "secs": 8.629,
+  "requests": 7,
+  "options": [
+   {
+    "title": "Via Horsham and Bordertown",
+    "km": 727,
+    "h": 8.7,
+    "fastest": true,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via Bendigo and Bordertown",
+    "km": 774,
+    "h": 10,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "St Arnaud"
+    ]
+   },
+   {
+    "title": "Via Mount Gambier",
+    "km": 872,
+    "h": 10.6,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Mount Gambier"
+    ]
+   },
+   {
+    "title": "Via Bendigo and Ouyen",
+    "km": 820,
+    "h": 11,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Ouyen"
+    ]
+   },
+   {
+    "title": "Via Mildura and Renmark",
+    "km": 943,
+    "h": 11.9,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Mildura"
+    ]
+   }
+  ],
+  "summary": "Horsham and Bordertown"
+ },
+ {
+  "backend": "valhalla",
+  "from": "Townsville",
+  "to": "Alice Springs",
+  "secs": 4.697,
+  "requests": 4,
+  "options": [
+   {
+    "title": "Via Tennant Creek",
+    "km": 2075,
+    "h": 24.8,
+    "fastest": false,
+    "dirt": [],
+    "through": []
+   },
+   {
+    "title": "Via the Plenty Highway",
+    "km": 1743,
+    "h": 24.3,
+    "fastest": true,
+    "dirt": [
+     "the Plenty Highway"
+    ],
+    "through": [
+     "the Plenty Highway"
+    ]
+   },
+   {
+    "title": "Via Alpurrurulam",
+    "km": 1776,
+    "h": 26.8,
+    "fastest": false,
+    "dirt": [],
+    "through": [
+     "Alpurrurulam"
+    ]
+   }
+  ],
+  "summary": "Cloncurry and Mount Isa"
+ }
+]
