@@ -136,20 +136,23 @@ const TRIPS = [
 const backends = [];
 if (apple) backends.push(["apple", appleRoute]);
 if (only.includes("valhalla")) backends.push(["valhalla", valhallaRoute]);
+const SHORT = new Set(["Brisbane-Sydney", "Melbourne-Adelaide", "Bundaberg-Melbourne", "Townsville-Alice Springs"]);   // the public Valhalla server stops at 1500 km
 const results = [];
 let md = `# Route options check\n\n${new Date().toISOString()}\n\n`;
 for (const [name, route] of backends) {
   md += `## ${name === "apple" ? "Apple Maps (iPhone app)" : "Valhalla (website)"}\n\n`;
   for (const [x, y] of TRIPS) {
+    if (name === "valhalla" && !SHORT.has(`${x}-${y}`)) continue;
     const a = town(x), b = town(y), slug = `${name}-${x}-${y}`.replace(/\s+/g, "_");
     const t0 = Date.now(), r0 = requests;
     try {
       const base = await route([a, b]);
-      const list = await R.choices(a, b, base, { route, townNear, max: 5, timeout: 240000 });
+      const logs = [];
+      const list = await R.choices(a, b, base, { route, townNear, max: 5, timeout: 240000, log: (t) => logs.push(t) });
       const secs = (Date.now() - t0) / 1000;
       const rows = list.map((o) => ({ title: o.title, km: Math.round(o.route.distance / 1000), h: +(o.route.duration / 3600).toFixed(1), fastest: o.fastest, dirt: o.dirt, through: o.pts.map((p) => p.name) }));
       results.push({ backend: name, from: x, to: y, secs, requests: requests - r0, options: rows, summary: R.describe(list[0].line, a, b) });
-      md += `### ${x} to ${y}  (${secs.toFixed(0)} s, ${requests - r0} requests)\n\n![](${slug}.svg)\n\n` + rows.map((o) => `- **${o.title}** ${o.km} km, ${o.h} h${o.fastest ? " (fastest)" : ""}${o.dirt.length ? `, dirt: ${o.dirt.join(", ")}` : ""}${o.through.length ? `, through ${o.through.join(", ")}` : ""}`).join("\n") + "\n\n";
+      md += `### ${x} to ${y}  (${secs.toFixed(0)} s, ${requests - r0} requests)\n\n![](${slug}.svg)\n\n` + rows.map((o) => `- **${o.title}** ${o.km} km, ${o.h} h${o.fastest ? " (fastest)" : ""}${o.dirt.length ? `, dirt: ${o.dirt.join(", ")}` : ""}${o.through.length ? `, through ${o.through.join(", ")}` : ""}`).join("\n") + "\n\n<details><summary>Tried</summary>\n\n" + logs.map((l) => `- ${l}`).join("\n") + "\n</details>\n\n";
       fs.writeFileSync(path.join(out, `${slug}.svg`), svg(`${x} to ${y} (${name})`, a, b, list));
       console.log(`${name} ${x} -> ${y}: ${secs.toFixed(0)} s, ${requests - r0} requests\n${rows.map((o) => `   ${o.title} ${o.km} km ${o.h} h${o.fastest ? " fastest" : ""}${o.dirt.length ? " dirt " + o.dirt : ""} [${o.through.join(", ")}]`).join("\n")}`);
     } catch (e) {

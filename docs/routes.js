@@ -16,6 +16,8 @@
  *     opts.current      { key, pts }: the option you're on now, so it's always in the list
  *     opts.max          most options to find (5)
  *     opts.onUpdate     (list) => {}: called as options are found
+ *     opts.stop         () => true to give up early (the panel was closed)
+ *     opts.log          (text) => {}: what happened to each way it tried (for checking)
  *   option: { key, title, phrase, pts: [{name, lat, lon}], route, line, dirt: ["the Tanami"], fastest, cur, base }
  *
  *   CFRoutes.corridors(a, b)              the distinct ways through the highway sketch
@@ -404,7 +406,8 @@
     }
     return [a, ...out, b];
   }
-  // Towns either side of the fastest route, a bit out and a long way out (for trips of any length)
+  // Towns either side of the fastest route, a bit out and a long way out. On long trips only proper towns: a route
+  // made to go through a tiny place out there often takes back roads.
   function sideTowns(a, b, baseLine, townNear) {
     if (!townNear) return [];
     const straight = hav(ll(a), ll(b)), out = [], seen = new Set();
@@ -415,7 +418,7 @@
       let dx = (p1.lon - p0.lon) * kx, dy = (p1.lat - p0.lat) * ky; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
       for (const sgn of [1, -1]) {
         const t = townNear(p.lat + sgn * dx * d / ky, p.lon - sgn * dy * d / kx);
-        if (!t || seen.has(t.name) || offLine(baseLine, t) < d * 0.3) continue;
+        if (!t || seen.has(t.name) || (straight > 600000 && (t.rank || 2) < 2) || offLine(baseLine, t) < d * 0.3) continue;
         seen.add(t.name); out.push(t);
       }
     }
@@ -444,23 +447,32 @@
     const report = () => { try { o.onUpdate?.(finish(found, a, b, cur)); } catch (e) { /* only drawing */ } };
     if (straight < 40000 || !o.route) return finish(found, a, b, cur);
     const cands = [], keys = new Set([""]);
-    const add = (key, pts) => { if (!keys.has(key) && pts.length) { keys.add(key); cands.push({ key, pts }); } };
+    const add = (key, pts, side = false) => { if (!keys.has(key) && pts.length) { keys.add(key); cands.push({ key, pts, side }); } };
     if (o.current?.pts?.length) add(cur, o.current.pts);
     if (straight >= 250000) {
       for (const c of corridors(a, b)) { const f = forcing(a, b, c, baseLine); if (f) add(f.map((h) => h.name).join(" · "), f); }
     }
-    for (const t of sideTowns(a, b, baseLine, o.townNear)) add(t.name, [{ name: t.name, lat: t.lat, lon: t.lon }]);
+    for (const t of sideTowns(a, b, baseLine, o.townNear)) add(t.name, [{ name: t.name, lat: t.lat, lon: t.lon }], true);
     report();
-    const limit = straight < 150000 ? 1.35 : 1.6;
+    // How much longer an option may be than the fastest. Long trips get the main ways across rather than every
+    // detour, and only a couple of the towns-either-side ways.
+    const long = straight >= 1000000;
+    const [dMax, tMax] = straight < 150000 ? [1.35, 1.5] : long ? [1.4, 1.45] : [1.6, 1.7];
+    const sideOk = () => !long || found.length < 4;
+    const log = o.log || (() => {});
     for (let i = 0; i < cands.length && found.length < max; i += 3) {
-      const batch = await Promise.all(cands.slice(i, i + 3).map(async (c) => ({ c, r: await within(o.route(order(a, b, mine, c.pts)), o.timeout || 45000) })));
+      if (o.stop?.()) break;   // nobody's looking any more
+      const batch = await Promise.all(cands.slice(i, i + 3).filter((c) => !c.side || sideOk()).map(async (c) => ({ c, r: await within(o.route(order(a, b, mine, c.pts)), o.timeout || 45000) })));
       for (const { c, r } of batch) {
-        if (!r || !(r.distance > 0) || !r.geometry?.coordinates?.length) continue;
-        if (r.distance > base.distance * limit && c.key !== cur) continue;
+        const what = `${c.side ? "town" : "way"} ${c.key}`;
+        if (!r || !(r.distance > 0) || !r.geometry?.coordinates?.length) { log(`${what}: no route`); continue; }
+        const dr = r.distance / base.distance, tr = r.duration / (base.duration || 1);
+        if ((dr > dMax || tr > tMax) && c.key !== cur) { log(`${what}: too long (${Math.round(r.distance / 1000)} km, x${dr.toFixed(2)} distance, x${tr.toFixed(2)} time)`); continue; }
         const line = buildLine(r);
         const twin = found.find((f) => share(line, f.line) >= 0.65);   // mostly the same roads as one we have
-        if (twin) { if (c.key === cur) twin.alias = cur; continue; }
-        if (found.length < max || c.key === cur) found.push({ ...c, route: r, line });
+        if (twin) { log(`${what}: same roads as ${twin.key || "the fastest"}`); if (c.key === cur) twin.alias = cur; continue; }
+        if (c.side && !sideOk() && c.key !== cur) { log(`${what}: enough ways already`); continue; }
+        if (found.length < max || c.key === cur) { found.push({ ...c, route: r, line }); log(`${what}: added (${Math.round(r.distance / 1000)} km)`); }
       }
       report();
     }
