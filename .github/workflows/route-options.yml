@@ -1,0 +1,42 @@
+name: Route options check
+
+# Tries the Route options logic (docs/routes.js) on long trips with Apple Maps, as the iPhone app routes, and
+# Valhalla, as the website does, and shares the results with a map of each trip's options on the ci-routes branch.
+on:
+  push:
+    paths: ["docs/routes.js", "tools/route_options_test.mjs", "tools/AppleRoute.swift", ".github/workflows/route-options.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: route-options-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # to share the results on the ci-routes branch
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build the Apple Maps routing helper
+        run: |
+          swiftc -parse-as-library -O tools/AppleRoute.swift -o /tmp/appleroute
+          echo '{"id":1,"from":[-24.865,152.352],"to":[-24.82,152.46]}' | /tmp/appleroute | cut -c1-300
+      - name: Try route options on long trips
+        run: node tools/route_options_test.mjs "$GITHUB_WORKSPACE/route-tests" /tmp/appleroute
+      - name: Share the results on the ci-routes branch
+        if: always() && github.ref == 'refs/heads/main'
+        run: |
+          cd route-tests
+          git init -q
+          git config user.name "Route options check"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -q -b ci-routes
+          git add -A
+          git commit -q -m "Route options for ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-routes
