@@ -116,7 +116,18 @@ def main():
         camps.append(row)
         seen.add(la, lo, row)
 
-    fuel = [[round(p[0], 4), round(p[1], 4), (p[2] if len(p) > 2 and p[2] else "Fuel station")[:40], (p[3] if len(p) > 3 else "")] for p in d.get("fuel", [])]
+    def servo_name(p):
+        name = p[2] if len(p) > 2 and p[2] else ""
+        tn = town_near(p[0], p[1])
+        if name and name.lower() not in ("fuel station", "fuel", "petrol station", "service station"):
+            # a bare brand ("BP") gets its town ("BP Gin Gin") so you know which one it is
+            if tn and tn[1] < 5000 and len(name.split()) <= 2 and tn[0].lower() not in name.lower():
+                return f"{name} {tn[0]}"[:40]
+            return name[:40]
+        # "Servo at Gin Gin" says more than "Fuel station"
+        return "Fuel station" if not tn else f"Servo at {tn[0]}" if tn[1] < 2500 else f"Servo near {tn[0]}"
+
+    fuel = [[round(p[0], 4), round(p[1], 4), servo_name(p)[:40], (p[3] if len(p) > 3 else "")] for p in d.get("fuel", [])]
     sights = [[round(p[1], 4), round(p[2], 4), p[0], p[3], p[4], p[5]] for p in extra["pois"]]
 
     out = {"built": d.get("built", ""), "camps": camps, "fuel": fuel, "sights": sights}

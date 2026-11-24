@@ -66,18 +66,20 @@ struct DriveEngine {
 
         if let you {
             st.onRoute = true
-            func next(_ cat: DrivePlaces.Category, within: Double, freeFirst: Bool = false) -> (DrivePlaces.Place, Double)? {
-                let list = places.list(cat)
-                let ahead = (along[cat] ?? []).filter { $0.along > you + 150 && $0.along - you < within }
-                if freeFirst, let a = ahead.first(where: { isFree(list[$0.index]) }) { return (list[a.index], a.along - you + a.off) }
-                return ahead.first.map { (list[$0.index], $0.along - you + $0.off) }
-            }
-            if let r = next(.camps, within: 120_000, freeFirst: opts.freeFirst) { st.camp = stop(.camp, r.0, r.1) }
-            if let r = next(.fuel, within: 150_000) { st.fuel = stop(.fuel, r.0, r.1) }
-            if let r = next(.sights, within: 150_000) { st.sight = stop(.sight, r.0, r.1) }
             if let n = nights.first(where: { $0.along > you - 300 }) {
                 st.tonight = DriveStop(kind: .tonight, name: n.name, meters: max(0, n.along - you), label: "Tonight's camp", emoji: nil, lat: 0, lon: 0)
             }
+            let tonight = st.tonight?.name
+            func next(_ cat: DrivePlaces.Category, within: Double, freeFirst: Bool = false) -> (DrivePlaces.Place, Double)? {
+                let list = places.list(cat)
+                let ahead = (along[cat] ?? []).filter { $0.along > you + 150 && $0.along - you < within && $0.name != tonight }
+                if freeFirst, let a = ahead.first(where: { isFree(list[$0.index]) && $0.along - you < 120_000 }) { return (list[a.index], a.along - you + a.off) }
+                return ahead.first.map { (list[$0.index], $0.along - you + $0.off) }
+            }
+            // fuel and camps: the next one anywhere further along the route, however far (in the outback that's the point)
+            if let r = next(.camps, within: .infinity, freeFirst: opts.freeFirst) { st.camp = stop(.camp, r.0, r.1) }
+            if let r = next(.fuel, within: .infinity) { st.fuel = stop(.fuel, r.0, r.1) }
+            if let r = next(.sights, within: 150_000) { st.sight = stop(.sight, r.0, r.1) }
         } else {
             // no planned route, or well off it: what's ahead in the direction you're driving
             func next(_ cat: DrivePlaces.Category, radius: Double, freeFirst: Bool = false) -> (DrivePlaces.Place, Double)? {

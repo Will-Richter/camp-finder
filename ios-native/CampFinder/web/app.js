@@ -4898,7 +4898,7 @@
       <div class="dm-card" aria-hidden="true">
         <div class="dm-top"><span>🚙 COMING UP</span><span class="dm-tonight">🌙 Tonight Lake Wuruma Campground · 142 km</span></div>
         <div class="dm-row"><i>⛺</i><div><b>Gin Gin Rest Area</b><small>Rest area</small></div><em>12 km</em></div>
-        <div class="dm-row"><i>⛽</i><div><b>Puma</b><small>Fuel</small></div><em>4.2 km</em></div>
+        <div class="dm-row"><i>⛽</i><div><b>Puma Gin Gin</b><small>Fuel</small></div><em>4.2 km</em></div>
         <div class="dm-row"><i>🐢</i><div><b>Mon Repos Turtles</b><small class="gold">Must-see</small></div><em>28 km</em></div>
       </div>
       <div class="dm-ping" aria-hidden="true"><span>🔔</span><div><b>Check out Mon Repos Turtles</b><small>3.0 km ahead · Loggerhead turtles nest Nov–Jan and hatch Jan–Mar.</small></div></div>

@@ -11,7 +11,7 @@ struct RenderPreviews {
 
         let full = DriveState(
             camp: DriveStop(kind: .camp, name: "Gin Gin Rest Area", meters: 12_400, label: "Rest area", emoji: nil, lat: 0, lon: 0),
-            fuel: DriveStop(kind: .fuel, name: "Puma", meters: 4_200, label: "Fuel", emoji: nil, lat: 0, lon: 0),
+            fuel: DriveStop(kind: .fuel, name: "Puma Gin Gin", meters: 4_200, label: "Fuel", emoji: nil, lat: 0, lon: 0),
             sight: DriveStop(kind: .sight, name: "Mon Repos Turtles", meters: 28_000, label: "Must-see", emoji: "🐢", lat: 0, lon: 0),
             tonight: DriveStop(kind: .tonight, name: "Lake Wuruma Campground", meters: 142_000, label: "Tonight's camp", emoji: nil, lat: 0, lon: 0),
             onRoute: true)
@@ -44,7 +44,7 @@ struct RenderPreviews {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         save(widget(.camps, camps, large: false), "widget-small-camps", dir)
-        save(widget(.fuel, [NearbyItem(name: "Puma", label: "Fuel", meters: 1_400, emoji: nil), NearbyItem(name: "Liberty", label: "Fuel", meters: 1_900, emoji: nil)], large: false), "widget-small-fuel", dir)
+        save(widget(.fuel, [NearbyItem(name: "Puma Gin Gin", label: "Fuel", meters: 1_400, emoji: nil), NearbyItem(name: "Liberty Gin Gin", label: "Fuel", meters: 1_900, emoji: nil)], large: false), "widget-small-fuel", dir)
         save(widget(.camps, camps, large: true), "widget-medium-camps", dir)
         save(widget(.sights, [NearbyItem(name: "Mon Repos Turtles", label: "Must-see", meters: 52_000, emoji: "🐢"), NearbyItem(name: "Bundaberg Rum Distillery", label: "Must-see", meters: 47_000, emoji: "🥃")], large: true), "widget-medium-sights", dir)
         save(widget(.camps, [], large: false, status: .noLocation), "widget-small-nolocation", dir)
