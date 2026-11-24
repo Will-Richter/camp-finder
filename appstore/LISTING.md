@@ -72,6 +72,11 @@ Privacy: https://gonelappin.au/privacy.html
 
 Camp and track details come from OpenStreetMap, Queensland Parks and Australian government open data, and other travellers. Camps close, tracks change and rules vary, so always check signs, tides, permits and local rules.
 
+## What's new (1.0.5)
+• Drive mode: the next free camp, servo and must-see ahead, right on your Lock Screen, in the Dynamic Island and on the CarPlay Dashboard. A heads-up pops up as you get close: "Check out Mon Repos Turtles, 4 km ahead". It also tells you when tonight's camp is coming up and when a servo is the last fuel before a long stretch.
+• New Near me widget for your Home Screen and CarPlay: the closest camps, fuel or must-sees, with one tap to switch.
+• Drive mode turns on by itself when you start a journey, and switches off after 45 minutes parked.
+
 ## What's new (1.0.4, submitted 24 Nov 2026 with build 26)
 • Every must-see checked against the map and moved to the spot you actually go to: the lookout, car park, entrance or beach access. 140 fixed, including the Bundaberg Rum Distillery, Mon Repos Turtle Centre, Shell Beach, Wineglass Bay Lookout, the Bunda Cliffs lookouts and the Breakaways.
 • Barge and ferry landings are now in the right place, including Inskip Point, Straddie, Kangaroo Island, Bruny Island and the Spirit of Tasmania.
@@ -92,7 +97,8 @@ First release. Tell us what's missing with the Send feedback button in Settings.
 Camp Finder works fully without an account: plan a trip (e.g. "Bundaberg" to "Cairns"), explore camps on the map, try Camp tonight, and open the map button (top right) for map/satellite and what's shown.
 Camp Finder Pro (auto-renewing subscription, monthly au.com.gonelappin.campfinder.pro.monthly and yearly au.com.gonelappin.campfinder.pro.yearly, 7-day free trial): tap any 4WD track in the map menu, the "See Google photos and reviews with Pro" tile in any camp's photos, or Settings > Get Camp Finder Pro, to see the subscription screen with prices, the auto-renew terms, Terms of Use and Privacy Policy links, and Restore purchases. An account is only needed to add camps, rate them, upload photos and share your location with family.
 Demo account: review@gonelappin.au / (the password you set in Supabase). Go to My stuff > Saved > Sign in, type the email, then open "Sign in with a password".
-Background location: used only while the user has started a journey (to record the route and give "last fuel" alerts) or has turned on Family sharing (so family they invited can see where they are). Both are started by the user and can be stopped at any time; the blue location indicator is shown.
+Background location: used only while the user has started a journey (to record the route and give "last fuel" alerts), turned on Drive mode, or turned on Family sharing (so family they invited can see where they are). All are started by the user and can be stopped at any time; the blue location indicator is shown.
+Drive mode (new in 1.0.5): tap the car button on the map (top right), then Start Drive mode, or start a journey from a planned trip. While it's on, the app keeps location updates running so its Live Activity shows the next camp, fuel station and attraction ahead and gives heads-ups as the driver gets close. It switches off when the user taps Stop, ends the journey, or has been parked for 45 minutes. Camp Finder does not use a CarPlay entitlement: the Live Activity and the Near me widget appear in CarPlay through the standard iOS 26 support for Live Activities and widgets.
 Microphone/speech: voice search when the user taps the microphone.
 Offline maps: state map files (OpenStreetMap data via Protomaps) are downloaded only when the user taps Download.
 Contact: hello@gonelappin.au
