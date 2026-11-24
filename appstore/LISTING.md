@@ -76,6 +76,8 @@ Camp and track details come from OpenStreetMap, Queensland Parks and Australian 
 • Drive mode: the next free camp, servo and must-see ahead, right on your Lock Screen, in the Dynamic Island and on the CarPlay Dashboard. A heads-up pops up as you get close: "Check out Mon Repos Turtles, 4 km ahead". It also tells you when tonight's camp is coming up and when a servo is the last fuel before a long stretch.
 • New Near me widget for your Home Screen and CarPlay: the closest camps, fuel or must-sees, with one tap to switch.
 • Drive mode turns on by itself when you start a journey, and switches off after 45 minutes parked.
+• Route options now show every main way to go, on a map. Bundaberg to Exmouth gives you across the top through Katherine and Broome, through the centre past Alice Springs and Uluru, or along the bottom over the Nullarbor, each with the extra time and distance, and a heads-up when a way uses dirt roads like the Great Central Road or the Tanami.
+• Coming home a different way on a long trip can now take you right across the country, like out along the bottom and home across the top.
 
 ## What's new (1.0.4, submitted 24 Nov 2026 with build 26)
 • Every must-see checked against the map and moved to the spot you actually go to: the lookout, car park, entrance or beach access. 140 fixed, including the Bundaberg Rum Distillery, Mon Repos Turtle Centre, Shell Beach, Wineglass Bay Lookout, the Bunda Cliffs lookouts and the Breakaways.

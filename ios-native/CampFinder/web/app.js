@@ -592,12 +592,26 @@
     catch (e) { throw /No track route/.test(e?.message || "") ? new Error("Routing unavailable") : e; }
   }
 
-  // Apple Maps route, shaped like an OSRM route (multi-stop = one leg per pair)
-  async function appleRoute(points, steps) {
-    const legs = [];
-    for (let i = 1; i < points.length; i++) {
-      legs.push(await nativeRoute({ from: [points[i - 1].lat, points[i - 1].lon], to: [points[i].lat, points[i].lon], steps }, 30000));
+  // Apple Maps route, shaped like an OSRM route (multi-stop = one leg per pair). Legs are asked for three at a time,
+  // and plain legs are remembered for half an hour (route options ask for the same long legs more than once).
+  const legMemo = new Map(), legWait = [];
+  let legsOut = 0;
+  const legTurn = () => new Promise((r) => { if (legsOut < 3) { legsOut++; r(); } else legWait.push(r); });
+  const legFree = () => { const next = legWait.shift(); if (next) next(); else legsOut--; };
+  function appleLeg(a, b, steps) {
+    const key = steps ? "" : `${(+a.lat).toFixed(4)},${(+a.lon).toFixed(4)}>${(+b.lat).toFixed(4)},${(+b.lon).toFixed(4)}`;
+    const hit = key && legMemo.get(key);
+    if (hit && Date.now() - hit.at < 30 * 60000) return hit.p;
+    const p = (async () => { await legTurn(); try { return await nativeRoute({ from: [a.lat, a.lon], to: [b.lat, b.lon], steps }, 30000); } finally { legFree(); } })();
+    if (key) {
+      legMemo.set(key, { p, at: Date.now() });
+      p.catch(() => legMemo.delete(key));
+      if (legMemo.size > 80) legMemo.delete(legMemo.keys().next().value);
     }
+    return p;
+  }
+  async function appleRoute(points, steps) {
+    const legs = await Promise.all(points.slice(1).map((b, i) => appleLeg(points[i], b, steps)));
     const coordinates = [];
     legs.forEach((l, i) => coordinates.push(...(i ? l.coordinates.slice(1) : l.coordinates)));
     return {
@@ -691,7 +705,8 @@
   const reverseRoute = (r) => ({ ferries: (r.ferries || []).map((f) => ({ ...f, from: f.to, to: f.from, back: !f.back })).reverse(), distance: r.distance, duration: r.duration, geometry: { type: "LineString", coordinates: [...r.geometry.coordinates].reverse() }, legs: [{ distance: r.distance, duration: r.duration }] });
   async function homeRoute(from, to, out, backV, way, say = () => {}) {
     if (homePick?.fastest) return { route: await osrm([to, ...backV, from]) };
-    if (homePick?.name) return { route: await osrm([to, homePick, ...backV, from]), via: homePick.name };
+    const picked = homePickPts();
+    if (picked.length) return { route: await osrm(window.CFRoutes ? CFRoutes.order(to, from, backV, picked) : [to, ...picked, ...backV, from]), via: homePick.name };
     if (backV.length) return { route: await osrm([to, ...backV, from]), via: backV.map((v) => short(v.name)).slice(0, 2).join(" and ") };
     if (way !== "diff") return { route: reverseRoute(out) };
     const same = (note) => ({ route: reverseRoute(out), note });
@@ -699,6 +714,21 @@
     if (straight < 60000) return same("It's a short trip, so you'll come home the same way.");
     say("Finding a different road home");
     const outLine = buildLine(out);
+    // long trips: first the genuinely different ways across the country (routes.js), e.g. home across the top
+    // after going out along the bottom
+    let wayBest = null;
+    if (straight > 500000 && window.CFRoutes) {
+      const ways = [];
+      try { for (const c of CFRoutes.corridors(to, from)) { const f = CFRoutes.forcing(to, from, c, outLine); if (f?.length) ways.push(f); if (ways.length >= 3) break; } } catch { /* towns below */ }
+      const tried = await Promise.all(ways.map(async (pts) => {
+        const r = await soon(osrm([to, ...pts, from]), 40000, null); if (!r) return null;
+        const line = buildLine(r), ratio = r.distance / (out.distance || 1), ov = CFRoutes.share(line, outLine);
+        if (ratio > 1.6 || ov > 0.6) return null;
+        return { sc: ov + Math.max(0, ratio - 1.05) * 1.2, route: r, via: CFRoutes.describe(line, to, from, [outLine]) || pts.map((x) => x.name).slice(0, 2).join(" and ") };
+      }));
+      wayBest = tried.filter(Boolean).sort((x, y) => x.sc - y.sc)[0] || null;
+      if (wayBest && wayBest.sc < 0.4) return { route: wayBest.route, via: wayBest.via };
+    }
     const off = Math.min(350000, Math.max(35000, straight * 0.22));
     const cands = [], seen = new Set();
     for (const f of [0.5, 0.35, 0.65]) {
@@ -711,8 +741,11 @@
         seen.add(t.name); cands.push(t); break;
       }
     }
-    const overlap = (r) => { const pts = sample(buildLine(r), 4000).slice(4, -4); if (!pts.length) return 1; let on = 0; for (const q of pts) if (project(outLine, { lat: q[0], lon: q[1] }).off < 3000) on++; return on / pts.length; };
-    let best = null;
+    const overlap = (r) => {
+      if (window.CFRoutes) return CFRoutes.share(buildLine(r), outLine);
+      const pts = sample(buildLine(r), 4000).slice(4, -4); if (!pts.length) return 1; let on = 0; for (const q of pts) if (project(outLine, { lat: q[0], lon: q[1] }).off < 3000) on++; return on / pts.length;
+    };
+    let best = wayBest;
     for (const t of cands.slice(0, 4)) {
       try {
         const r = await soon(osrm([to, { lat: t.lat, lon: t.lon }, from]), 25000, null); if (!r) continue;
@@ -2138,13 +2171,21 @@
   }
   const short = (s) => String(s).split(",")[0];
 
+  // "5,862 km and 63 h of driving over 9 days · via the Nullarbor and Perth": long one-way trips say which way they go
+  function tripMeta(p) {
+    const days = totalDays(p);
+    if (p._via == null) { p._via = ""; try { if (window.CFRoutes && !p.opts.ret && p.route.distance > 600000) p._via = CFRoutes.describe(p.line, p.from, p.to); } catch { /* just the numbers */ } }
+    return `${esc(`${km(p.route.distance)} and ${hrs(p.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`)}${p._via ? `<span class="trip-via">via ${esc(p._via)}</span>` : ""}`;
+  }
   function showPlan() {
     const p = plan;
     $("#planForm").hidden = true; $("#results").hidden = false;
     $("#tripTitle").textContent = `${short(p.from.name)} to ${short(p.to.name)}${p.opts.ret ? " and back" : ""}`;
-    $("#otherRouteHome").hidden = !p.opts.ret; $("#otherRoute").lastChild.textContent = p.opts.ret ? "Routes there" : "Route options";
-    const days = totalDays(p);
-    $("#tripMeta").textContent = `${km(p.route.distance)} and ${hrs(p.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`;
+    // long trips with genuinely different ways across say so on the button
+    let more = false;
+    try { more = !p.opts.ret && !!window.CFRoutes && hav([p.from.lat, p.from.lon], [p.to.lat, p.to.lon]) > 800000 && CFRoutes.corridors(p.from, p.to).length > 1; } catch { /* plain label */ }
+    $("#otherRouteHome").hidden = !p.opts.ret; $("#otherRoute").lastChild.textContent = p.opts.ret ? "Routes there" : more ? "Other ways to go" : "Route options";
+    $("#tripMeta").innerHTML = tripMeta(p);
     renderItinerary();
     renderBudget();
     renderTripExtras();
@@ -2509,8 +2550,7 @@
     if (b?.dataset.act === "stay") {
       const i = +b.dataset.i, n = Math.max(0, Math.min(plan.picks[i]?.turnPick ? 29 : 6, extraAt(i) + +b.dataset.d));
       plan.stays = { ...(plan.stays || {}) }; if (n) plan.stays[i] = n; else delete plan.stays[i];
-      const days = totalDays(plan);
-      $("#tripMeta").textContent = `${km(plan.route.distance)} and ${hrs(plan.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`;
+      $("#tripMeta").innerHTML = tripMeta(plan);
       renderItinerary(); renderBudget(); loadWeather(plan).then(() => renderItinerary()).catch(() => {});
       toast(`Night ${i + 1}: ${n + 1} night${n ? "s" : ""} here`);
       return;
@@ -2530,69 +2570,131 @@
   function findCamp(id) {
     return (plan?.camps || []).find((c) => c.id === id) || exploreCamps.find((c) => c.id === id) || store.get("cf-camps", []).find((c) => c.id === id) || userCamps().find((c) => c.id === id);
   }
-  // ---- Route options: up to five real ways to go (the fastest, then through different towns); pick one and the trip is re-planned
-  let homePick = null;   // a chosen road home: { name, lat, lon } or { fastest: true }
-  async function routeChoices(a, b, base, max = 5) {
-    const baseLine = buildLine(base), straight = hav([a.lat, a.lon], [b.lat, b.lon]);
-    const out = [{ via: null, route: base, line: baseLine }];
-    if (straight < 40000) return out;
-    const cands = [], seen = new Set();
-    for (const off of [0.1, 0.18, 0.28, 0.4]) for (const f of [0.5, 0.33, 0.67]) {
-      const d = Math.min(400000, Math.max(20000, straight * off));
-      const p0 = pointAt(baseLine, baseLine.total * (f - 0.05)), p1 = pointAt(baseLine, baseLine.total * (f + 0.05)), p = pointAt(baseLine, baseLine.total * f);
-      const kx = 111000 * Math.cos(p.lat * Math.PI / 180), ky = 111000;
-      let dx = (p1.lon - p0.lon) * kx, dy = (p1.lat - p0.lat) * ky; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
-      for (const sgn of [1, -1]) {
-        const t = campDB.townNear?.(p.lat + sgn * dx * d / ky, p.lon - sgn * dy * d / kx);
-        if (!t || seen.has(t.name) || project(baseLine, t).off < d * 0.3) continue;
-        seen.add(t.name); cands.push(t);
-      }
-    }
-    const tried = [];
-    for (let i = 0; i < Math.min(cands.length, 12); i += 4) {
-      const batch = await Promise.all(cands.slice(i, i + 4).map(async (t) => ({ t, r: await soon(osrm([a, { lat: t.lat, lon: t.lon }, b]), 25000, null) })));
-      tried.push(...batch.filter((x) => x.r));
-    }
-    const limit = straight < 150000 ? 1.35 : 1.6;
-    const share = (line, ref) => { const pts = sample(line, 5000).slice(3, -3); if (!pts.length) return 1; let on = 0; for (const q of pts) if (project(ref, { lat: q[0], lon: q[1] }).off < 3000) on++; return on / pts.length; };
-    for (const { t, r } of tried.filter((x) => x.r.distance <= base.distance * limit).sort((x, y) => x.r.distance - y.r.distance)) {
-      const line = buildLine(r);
-      if (out.every((o) => share(line, o.line) < 0.65)) out.push({ via: t, route: r, line });
-      if (out.length >= max) break;
-    }
-    return out;
+  // ---- Route options: the main ways to go. Long trips get the genuinely different ways across the country (routes.js:
+  // Bundaberg to Exmouth across the top, through the centre or along the bottom), shorter ones the ways through other
+  // towns. Shown on a little map as they're found; pick one and the trip is re-planned through its towns.
+  let homePick = null;   // a chosen road home: { name, pts: [{name, lat, lon}], key } or { fastest: true } (older: { name, lat, lon })
+  const homePickPts = () => homePick?.pts || (homePick?.lat != null ? [{ name: homePick.name, lat: homePick.lat, lon: homePick.lon }] : []);
+  function routeNow(home) {
+    if (home) return { key: homePick?.fastest ? "" : homePick?.key ?? homePick?.name ?? "", pts: homePickPts() };
+    const alt = viaStops.filter((v) => v.alt);
+    return { key: alt.length ? alt[0].rk ?? alt.map((v) => v.name).join(" · ") : "", pts: alt.map(({ name, lat, lon }) => ({ name, lat, lon })) };
   }
+  // A small map of the options: Australia's outline and each way in its own colour, numbered as in the list
+  function routeMap(list, a, b, sel, colour) {
+    const C = window.CFRecap?.COAST, T = window.CFRecap?.TAS, R = Math.PI / 180;
+    const lines = list.map((o) => { const st = Math.max(2000, o.line.total / 240), pts = sample(o.line, st); return pts; });
+    let s = Math.min(a.lat, b.lat), n = Math.max(a.lat, b.lat), w = Math.min(a.lon, b.lon), e = Math.max(a.lon, b.lon);
+    for (const l of lines) for (const [la, lo] of l) { if (la < s) s = la; if (la > n) n = la; if (lo < w) w = lo; if (lo > e) e = lo; }
+    const k = Math.cos((s + n) / 2 * R), pad = Math.max(n - s, (e - w) * k) * 0.09 + 0.15;
+    s -= pad; n += pad; w -= pad / k; e += pad / k;
+    const ratio = (n - s) / ((e - w) * k);   // keep it a sensible shape: not a sliver, not a tower
+    if (ratio < 0.56) { const add = ((e - w) * k * 0.56 - (n - s)) / 2; s -= add; n += add; }
+    else if (ratio > 0.95) { const add = ((n - s) / 0.95 / k - (e - w)) / 2; w -= add; e += add; }
+    const W = 600, H = Math.round(W * (n - s) / ((e - w) * k));
+    const X = (lo) => ((lo - w) / (e - w) * W).toFixed(1), Y = (la) => ((n - la) / (n - s) * H).toFixed(1);
+    const pl = (pts) => pts.map(([la, lo]) => `${X(lo)},${Y(la)}`).join(" ");
+    const land = [C, T].filter(Boolean).map((sh) => `<polygon class="ro-land" points="${sh.map(([lo, la]) => `${X(lo)},${Y(la)}`).join(" ")}"/>`).join("");
+    const order = list.map((_, i) => i).sort((x, y) => (x === sel) - (y === sel));   // the one you're looking at on top
+    const paths = order.map((i) => `<polyline class="ro-case" points="${pl(lines[i])}"/><polyline class="ro-line${i === sel ? " is-sel" : ""}" style="stroke:var(--r${colour(list[i])})" points="${pl(lines[i])}"/>`).join("");
+    // each number sits on the part of its line furthest from the others
+    const badges = list.length < 2 ? "" : order.map((i) => {
+      const others = lines.filter((_, j) => j !== i).flat();
+      let best = lines[i][Math.floor(lines[i].length / 2)], bd = -1;
+      for (let q = 2; q < lines[i].length - 2; q += 2) {
+        const p = lines[i][q]; let m = Infinity;
+        for (const o of others) { const d = (o[0] - p[0]) ** 2 + ((o[1] - p[1]) * k) ** 2; if (d < m) m = d; }
+        if (m > bd) { bd = m; best = p; }
+      }
+      return `<g class="ro-badge" transform="translate(${X(best[1])} ${Y(best[0])})"><circle r="15" style="fill:var(--r${colour(list[i])})"/><text dy="6">${i + 1}</text></g>`;
+    }).join("");
+    return `<svg class="ro-map${sel >= 0 ? " has-sel" : ""}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Map of the ways to go">${land}${paths}<circle class="ro-a" cx="${X(a.lon)}" cy="${Y(a.lat)}" r="9"/><circle class="ro-b" cx="${X(b.lon)}" cy="${Y(b.lat)}" r="9"/>${badges}</svg>`;
+  }
+  let routeOptsRun = 0;
   async function openRouteOptions(leg) {
     if (!plan) return;
-    const p = plan, home = leg === "home";
+    const p = plan, home = leg === "home", run = ++routeOptsRun;
     const a = home ? p.to : p.from, b = home ? p.from : p.to;
     const mine = viaStops.filter((v) => !v.alt && (home ? v.leg === "back" : v.leg !== "back"));
-    showDetail(`<div class="d-pad"><h2 class="d-title">${home ? "Routes home" : "Route options"}</h2><p class="d-kind">Finding the main ways to go${home ? " home" : ""}…</p><p class="msg"><span class="spinner"></span></p></div>`);
-    let list = [];
+    const head = home ? "Routes home" : "Route options", there = home ? " home" : "";
+    showDetail(`<div class="d-pad" data-ro="${run}"><h2 class="d-title">${head}</h2><p class="d-kind">Finding the main ways to go${there}…</p><p class="msg"><span class="spinner"></span></p></div>`);
+    const now = routeNow(home), colours = new Map();
+    // the way the trip goes now (for a return trip, the half you're choosing), to mark it Current in the list
+    const nowLine = (() => {
+      const L = p.line; if (!L?.pts?.length) return null;
+      if (!L.turn) return L;
+      const lo = home ? L.turn : 0, hi = home ? L.total : L.turn, idx = [];
+      L.cum.forEach((c, i) => { if (c >= lo && c <= hi) idx.push(i); });
+      if (idx.length < 2) return null;
+      return { pts: idx.map((i) => L.pts[i]), cum: idx.map((i) => L.cum[i] - L.cum[idx[0]]), total: L.cum[idx[idx.length - 1]] - L.cum[idx[0]] };
+    })();
+    const sameAsNow = new Map();
+    const markNow = (l) => {
+      if (!nowLine || !window.CFRoutes || l.length < 2) return l;
+      let best = null, bs = 0.75;
+      for (const o of l) {
+        if (!sameAsNow.has(o.key)) sameAsNow.set(o.key, Math.min(CFRoutes.share(o.line, nowLine), CFRoutes.share(nowLine, o.line)));
+        if (sameAsNow.get(o.key) > bs) { bs = sameAsNow.get(o.key); best = o; }
+      }
+      if (best) l.forEach((o) => { o.cur = o === best; });
+      return l;
+    };
+    const colour = (o) => { if (!colours.has(o.key)) colours.set(o.key, colours.size % 5 + 1); return colours.get(o.key); };
+    let list = [], done = false, sel = -1, failed = false;
+    const use = (o) => {
+      if (home) homePick = o.pts.length ? { name: o.phrase || o.pts.map((x) => x.name).join(" and "), pts: o.pts.map(({ name, lat, lon }) => ({ name, lat, lon })), key: o.key } : { fastest: true };
+      else {
+        const label = o.phrase || o.pts.map((x) => x.name).join(" and ");
+        viaStops = [...viaStops.filter((v) => !v.alt), ...o.pts.map(({ name, lat, lon }) => ({ name, lat, lon, alt: true, route: label, rk: o.key }))];
+        orderStops(); renderVia();
+      }
+      $("#detailClose")?.click();
+      toast(o.pts.length ? `Re-planning ${o.title.replace(/^Via /, "via ")}` : "Re-planning on the fastest route");
+      $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
+    };
+    const draw = () => {
+      const box = $(`#detailBody [data-ro="${run}"]`);
+      if (!box || $("#detail").hidden) return;
+      const f = list.find((o) => o.fastest) || list[0], many = list.length > 1;   // each way is compared with the fastest
+      if (sel >= list.length) sel = -1;
+      // "205 km and 2 h 16 min longer", "40 km shorter but 3 h 5 min longer" (dirt roads), "About the same as the fastest"
+      const versus = (o) => {
+        if (o === f) return "";
+        const dk = o.route.distance - f.route.distance, ds = o.route.duration - f.route.duration, K = km(Math.abs(dk)), T = hrs(Math.abs(ds));
+        const kd = Math.abs(dk) >= 5000 ? (dk > 0 ? "longer" : "shorter") : "", td = Math.abs(ds) >= 300 ? (ds > 0 ? "longer" : "quicker") : "";
+        if (!kd && !td) return "About the same as the fastest";
+        if (!td) return `${K} ${kd}, about the same time`;
+        if (!kd) return `About the same distance, ${T} ${td}`;
+        if (kd === "longer" && td === "longer") return `${K} and ${T} longer`;
+        if (kd === "shorter" && td === "quicker") return `${K} shorter and ${T} quicker`;
+        return `${K} ${kd} but ${T} ${td}`;
+      };
+      const row = (o, i) => {
+        const diff = versus(o);
+        const tags = `${o.fastest && many ? `<span class="ro-tag fast">Fastest</span>` : ""}${o.dirt.length ? `<span class="ro-tag dirt">Dirt road: ${esc(o.dirt.map((d) => d.replace(/^the /, "")).join(", "))}</span>` : ""}`;
+        return `<li class="${o.cur ? "is-cur" : ""}${i === sel ? " is-sel" : ""}" data-k="${i}" style="--rc:var(--r${colour(o)})">
+          ${many ? `<span class="ro-num" aria-hidden="true">${i + 1}</span>` : ""}
+          <div><b>${esc(o.title)}</b><small>${km(o.route.distance)} · ${hrs(o.route.duration)} driving</small>${diff ? `<small class="ro-vs">${diff}</small>` : ""}${tags ? `<span class="ro-tags">${tags}</span>` : ""}</div>
+          ${o.cur ? `<span class="ro-cur">Current</span>` : `<button class="btn" type="button" data-use="${i}">Use this</button>`}</li>`;
+      };
+      const lead = failed ? `<p class="msg is-error">Couldn't work out the routes just now. Check you have signal and try again.</p>`
+        : `<p class="d-kind">${!done ? `Finding the main ways to go${there}…` : many ? `${list.length} ways to go${there}. Pick one and we'll re-plan the camps and fuel stops for it.` : "There's only one sensible way to go for this trip. Add a place you want to stop at to change it."}</p>`;
+      box.innerHTML = `<h2 class="d-title">${head}</h2>${lead}
+        ${list.length ? routeMap(list, a, b, sel, colour) : ""}
+        <ul class="route-opts">${list.map(row).join("")}${done ? "" : `<li class="ro-more"><span class="spinner"></span>Looking for other ways${there}</li>`}</ul>
+        ${list.some((o) => o.dirt.length) && done ? `<p class="caveat">Dirt roads can close after rain and some aren't suited to caravans. Check road conditions before you go.</p>` : ""}`;
+      box.onclick = (e) => {
+        const u = e.target.closest("[data-use]"); if (u) { use(list[+u.dataset.use]); return; }
+        const li = e.target.closest("li[data-k]"); if (li && list.length > 1) { sel = +li.dataset.k === sel ? -1 : +li.dataset.k; draw(); }
+      };
+    };
     try {
       const base = await osrm([a, ...mine, b]);
-      list = await routeChoices(a, b, base);
-    } catch { /* shown below */ }
-    if (!$("#detail") || $("#detail").hidden) return;
-    const cur = home ? (homePick?.name || (homePick?.fastest ? "" : p.home?.via || "")) : (viaStops.find((v) => v.alt)?.name || "");
-    const f = list[0];
-    $("#detailBody").innerHTML = `<div class="d-pad"><h2 class="d-title">${home ? "Routes home" : "Route options"}</h2>
-      <p class="d-kind">${list.length > 1 ? `${list.length} ways to go${home ? " home" : ""}. Pick one and we'll re-plan the camps and fuel stops for it.` : "There's only one sensible way to go for this trip. Add a place you want to stop at to change it."}</p>
-      <ul class="route-opts">${list.map((o, k) => {
-        const extraKm = o.route.distance - f.route.distance, extraH = (o.route.duration - f.route.duration) / 3600;
-        const isCur = (o.via?.name || "") === cur;
-        return `<li class="${isCur ? "is-cur" : ""}"><div><b>${o.via ? `Via ${esc(o.via.name)}` : "Fastest route"}</b>
-          <small>${km(o.route.distance)} · ${hrs(o.route.duration)}${k ? ` · ${extraKm >= 0 ? "+" : ""}${km(extraKm)}, ${extraH >= 0 ? "+" : ""}${extraH.toFixed(1)} h` : ""}</small></div>
-          ${isCur ? `<span class="ro-cur">Current</span>` : `<button class="btn" type="button" data-route="${k}">Use this</button>`}</li>`;
-      }).join("")}</ul></div>`;
-    $("#detailBody").querySelectorAll("[data-route]").forEach((btn) => btn.addEventListener("click", () => {
-      const o = list[+btn.dataset.route];
-      if (home) homePick = o.via ? { name: o.via.name, lat: o.via.lat, lon: o.via.lon } : { fastest: true };
-      else { viaStops = [...viaStops.filter((v) => !v.alt), ...(o.via ? [{ name: o.via.name, lat: o.via.lat, lon: o.via.lon, alt: true, mine: true }] : [])]; orderStops(); renderVia(); }
-      $("#detailClose")?.click();
-      toast(o.via ? `Re-planning via ${o.via.name}` : "Re-planning on the fastest route");
-      $("#planForm").requestSubmit ? $("#planForm").requestSubmit() : $("#findBtn").click();
-    }));
+      const opts = { route: (pts) => osrm(pts), townNear: campDB.townNear, mine, max: 5, current: now.key ? now : null, onUpdate: (l) => { list = markNow(l); draw(); },
+        stop: () => routeOptsRun !== run || $("#detail").hidden || !$(`#detailBody [data-ro="${run}"]`) };
+      list = window.CFRoutes ? markNow(await CFRoutes.choices(a, b, base, opts)) : [{ key: "", pts: [], route: base, line: buildLine(base), base: true, cur: true, fastest: true, dirt: [], title: "Fastest route" }];
+    } catch (e) { console.warn("route options", e); failed = !list.length; }
+    done = true; draw();
   }
   $("#otherRoute").addEventListener("click", () => openRouteOptions("there"));
   $("#otherRouteHome").addEventListener("click", () => openRouteOptions("home"));
@@ -2603,7 +2705,7 @@
     trips.unshift({
       id: Date.now(), from: plan.from, to: plan.to, nights: plan.nights, opts: plan.opts, km: plan.route.distance,
       picks: plan.picks.map((p) => p.camp && { id: p.camp.id, name: p.camp.name }),
-      vias: viaStops.map(({ name, lat, lon, poi }) => ({ name, lat, lon, poi: !!poi })), see: [...seeIds], stays: plan.stays || {},
+      vias: viaStops.map(({ name, lat, lon, poi, leg, alt, route, rk }) => ({ name, lat, lon, poi: !!poi, ...(leg ? { leg } : {}), ...(alt ? { alt: true, route, rk } : {}) })), see: [...seeIds], stays: plan.stays || {},
     });
     store.set("cf-trips", trips.slice(0, 30));
     e.currentTarget.classList.add("is-on"); toast("Trip saved");
@@ -5805,17 +5907,34 @@
   function renderVia() {
     const row = $("#viaRow");
     row.hidden = !viaStops.length;
-    row.innerHTML = viaStops.length ? `<span class="help">Via</span>${viaStops.map((v, k) => `<span class="via-chip">${esc(v.name)}${v.leg === "back" ? " <small>(back)</small>" : ""}<button type="button" class="via-x" data-k="${k}" aria-label="Remove ${esc(v.name)}">✕</button></span>`).join("")}${viaStops.length > 1 ? `<button type="button" class="via-clear" id="viaClear" aria-label="Remove all stops">Clear</button>` : ""}` : "";
+    // a picked route (its towns) is one chip, your own stops one each
+    let routeChip = false;
+    const chips = viaStops.map((v, k) => {
+      if (v.alt) {
+        if (routeChip) return "";
+        routeChip = true;
+        const name = v.route || viaStops.filter((x) => x.alt).map((x) => x.name).join(" and ");
+        return `<span class="via-chip is-route">${icon("route", "ic sm")}${esc(name)}<button type="button" class="via-x" data-route="1" aria-label="Back to the fastest route">✕</button></span>`;
+      }
+      return `<span class="via-chip">${esc(v.name)}${v.leg === "back" ? " <small>(back)</small>" : ""}<button type="button" class="via-x" data-k="${k}" aria-label="Remove ${esc(v.name)}">✕</button></span>`;
+    }).filter(Boolean);
+    row.innerHTML = viaStops.length ? `<span class="help">Via</span>${chips.join("")}${chips.length > 1 ? `<button type="button" class="via-clear" id="viaClear" aria-label="Remove all stops">Clear</button>` : ""}` : "";
     $("#viaClear")?.addEventListener("click", () => { viaStops = []; seeIds.clear(); renderVia(); });
-    row.querySelectorAll(".via-x").forEach((b) => b.addEventListener("click", () => { const v = viaStops[+b.dataset.k]; viaStops.splice(+b.dataset.k, 1); if (v?.poi) seeIds.delete(v.poi); renderVia(); }));
+    row.querySelectorAll(".via-x").forEach((b) => b.addEventListener("click", () => {
+      if (b.dataset.route) { viaStops = viaStops.filter((v) => !v.alt); renderVia(); return; }
+      const v = viaStops[+b.dataset.k]; viaStops.splice(+b.dataset.k, 1); if (v?.poi) seeIds.delete(v.poi); renderVia();
+    }));
   }
-  // Your own stops: put them in trip order (how far along from your start towards the destination)
+  // Your own stops: put them in trip order (how far along from your start towards the destination). A picked
+  // route's towns keep their own order (a route round the top of Australia isn't in a straight line).
   function orderStops() {
     const f = $("#from").dataset, t = $("#to").dataset;
     if (!f.lat || !t.lat) return;
     const a = [+f.lat, +f.lon], b = [+t.lat, +t.lon], dx = b[1] - a[1], dy = b[0] - a[0], L = dx * dx + dy * dy || 1;
     const along = (v) => ((v.lon - a[1]) * dx + (v.lat - a[0]) * dy) / L;
-    const out = viaStops.filter((v) => v.leg !== "back").sort((p, q) => along(p) - along(q));
+    const outs = viaStops.filter((v) => v.leg !== "back");
+    const out = window.CFRoutes ? CFRoutes.order({ lat: a[0], lon: a[1] }, { lat: b[0], lon: b[1] }, outs.filter((v) => !v.alt), outs.filter((v) => v.alt)).slice(1, -1)
+      : outs.sort((p, q) => along(p) - along(q));
     const back = viaStops.filter((v) => v.leg === "back").sort((p, q) => along(q) - along(p));
     viaStops = [...out, ...back];
   }

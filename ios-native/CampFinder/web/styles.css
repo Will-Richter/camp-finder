@@ -1317,13 +1317,41 @@ html, body { overscroll-behavior: none; touch-action: manipulation; position: fi
 .other-route-row { display: flex; gap: 8px; margin: 8px 0 4px; }
 .other-route-row .other-route { flex: 1; margin: 0; }
 .route-opts { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
-.route-opts li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--well); }
+.route-opts li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--well); cursor: pointer; transition: background .15s; }
 .route-opts li > div { flex: 1; min-width: 0; }
 .route-opts b { display: block; font: 800 16px var(--display); }
 .route-opts small { display: block; color: var(--sub); font-size: 13px; margin-top: 2px; }
 .route-opts li.is-cur { box-shadow: inset 0 0 0 2px var(--sign); }
+.route-opts li.is-sel { background: color-mix(in srgb, var(--rc) 16%, var(--well)); }
 .ro-cur { font: 800 12px var(--display); color: var(--sign); }
 @media (prefers-color-scheme: dark) { .ro-cur { color: var(--free); } .route-opts li.is-cur { box-shadow: inset 0 0 0 2px var(--free); } }
+/* the ways to go: each has its own colour on the map and in the list */
+:root { --r1: #1F8A4C; --r2: #1D7FB8; --r3: #D9822B; --r4: #8E5CC4; --r5: #C8463D; --r-ink: #FFFFFF; --sea: #D6E6EE; --land: #F6F7F4; }
+@media (prefers-color-scheme: dark) { :root { --r1: #5BC98B; --r2: #5DB0E6; --r3: #F0A85A; --r4: #B48BE8; --r5: #EE7A70; --r-ink: #101613; --sea: #0E1C22; --land: #1E2722; } }
+.ro-num { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--rc); color: var(--r-ink); font: 800 13px var(--display); }
+.ro-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ro-tag { font: 800 11px/1 var(--display); padding: 4px 7px; border-radius: 999px; letter-spacing: .01em; }
+.ro-tag.fast { background: var(--sign); color: #fff; }
+.ro-tag.dirt { background: #F3E2C4; color: #6B4210; }
+@media (prefers-color-scheme: dark) { .ro-tag.dirt { background: #3B2D18; color: #F0C987; } }
+.route-opts li.ro-more { justify-content: center; gap: 8px; background: none; box-shadow: inset 0 0 0 1.5px var(--hair); color: var(--sub); font-size: 13.5px; cursor: default; }
+.ro-map { display: block; width: 100%; height: auto; margin: 12px 0 2px; border-radius: 16px; background: var(--sea); }
+.ro-land { fill: var(--land); stroke: var(--hair); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.ro-case, .ro-line { fill: none; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ro-case { stroke: var(--land); stroke-width: 7px; }
+.ro-line { stroke-width: 4px; transition: opacity .2s; }
+.ro-line.is-sel { stroke-width: 5.5px; }
+.ro-map.has-sel .ro-line:not(.is-sel) { opacity: .35; }
+.ro-badge circle { stroke: var(--land); stroke-width: 3px; vector-effect: non-scaling-stroke; }
+.ro-badge text { fill: var(--r-ink); font: 800 17px var(--display); text-anchor: middle; }
+.ro-a { fill: var(--sign); stroke: #fff; stroke-width: 3px; vector-effect: non-scaling-stroke; }
+.ro-b { fill: var(--gold); stroke: #1A1608; stroke-width: 2.5px; vector-effect: non-scaling-stroke; }
+.route-opts small.ro-vs { color: var(--ink); font-weight: 600; }
+.route-opts .btn { flex: none; height: 34px; padding: 0 12px; border-radius: 999px; background: var(--sheet); box-shadow: inset 0 0 0 1.5px var(--hair); font: 800 13.5px var(--display); }
+.trip-via { display: block; margin-top: 2px; font-weight: 700; color: var(--sign); }
+@media (prefers-color-scheme: dark) { .trip-via { color: var(--free); } }
+.via-chip.is-route { gap: 5px; }
+.via-chip.is-route .ic { width: 14px; height: 14px; }
 
 /* typing on a phone: the panel sits above the keyboard and fills the screen */
 @media (max-width: 899px) {

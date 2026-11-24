@@ -217,5 +217,5 @@
     frame(0);
     return { canvas, duration, play, stop, record, still, supportsVideo, frame };
   }
-  window.CFRecap = { create };
+  window.CFRecap = { create, COAST, TAS };   // the outline is also used for the route options map
 })();

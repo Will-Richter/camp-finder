@@ -81,10 +81,12 @@
     ["DLW", "Daly Waters", -16.31, 133.42, 0, "j"], ["BRL", "Borroloola", -16.059, 136.305, 1], ["BKY", "Barkly Homestead", -19.71, 135.83, 0, "j"],
     ["TWY", "Three Ways", -19.43, 134.21, 0, "j"], ["TCK", "Tennant Creek", -19.648, 134.19, 1], ["ASP", "Alice Springs", -23.698, 133.881, 3],
     ["ERL", "Erldunda", -25.205, 133.2, 0, "j"], ["YLR", "Uluru", -25.241, 130.987, 3],
-    // the middle of the long empty roads (never routed through, just so each has a way through the sketch)
-    ["RFT", "Tanami Road", -20.18, 130.01, 0, "j"], ["JRV", "Plenty Highway", -22.7, 136.3, 0, "j"], ["HGT", "Hells Gate", -17.45, 138.36, 0, "j"],
+    // Along the long empty roads, so each has a way of its own through the sketch. Flag "m": a spot on the road itself
+    // (a rest area or roadhouse, from OpenStreetMap) that a route can be sent through to keep it on that road;
+    // flag "j": only roughly placed, never routed through.
+    ["RFT", "the Tanami", -21.2777, 130.8493, 0, "m"], ["JRV", "the Plenty Highway", -22.9535, 136.1518, 0, "m"],
+    ["MTB", "the Gibb River Road", -16.71668, 125.92752, 0, "m"], ["HGT", "Hells Gate", -17.45, 138.36, 0, "j"],
     ["MUN", "Mungerannie", -28.01, 138.66, 0, "j"], ["WCK", "William Creek", -28.91, 136.34, 0, "j"], ["EUC", "Eucla", -31.68, 128.88, 0, "j"],
-    ["MTB", "Mount Barnett", -16.66, 125.95, 0, "j"],
     // Western Australia
     ["WBT", "Warburton", -26.136, 126.579, 1], ["LAV", "Laverton", -28.626, 122.403, 1], ["LEO", "Leonora", -28.884, 121.331, 1],
     ["KAL", "Kalgoorlie", -30.746, 121.473, 2], ["CGD", "Coolgardie", -30.951, 121.162, 1], ["NRS", "Norseman", -32.198, 121.779, 1],
@@ -131,10 +133,10 @@
     // Northern Territory
     ["ERL", "ASP", 200], ["ERL", "YLR", 245], ["ASP", "TCK", 505], ["TCK", "TWY", 25], ["TWY", "DLW", 375], ["DLW", "KTR", 270],
     ["KTR", "DRW", 315], ["DRW", "JAB", 255], ["JAB", "KTR", 305], ["TWY", "BKY", 210], ["BKY", "ISA", 430], ["BKY", "BRL", 485],
-    ["DLW", "BRL", 380], ["KTR", "KNX", 510], ["YLR", "WBT", 560, "d"], ["WBT", "LAV", 565, "d"], ["ASP", "RFT", 595, "d"], ["RFT", "HCK", 440, "d"],
-    ["ASP", "JRV", 420, "d"], ["JRV", "BQL", 395, "d"],
+    ["DLW", "BRL", 380], ["KTR", "KNX", 510], ["YLR", "WBT", 560, "d"], ["WBT", "LAV", 565, "d"], ["ASP", "RFT", 440, "d"], ["RFT", "HCK", 600, "d"],
+    ["ASP", "JRV", 410, "d"], ["JRV", "BQL", 405, "d"],
     // Western Australia
-    ["KNX", "HCK", 360], ["HCK", "FTZ", 290], ["FTZ", "DBY", 255], ["FTZ", "PHE", 935], ["DBY", "PHE", 770], ["DBY", "MTB", 305, "d"], ["MTB", "KNX", 400, "d"],
+    ["KNX", "HCK", 360], ["HCK", "FTZ", 290], ["FTZ", "DBY", 255], ["FTZ", "PHE", 935], ["DBY", "PHE", 770], ["DBY", "MTB", 300, "d"], ["MTB", "KNX", 400, "d"],
     ["PHE", "KTA", 240], ["KTA", "NNT", 290], ["NNT", "CRV", 380], ["CRV", "GER", 480], ["GER", "PER", 420], ["PHE", "NMN", 450],
     ["NMN", "MKA", 425], ["MKA", "MTM", 195], ["MTM", "PER", 560], ["MTM", "GER", 340], ["MTM", "LEO", 400, "d"], ["MKA", "LEO", 480, "d"],
     ["LEO", "KAL", 235], ["LEO", "LAV", 125], ["KAL", "CGD", 40], ["CGD", "NRS", 170], ["KAL", "NRS", 190], ["CGD", "PER", 560],
@@ -146,10 +148,11 @@
   const MARKS = [
     ["Broome", -17.957, 122.224, 3, 45],
     ["the Nullarbor", -31.45, 130.9, 3, 30],
-    ["the Tanami", -22.253, 131.798, 3, 25, "d"], ["the Tanami", -20.18, 130.01, 3, 40, "d"],
-    ["the Great Central Road", -25.001, 128.287, 2, 25, "d"], ["the Great Central Road", -27.38, 124.49, 2, 45, "d"],
-    ["the Plenty Highway", -22.95, 135.6, 2, 50, "d"], ["the Plenty Highway", -22.4, 137.6, 2, 50, "d"],
-    ["the Gibb River Road", -16.66, 125.95, 3, 40, "d"], ["the Gibb River Road", -15.96, 127.07, 3, 40, "d"],
+    // the big dirt roads, by rest areas and roadhouses on them (OpenStreetMap)
+    ["the Tanami", -22.4667, 132.1025, 3, 20, "d"], ["the Tanami", -21.2777, 130.8493, 3, 20, "d"], ["the Tanami", -19.895, 129.0242, 3, 20, "d"],
+    ["the Great Central Road", -25.04287, 128.30328, 2, 20, "d"], ["the Great Central Road", -27.15525, 124.57481, 2, 20, "d"],
+    ["the Plenty Highway", -22.98386, 134.93554, 2, 20, "d"], ["the Plenty Highway", -22.95105, 136.14307, 2, 20, "d"], ["the Plenty Highway", -22.2743, 137.97387, 2, 25, "d"],
+    ["the Gibb River Road", -16.71668, 125.92752, 3, 20, "d"], ["the Gibb River Road", -17.14916, 125.45938, 3, 20, "d"], ["the Gibb River Road", -15.7223, 127.8313, 3, 20, "d"],
     ["the Savannah Way", -17.45, 138.36, 2, 35, "d"], ["the Savannah Way", -16.77, 136.97, 2, 40, "d"],
     ["the Birdsville Track", -28.01, 138.66, 3, 35, "d"],
     ["the Oodnadatta Track", -28.91, 136.34, 3, 30, "d"], ["the Oodnadatta Track", -27.547, 135.447, 3, 15, "d"],
@@ -159,14 +162,14 @@
   function graph() {
     if (G) return G;
     const hubs = new Map(), adj = new Map();
-    for (const [id, name, lat, lon, fame, fl] of HUBS) { hubs.set(id, { id, name, lat, lon, fame, j: fl === "j" }); adj.set(id, []); }
+    for (const [id, name, lat, lon, fame, fl] of HUBS) { hubs.set(id, { id, name, lat, lon, fame, j: fl === "j", m: fl === "m" }); adj.set(id, []); }
     for (const [x, y, km, fl] of ROADS) {
       if (!hubs.has(x) || !hubs.has(y)) throw new Error(`routes.js: unknown town in road ${x}-${y}`);
       const key = x < y ? `${x}-${y}` : `${y}-${x}`, dirt = fl === "d";
       adj.get(x).push({ to: y, km, dirt, key }); adj.get(y).push({ to: x, km, dirt, key });
     }
     const marks = [
-      ...[...hubs.values()].filter((h) => !h.j && h.fame > 0).map((h) => ({ name: h.name, lat: h.lat, lon: h.lon, fame: h.fame, tol: 20000, dirt: false })),
+      ...[...hubs.values()].filter((h) => !h.j && !h.m && h.fame > 0).map((h) => ({ name: h.name, lat: h.lat, lon: h.lon, fame: h.fame, tol: 20000, dirt: false })),
       ...MARKS.map(([name, lat, lon, fame, tol, fl]) => ({ name, lat, lon, fame, tol: tol * 1000, dirt: fl === "d" })),
     ];
     return (G = { hubs, adj, marks });
@@ -389,7 +392,7 @@
       const shared = oth.filter((l) => l.some((x) => x.name === m.name)).length;
       if (oth.length && shared === oth.length) return null;   // every way goes past it
       const mid = 1 - Math.abs(m.along / total - 0.5) * 2;
-      return { m, score: m.fame + 0.6 * mid - 1.2 * shared };
+      return { m, score: m.fame + 0.6 * mid - 0.6 * shared };
     }).filter(Boolean).sort((x, y) => y.score - x.score).map((x) => x.m);
   }
   const bare = (s) => s.replace(/^the /, "").toLowerCase();
