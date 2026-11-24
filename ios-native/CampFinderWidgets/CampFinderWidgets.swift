@@ -23,12 +23,6 @@ struct DriveLiveActivity: Widget {
                 .widgetURL(URL(string: "campfinder://drive"))
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    DriveIslandTag(stop: context.state.camp, kind: .camp).padding(.leading, 6)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    DriveIslandTag(stop: context.state.fuel, kind: .fuel).padding(.trailing, 6)
-                }
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.state.tonight.map { "Tonight: \($0.name)" } ?? context.attributes.title)
                         .font(.system(size: 12, weight: .semibold))
@@ -148,7 +142,8 @@ enum Nearby {
             let ranked = near.sorted { a, b in
                 a.meters / Double(1 + P.sights[a.index].rank) < b.meters / Double(1 + P.sights[b.index].rank)
             }
-            return ranked.prefix(3).map { n in
+            // the best three nearby (bigger must-sees count from further away), closest first
+            return ranked.prefix(3).sorted { $0.meters < $1.meters }.map { n in
                 let p = P.sights[n.index]
                 return NearbyItem(name: p.name, label: "Must-see", meters: n.meters, emoji: p.kind)
             }

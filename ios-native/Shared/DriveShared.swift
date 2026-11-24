@@ -92,11 +92,12 @@ final class DrivePlaces {
     private let lock = NSLock()
     private var loaded = false
 
-    func load() {
+    /// Reads drive-places.json from the app (or widget) bundle, or from a file in tests
+    func load(from file: URL? = nil) {
         lock.lock(); defer { lock.unlock() }
         guard !loaded else { return }
         loaded = true
-        guard let url = Bundle.main.url(forResource: "drive-places", withExtension: "json"),
+        guard let url = file ?? Bundle.main.url(forResource: "drive-places", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         built = root["built"] as? String ?? ""

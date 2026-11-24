@@ -23,6 +23,7 @@
 		87FF8D02830ECCF0ECDB6150 /* CampFinderWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F897476F1A1D81BEEEB89D6 /* CampFinderWidgets.swift */; };
 		5FEFE1A04A3F0FF140F1AE36 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1D6EC7D44A1F752FAE2C9287 /* PrivacyInfo.xcprivacy */; };
 		0771ADFB8CED6AF78D26AA77 /* CampFinderWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 94DA54ECECF0D72C9507051D /* CampFinderWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		08D8BA03CBBE38C91F40C613 /* DriveEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5E2C4E33C46A7C4143265C4 /* DriveEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,6 +67,7 @@
 		38DC9F9B021CA72A7DF03AB0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1D6EC7D44A1F752FAE2C9287 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		94DA54ECECF0D72C9507051D /* CampFinderWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CampFinderWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C5E2C4E33C46A7C4143265C4 /* DriveEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,6 +128,7 @@
 				ACB070088C84947EA22A9FBD /* DriveShared.swift */,
 				EE47C96BC79A472B58675938 /* DriveViews.swift */,
 				6671D691144E804AFE8E29C6 /* drive-places.json */,
+				C5E2C4E33C46A7C4143265C4 /* DriveEngine.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -250,6 +253,7 @@
 				C31EC03CBF87D36906C17E0B /* Speech.swift in Sources */,
 				9AB0FFDD73DE47F07B6A4853 /* DriveMode.swift in Sources */,
 				D573DFF21B64F0796CDEB7E2 /* DriveShared.swift in Sources */,
+				08D8BA03CBBE38C91F40C613 /* DriveEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

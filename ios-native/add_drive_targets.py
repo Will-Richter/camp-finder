@@ -67,9 +67,25 @@ def add_to_list(text, obj_id, key, entry):
     return text[:close] + f"\t{entry},\n\t\t\t" + text[close:]
 
 
+def add_engine(t):
+    """Shared/DriveEngine.swift in the app (the logic behind Drive mode, kept apart so CI can test it)."""
+    f, b = gid("f_engine"), gid("b_engine")
+    if f in t:
+        return t
+    t = insert_before(t, "/* End PBXBuildFile section */", f"\t\t{b} /* DriveEngine.swift in Sources */ = {{isa = PBXBuildFile; fileRef = {f} /* DriveEngine.swift */; }};\n")
+    t = insert_before(t, "/* End PBXFileReference section */", f"\t\t{f} /* DriveEngine.swift */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveEngine.swift; sourceTree = \"<group>\"; }};\n")
+    t = add_to_list(t, I["g_shared"], "children", f"{f} /* DriveEngine.swift */")
+    t = add_to_list(t, APP_SOURCES, "files", f"{b} /* DriveEngine.swift in Sources */")
+    print("added DriveEngine.swift")
+    return t
+
+
 def main():
     t = PBX.read_text()
     if I["w_target"] in t:
+        n = add_engine(t)
+        if n != t:
+            PBX.write_text(n)
         print("already added")
         return
     version = re.search(r"MARKETING_VERSION = ([\d.]+);", t).group(1)
@@ -251,6 +267,7 @@ def main():
 			defaultConfigurationName = Release;
 		}};
 """)
+    t = add_engine(t)
     PBX.write_text(t)
     print("added Drive mode and CampFinderWidgets", version, build)
 

@@ -25,11 +25,11 @@ struct RenderPreviews {
         save(sign(DriveLockScreenView(title: "Drive mode", state: DriveState()), 370), "lockscreen-empty", dir)
         save(DriveSmallView(state: full).padding(10).frame(width: 230, height: 96).background(Brand.sign).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)), "carplay-dashboard", dir)
         save(VStack(spacing: 10) {
-            HStack { DriveIslandTag(stop: full.camp, kind: .camp); Spacer(); Text("Tonight: Lake Wuruma Campground").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.8)); Spacer(); DriveIslandTag(stop: full.fuel, kind: .fuel) }
+            Text("Tonight: Lake Wuruma Campground").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
             DriveIslandExpandedBottom(state: full)
         }.padding(.horizontal, 18).padding(.vertical, 14).frame(width: 370).background(Color.black).clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous)), "dynamic-island-expanded", dir)
-        save(HStack(spacing: 60) { DriveIslandTag(stop: full.camp, kind: .camp); DriveIslandTag(stop: full.fuel, kind: .fuel) }
-            .padding(.horizontal, 16).frame(height: 36).background(Capsule().fill(.black)), "dynamic-island-compact", dir)
+        save(HStack(spacing: 0) { DriveIslandTag(stop: full.camp, kind: .camp); Spacer(minLength: 0); Color.black.frame(width: 120); Spacer(minLength: 0); DriveIslandTag(stop: full.fuel, kind: .fuel) }
+            .padding(.horizontal, 14).frame(width: 250, height: 36).background(Capsule().fill(.black)), "dynamic-island-compact", dir)
 
         let camps = [NearbyItem(name: "Gin Gin Rest Area", label: "Rest area", meters: 1_200, emoji: nil),
                      NearbyItem(name: "Gin Gin Showgrounds", label: "Caravan park", meters: 1_900, emoji: nil),

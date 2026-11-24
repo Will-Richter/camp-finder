@@ -134,7 +134,8 @@ struct DriveSmallView: View {
                         .font(.system(size: 14, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.white)
-                        .fixedSize()
+                        .lineLimit(1)
+                        .frame(minWidth: 58, alignment: .leading)
                     Text(s.name)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.85))
@@ -160,6 +161,9 @@ struct DriveIslandTag: View {
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize()
             }
         }
     }

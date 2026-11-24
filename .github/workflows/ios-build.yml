@@ -26,6 +26,11 @@ jobs:
           X=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
           sudo xcode-select -s "$X/Contents/Developer"
           xcodebuild -version
+      - name: Test the Drive mode engine (drives it along a road near Bundaberg)
+        run: |
+          cd ios-native
+          swiftc -parse-as-library Shared/DriveShared.swift Shared/DriveEngine.swift tools/DriveEngineTest.swift -o /tmp/drivetest
+          /tmp/drivetest Shared/drive-places.json
       - name: Draw the Drive mode designs
         run: |
           cd ios-native
