@@ -77,9 +77,9 @@ struct NearbyEntry: TimelineEntry {
     let status: NearbyStatus
 
     static let sample = NearbyEntry(date: Date(), kind: .camps, items: [
-        NearbyItem(name: "Lake Monduran", label: "Free camp", meters: 12_400, emoji: nil),
-        NearbyItem(name: "Gin Gin Showgrounds", label: "Paid camp", meters: 18_000, emoji: nil),
-        NearbyItem(name: "Wuruma Dam", label: "Free camp", meters: 61_000, emoji: nil),
+        NearbyItem(name: "Gin Gin Rest Area", label: "Rest area", meters: 1_200, emoji: nil),
+        NearbyItem(name: "Gin Gin Showgrounds", label: "Caravan park", meters: 1_900, emoji: nil),
+        NearbyItem(name: "Lake Monduran Holiday Park", label: "Caravan park", meters: 16_000, emoji: nil),
     ], status: .ok)
 }
 

@@ -1599,3 +1599,33 @@ input:placeholder-shown + .clear-x { display: none; }
 .gallery .ph-pro span:first-child { font-size: 26px; }
 .fs-pro { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--gold) 16%, var(--well)); font-size: 13.5px; line-height: 1.4; }
 .fs-pro .linkish { font-weight: 800; }
+
+/* Drive mode (iPhone app): Lock Screen and CarPlay card */
+.tool.is-drive { background: var(--sign); color: #fff; border-radius: 12px; position: relative; }
+.tool.is-drive::after { content: ""; position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: #7CF0A8; animation: trackPulse 1.4s ease-in-out infinite; }
+.drive-card { background: linear-gradient(160deg, #13704C, var(--sign) 55%, #0A4630); }
+.dm { padding-top: 18px; }
+.dm-hero { text-align: center; }
+.dm-logo { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: 18px; background: var(--sign); color: #fff; margin-bottom: 8px; }
+.dm-logo .ic { width: 34px; height: 34px; }
+.dm-card { margin: 16px 0 10px; padding: 14px 16px; border-radius: 22px; background: linear-gradient(180deg, #0E5A3E, #09412C); color: #fff; box-shadow: var(--float); }
+.dm-top { display: flex; justify-content: space-between; gap: 10px; font: 800 11px var(--display); letter-spacing: .1em; opacity: .9; margin-bottom: 10px; }
+.dm-top > span:first-child { flex: none; white-space: nowrap; }
+.dm-tonight { min-width: 0; color: var(--gold); letter-spacing: 0; font-weight: 700; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.dm-row i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: #fff; font-style: normal; font-size: 17px; flex: none; }
+.dm-row > div { flex: 1; min-width: 0; }
+.dm-row b { display: block; font: 800 15px var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-row small { display: block; font-size: 12px; opacity: .75; }
+.dm-row small.gold { color: var(--gold); opacity: 1; }
+.dm-row em { font: 900 19px var(--display); font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dm-ping { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 16px; background: var(--well); margin-bottom: 16px; }
+.dm-ping > span { font-size: 20px; }
+.dm-ping b { display: block; font: 800 14px var(--display); }
+.dm-ping small { color: var(--sub); font-size: 12.5px; }
+.dm-go { width: 100%; }
+.dm-go.is-on { background: var(--well); color: var(--ink); }
+.dm-sub { text-align: center; color: var(--sub); font-size: 13px; margin: 8px 0 4px; }
+.dm-err { color: #B3261E; }
+.dm-steps { padding-left: 20px; margin: 6px 0 12px; display: grid; gap: 8px; color: var(--ink); font-size: 14px; }
+.dm-steps b { font-weight: 800; }

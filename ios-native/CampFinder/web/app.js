@@ -4652,6 +4652,7 @@
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-need]"); if (b) showNeeds(b.dataset.need); });
 
   // ================================================================ journeys, live sharing and the travel journal
+  let drive = { supported: false, on: false };   // Drive mode (see below), declared early because the journey bar reads it
   const jkv = (() => {
     const open = () => new Promise((res, rej) => { const r = indexedDB.open("cf-journal", 1); r.onupgradeneeded = () => r.result.createObjectStore("j", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     const run = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("j", mode); const q = fn(t.objectStore("j")); t.oncomplete = () => res(q?.result); t.onerror = () => rej(t.error); }); };
@@ -4699,7 +4700,9 @@
     if (firstGap && firstGap.len >= 150000) setTimeout(() => roadAlert("⛽", "Fill up before you leave", `No fuel for ${km(firstGap.len)} after ${short(plan.from.name)}.`), 1500);
     startTracking(); setFollow(true);
     await jkv.put({ ...journey }).catch(() => {});
-    showJourneyBar(); toast("Journey started. Safe travels!");
+    const driving = drive.supported && settings.driveAuto !== false && !drive.on ? await startDrive(true) : drive.on;
+    if (driving && drive.on) dcall("update", driveOptions());
+    showJourneyBar(); toast(driving ? "Journey started. Drive mode is on, so what's coming up shows on your Lock Screen and CarPlay. Safe travels!" : "Journey started. Safe travels!", driving ? 4500 : 2600);
     if (famMe) { famLastPos = 0; famPushFull(); }
   }
   // One sync at a time, and only points newer than the last one we have, so nothing is counted twice
@@ -4821,7 +4824,7 @@
     const day = Math.floor((Date.now() - Date.parse(journey.started)) / 864e5) + 1;
     const pct = travelPct();
     $("#jbTitle").textContent = journey.name;
-    $("#jbStats").textContent = `Day ${day} · ${km(trackKm(journey.points))} driven${pct ? ` · ${pct}% of the way` : ""}${journey.share ? " · sharing live" : ""}`;
+    $("#jbStats").textContent = `Day ${day} · ${km(trackKm(journey.points))} driven${pct ? ` · ${pct}% of the way` : ""}${journey.share ? " · sharing live" : ""}${drive.on ? " · Drive mode on" : ""}`;
     $("#startJourney").textContent = "Journey in progress";
     $("#startJourney").disabled = true;
   }
@@ -4830,6 +4833,7 @@
     if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Tap to end"; setTimeout(() => { b.dataset.sure = ""; b.textContent = "End"; }, 3000); return; }
     await syncJourney();
     await jcall("stop");
+    if (drive.on) await stopDrive();
     if (journey.share && window.CFCloud?.updateShare) window.CFCloud.updateShare(journey.share, me, null, true).catch(() => {});
     journey.ended = new Date().toISOString();
     clearTimeout(jsaveT); await jkv.put({ ...journey }).catch(() => {});
@@ -4846,6 +4850,100 @@
   document.addEventListener("visibilitychange", () => { if (!document.hidden) syncJourney(); });
   setInterval(() => { if (journey && !document.hidden) syncJourney(); }, 60000);
   if (journey) { showJourneyBar(); startTracking(); jcall("status").then((s) => { if (s && !s.active) jcall("start", { id: journey.id, notify: !!settings.campAlerts, camps: [] }); }); syncJourney(); }
+
+  // ================================================================ Drive mode (iPhone app): what's coming up on the Lock Screen and CarPlay
+  // A Live Activity shows the next camp, servo and must-see ahead (on the Lock Screen, in the Dynamic Island and on the
+  // CarPlay Dashboard), with a "Check out ..." heads-up as you get close. Works out ahead along the planned route,
+  // or in the direction you're driving without one. The phone does the work (DriveMode.swift), so it keeps going locked.
+  const nativeDrive = nativeCall("drive", "__cfDriveDone");
+  const dcall = (cmd, extra = {}) => nativeDrive ? nativeDrive({ cmd, ...extra }, 10000).catch((e) => ({ error: String(e.message || e) })) : Promise.resolve(null);
+  const thinLine = (coords, max) => { const step = Math.max(1, Math.ceil(coords.length / max)); const out = coords.filter((_, k) => k % step === 0); if (coords.length && out.at(-1) !== coords.at(-1)) out.push(coords.at(-1)); return out.map(([lo, la]) => [+lo.toFixed(5), +la.toFixed(5)]); };
+  function driveOptions() {
+    const o = { title: "Drive mode", freeFirst: settings.driveFree !== false,
+      alerts: { sights: settings.driveSights !== false, camps: settings.driveCamps !== false, fuel: settings.driveFuel !== false } };
+    const planName = plan ? `${short(plan.from.name)} to ${short(plan.to.name)}` : "";
+    if (journey) {
+      o.title = journey.name;
+      o.route = plan && journey.name === planName ? thinLine(plan.route.geometry.coordinates, 1500) : thinLine(journey.route || [], 1500);
+      o.nights = (journey.nightSpots || []).map(({ name, lat, lon }) => ({ name, lat, lon }));
+      o.lastFuel = journey.fuelAlerts || [];
+    } else if (plan) {
+      o.title = planName;
+      o.route = thinLine(plan.route.geometry.coordinates, 1500);
+      o.nights = plan.picks.map((pk) => pk.camp && { name: pk.camp.name, lat: pk.camp.lat, lon: pk.camp.lon }).filter(Boolean);
+      o.lastFuel = lastFuelList(plan);
+    }
+    return o;
+  }
+  function paintDrive() {
+    const b = $("#driveBtn"), card = $("#stDrive");
+    if (b) { b.hidden = !drive.supported; b.classList.toggle("is-drive", !!drive.on); b.setAttribute("aria-pressed", !!drive.on); }
+    if (card) { card.hidden = !drive.supported; card.querySelector("small").textContent = drive.on ? "On now. Camps, fuel and must-sees coming up show on your Lock Screen and CarPlay." : "See the camps, fuel and must-sees coming up on your Lock Screen and CarPlay."; }
+    if (journey) updateJourneyStats();
+  }
+  async function startDrive(quiet = false) {
+    if (!nativeDrive) return false;
+    const r = await dcall("start", driveOptions());
+    if (!r || r.error) { if (!quiet) showDrivePanel(r?.error || "Drive mode couldn't start. Try again."); return false; }
+    drive = { ...drive, ...r }; paintDrive();
+    if (!quiet) { closeDetail(); toast("Drive mode on. Lock your phone or connect CarPlay to see what's coming up.", 4500); }
+    return true;
+  }
+  async function stopDrive() { const r = await dcall("stop"); drive = { ...drive, ...(r || {}), on: false }; paintDrive(); }
+  function showDrivePanel(err) {
+    const sw = (id, key, title, sub) => `<label class="switch"><span><b>${title}</b><small>${sub}</small></span><input type="checkbox" id="${id}" data-dkey="${key}"${settings[key] !== false ? " checked" : ""}><i></i></label>`;
+    showDetail(`<div class="d-pad dm">
+      <div class="dm-hero"><span class="dm-logo" aria-hidden="true">${icon("car")}</span><h2 class="d-title">Drive mode</h2>
+        <p class="d-kind">The next free camp, servo and must-see ahead, on your Lock Screen and CarPlay. No need to touch your phone.</p></div>
+      <div class="dm-card" aria-hidden="true">
+        <div class="dm-top"><span>🚙 COMING UP</span><span class="dm-tonight">🌙 Tonight Lake Wuruma Campground · 142 km</span></div>
+        <div class="dm-row"><i>⛺</i><div><b>Gin Gin Rest Area</b><small>Rest area</small></div><em>12 km</em></div>
+        <div class="dm-row"><i>⛽</i><div><b>Puma</b><small>Fuel</small></div><em>4.2 km</em></div>
+        <div class="dm-row"><i>🐢</i><div><b>Mon Repos Turtles</b><small class="gold">Must-see</small></div><em>28 km</em></div>
+      </div>
+      <div class="dm-ping" aria-hidden="true"><span>🔔</span><div><b>Check out Mon Repos Turtles</b><small>3.0 km ahead · Loggerhead turtles nest Nov–Jan and hatch Jan–Mar.</small></div></div>
+      ${err ? `<p class="msg dm-err">${esc(err)}</p>` : ""}
+      <button class="cta dm-go${drive.on ? " is-on" : ""}" type="button" id="dmGo">${drive.on ? "Stop Drive mode" : "Start Drive mode"}</button>
+      <p class="dm-sub">${drive.on ? "On now. It switches itself off after 45 minutes parked." : journey ? `Follows your journey, ${esc(journey.name)}.` : plan ? `Follows your trip, ${esc(short(plan.from.name))} to ${esc(short(plan.to.name))}.` : "No trip planned, so it looks ahead in the direction you're driving."}</p>
+      <h3 class="h2">Heads-ups</h3>
+      ${sw("dmSights", "driveSights", "Must-sees", "“Check out …” as you get close")}
+      ${sw("dmCamps", "driveCamps", "Camps", "Tonight's camp coming up, and a good free camp in the afternoon")}
+      ${sw("dmFuel", "driveFuel", "Last fuel", "Before a long stretch with no servo")}
+      ${sw("dmFree", "driveFree", "Free camps first", "Show the next free camp or rest area before caravan parks")}
+      ${sw("dmAuto", "driveAuto", "Start with every journey", "Turns on by itself when you tap Start journey")}
+      <h3 class="h2">On CarPlay</h3>
+      <ol class="dm-steps">
+        <li><b>Start Drive mode</b>, then connect CarPlay. The card sits on the CarPlay Dashboard and heads-ups pop up at the bottom of the screen.</li>
+        <li><b>Add the Near me widget:</b> on your iPhone go to Settings → General → CarPlay, pick your car, and add Camp Finder to its widgets.</li>
+        <li><b>Tap ⛺ ⛽ ⭐ on the widget</b> to switch between the closest camps, fuel and must-sees.</li>
+      </ol>
+      <p class="caveat">CarPlay widgets and cards need iOS 26 or later. The Lock Screen and Dynamic Island work from iOS 18. Drive mode uses GPS while it's on, like a navigation app, so keep your phone on the charger for long drives.</p>
+    </div>`);
+    $("#dmGo").addEventListener("click", async (e) => {
+      const b = e.currentTarget; b.disabled = true;
+      if (drive.on) { await stopDrive(); closeDetail(); toast("Drive mode off"); }
+      else { b.textContent = "Starting…"; if (!(await startDrive())) { b.disabled = false; } }
+    });
+    $$("#detailBody [data-dkey]").forEach((el) => el.addEventListener("change", () => {
+      settings[el.dataset.dkey] = el.checked; saveSettings();
+      if (drive.on) dcall("update", driveOptions());
+    }));
+  }
+  function driveOpened(e) {
+    if (e?.what === "nearby" && e.kind === "fuel") return showNeeds("fuel");
+    if (e?.what === "nearby" && e.kind === "camps") return campTonight();
+    showDrivePanel();
+  }
+  window.__cfDriveEvent = (e) => {
+    if (e?.type === "state") {
+      drive.on = !!e.on; paintDrive();
+      if (!e.on && e.reason && e.reason !== "Drive mode off") toast(e.reason, 4000);
+    }
+    if (e?.type === "open") setTimeout(() => driveOpened(e), 300);
+  };
+  if (nativeDrive) dcall("status").then((s) => { if (!s || s.error) return; drive = { ...drive, ...s }; paintDrive(); if (s.open) setTimeout(() => driveOpened(s.open), 900); });
+  $("#driveBtn")?.addEventListener("click", () => showDrivePanel());
+  $("#stDrive")?.addEventListener("click", () => showDrivePanel());
 
   // Live sharing with family
   const SHARE_PAGE = "https://gonelappin.au/share.html";

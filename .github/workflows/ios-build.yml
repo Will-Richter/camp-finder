@@ -11,6 +11,9 @@ concurrency:
   group: ios-build-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write   # to share the design pictures on the ci-previews branch
+
 jobs:
   build:
     runs-on: macos-latest
@@ -28,11 +31,17 @@ jobs:
           cd ios-native
           swiftc -parse-as-library Shared/DriveShared.swift Shared/DriveViews.swift tools/RenderPreviews.swift -o /tmp/render
           /tmp/render "$GITHUB_WORKSPACE/previews"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: drive-previews
-          path: previews
+      - name: Share the pictures on the ci-previews branch
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd previews
+          git init -q
+          git config user.name "iOS build check"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -q -b ci-previews
+          git add -A
+          git commit -q -m "Drive mode designs for ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-previews
       - name: Build the app and widgets (simulator, unsigned)
         run: |
           cd ios-native
@@ -40,6 +49,7 @@ jobs:
           xcodebuild -project CampFinder.xcodeproj -target CampFinder -configuration Debug -sdk iphonesimulator \
             CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES ARCHS=arm64 build > build.log 2>&1 || true
           grep -E "error:|warning: .*(Drive|Nearby|Widget|Route)" build.log | sort -u | head -80 || true
+          grep -E "BUILD TARGET|Build target|CampFinderWidgets.appex|ProcessInfoPlistFile .*CampFinderWidgets" build.log | head -12 || true
           tail -5 build.log
           grep -q "BUILD SUCCEEDED" build.log
       - uses: actions/upload-artifact@v4
