@@ -226,8 +226,10 @@
   const kmOf = (edges) => edges.reduce((s, e) => s + e.km, 0);
 
   // The distinct ways through the sketch: for every town, the best way that goes through it (best way there plus
-  // best way on), cheapest first, keeping each one that's mostly on different roads to those already kept and
-  // doesn't go into a town and straight back out. A km of dirt counts as two of bitumen.
+  // best way on), cheapest first, keeping each one that's at least 30% on different roads to those already kept and
+  // doesn't go into a town and straight back out. A km of dirt counts as two of bitumen. They come back most
+  // different first: the best way, then whichever shares least with those before it (across the top, then along the
+  // bottom, then through the centre), so a router asked for the first few gets the big choices before variations.
   const DIRT = 2;
   function corridors(a, b, { max = 6, limit = 1.5 } = {}) {
     graph();
@@ -238,9 +240,10 @@
     if (!(best < Infinity)) return [];
     const cand = [...G.hubs.keys()].filter((id) => ta.dist.has(id) && tb.dist.has(id))
       .map((id) => ({ id, cost: ta.dist.get(id) + tb.dist.get(id) })).filter((c) => c.cost <= best * limit).sort((x, y) => x.cost - y.cost);
-    const out = [];
+    const all = [];
+    const shared = (p, q) => kmOf(p.inner.filter((e) => q.keys.has(e.key))) / p.km;   // how much of p is on q's roads
     for (const { id, cost } of cand) {
-      if (out.length >= max) break;
+      if (all.length >= 14) break;
       const there = pathTo(ta, id), on = pathTo(tb, id);
       if (!there || !on) continue;
       const back = { nodes: [...on.nodes].reverse(), edges: [...on.edges].reverse() };
@@ -250,9 +253,15 @@
       if (new Set(nodes).size !== nodes.length) continue;      // loops back on itself
       const edges = [...there.edges, ...back.edges], inner = edges.filter((e) => !e.access);
       if (!inner.length) continue;
-      const keys = new Set(inner.map((e) => e.key)), km = kmOf(inner);
-      if (out.some((q) => kmOf(inner.filter((e) => q.keys.has(e.key))) / km >= 0.5 || kmOf(q.inner.filter((e) => keys.has(e.key))) / q.km >= 0.5)) continue;
-      out.push({ nodes: nodes.filter((n) => n !== "A" && n !== "B"), inner, keys, km, cost, dirt: inner.some((e) => e.dirt), via: id });
+      const c = { nodes: nodes.filter((n) => n !== "A" && n !== "B"), inner, keys: new Set(inner.map((e) => e.key)), km: kmOf(inner), cost, dirt: inner.some((e) => e.dirt), via: id };
+      if (all.some((q) => shared(c, q) >= 0.7 || shared(q, c) >= 0.7)) continue;
+      all.push(c);
+    }
+    const out = all.splice(0, 1);
+    while (out.length < max && all.length) {
+      let bi = 0, bv = Infinity;
+      all.forEach((c, i) => { const v = Math.max(...out.map((q) => shared(c, q))); if (v < bv - 0.05 || (Math.abs(v - bv) <= 0.05 && c.cost < all[bi].cost)) { bv = v; bi = i; } });
+      out.push(all.splice(bi, 1)[0]);
     }
     return out;
   }
@@ -383,15 +392,17 @@
       return { m, score: m.fame + 0.6 * mid - 1.2 * shared };
     }).filter(Boolean).sort((x, y) => y.score - x.score).map((x) => x.m);
   }
-  function describe(line, a, b, others = [], n = 2) {
-    const bare = (s) => s.replace(/^the /, "").toLowerCase(), pick = [];
+  const bare = (s) => s.replace(/^the /, "").toLowerCase();
+  const overlaps = (x, y) => bare(x).includes(bare(y)) || bare(y).includes(bare(x));   // Birdsville and the Birdsville Track
+  function named(line, a, b, others = [], n = 2) {
+    const pick = [];
     for (const m of ranked(line, a, b, others)) {
       if (pick.length >= n) break;
-      if (pick.some((p) => bare(p.name).includes(bare(m.name)) || bare(m.name).includes(bare(p.name)))) continue;   // Birdsville and the Birdsville Track
-      pick.push(m);
+      if (!pick.some((p) => overlaps(p.name, m.name))) pick.push(m);
     }
-    return join(pick.sort((x, y) => x.along - y.along).map((m) => m.name));
+    return pick.sort((x, y) => x.along - y.along);
   }
+  function describe(line, a, b, others = [], n = 2) { return join(named(line, a, b, others, n).map((m) => m.name)); }
 
   // ---- The options
   const within = (p, ms) => Promise.race([Promise.resolve(p).catch(() => null), new Promise((r) => setTimeout(() => r(null), ms))]);
@@ -428,7 +439,16 @@
     const fastest = found.reduce((x, y) => (y.route.duration < x.route.duration ? y : x), found[0]);
     const list = found.map((o, i) => {
       const others = found.filter((_, j) => j !== i).map((x) => x.line);
-      return { ...o, others, phrase: describe(o.line, a, b, others), dirt: dirtOn(o.line), fastest: o === fastest, cur: o.key === cur || o.alias === cur };
+      // the places that set it apart, topped up with the towns it was routed through ("Via Horsham and Kingston SE")
+      const names = named(o.line, a, b, others).map((m) => ({ name: m.name, along: m.along }));
+      for (const p of o.pts) {
+        if (names.length >= 2) break;
+        if (hav(ll(p), ll(a)) < 60000 || hav(ll(p), ll(b)) < 60000 || names.some((x) => overlaps(x.name, p.name))) continue;
+        let at = 0, best = Infinity; for (const q of steps(o.line)) { const d = hav(q, ll(p)); if (d < best) { best = d; at = q[2]; } }
+        names.push({ name: p.name, along: at });
+      }
+      const phrase = join(names.sort((x, y) => x.along - y.along).map((x) => x.name));
+      return { ...o, others, phrase, dirt: dirtOn(o.line), fastest: o === fastest, cur: o.key === cur || o.alias === cur };
     });
     // two options with the same name: say more about the later one
     for (let i = 1; i < list.length; i++) {
@@ -452,13 +472,13 @@
     if (straight >= 250000) {
       for (const c of corridors(a, b)) { const f = forcing(a, b, c, baseLine); if (f) add(f.map((h) => h.name).join(" · "), f); }
     }
-    for (const t of sideTowns(a, b, baseLine, o.townNear)) add(t.name, [{ name: t.name, lat: t.lat, lon: t.lon }], true);
-    report();
     // How much longer an option may be than the fastest. Long trips get the main ways across rather than every
-    // detour, and only a couple of the towns-either-side ways.
+    // detour: only a few towns either side are tried, and only while there are fewer than three ways.
     const long = straight >= 1000000;
+    for (const t of sideTowns(a, b, baseLine, o.townNear).slice(0, long ? 3 : 6)) add(t.name, [{ name: t.name, lat: t.lat, lon: t.lon }], true);
+    report();
     const [dMax, tMax] = straight < 150000 ? [1.35, 1.5] : long ? [1.4, 1.45] : [1.6, 1.7];
-    const sideOk = () => !long || found.length < 4;
+    const sideOk = () => !long || found.length < 3;
     const log = o.log || (() => {});
     for (let i = 0; i < cands.length && found.length < max; i += 3) {
       if (o.stop?.()) break;   // nobody's looking any more
