@@ -153,9 +153,9 @@
     ["the Great Central Road", -25.04287, 128.30328, 2, 20, "d"], ["the Great Central Road", -27.15525, 124.57481, 2, 20, "d"],
     ["the Plenty Highway", -22.98386, 134.93554, 2, 20, "d"], ["the Plenty Highway", -22.95105, 136.14307, 2, 20, "d"], ["the Plenty Highway", -22.2743, 137.97387, 2, 25, "d"],
     ["the Gibb River Road", -16.71668, 125.92752, 3, 20, "d"], ["the Gibb River Road", -17.14916, 125.45938, 3, 20, "d"], ["the Gibb River Road", -15.7223, 127.8313, 3, 20, "d"],
-    ["the Savannah Way", -17.45, 138.36, 2, 35, "d"], ["the Savannah Way", -16.77, 136.97, 2, 40, "d"],
-    ["the Birdsville Track", -28.01, 138.66, 3, 35, "d"],
-    ["the Oodnadatta Track", -28.91, 136.34, 3, 30, "d"], ["the Oodnadatta Track", -27.547, 135.447, 3, 15, "d"],
+    ["the Savannah Way", -17.45514, 138.35612, 2, 20, "d"], ["the Savannah Way", -16.4694, 137.0478, 2, 20, "d"],
+    ["the Birdsville Track", -28.0192, 138.66329, 3, 20, "d"], ["the Birdsville Track", -27.7017, 138.3356, 3, 25, "d"],
+    ["the Oodnadatta Track", -28.90652, 136.33886, 3, 20, "d"], ["the Oodnadatta Track", -29.4012, 136.8142, 3, 20, "d"], ["the Oodnadatta Track", -27.9028, 135.8128, 3, 20, "d"],
   ];
 
   let G = null;
@@ -361,6 +361,23 @@
     }
     return false;
   }
+  // How much of a route runs back over itself (0 to 1): driving out to a town and back the same road. A router that
+  // won't take a dirt road we sent it along does this, and that's not a way anyone would drive.
+  function doubling(line) {
+    if (line._db != null) return line._db;
+    const st = steps(line), g = cells(line);
+    let back = 0, n = 0;
+    for (let i = 0; i < st.length; i += 2) {
+      const q = st[i], cy = Math.floor(q[0] * 4), cx = Math.floor(q[1] * 4);
+      let hit = false;
+      for (let dy = -1; dy <= 1 && !hit; dy++) for (let dx = -1; dx <= 1 && !hit; dx++) {
+        const c = g.get(`${cy + dy}:${cx + dx}`); if (!c) continue;
+        for (const j of c) if (Math.abs(line.cum[j] - q[2]) > 40000 && hav(line.pts[j], q) < 2500) { hit = true; break; }
+      }
+      n++; if (hit) back++;
+    }
+    return (line._db = n ? back / n : 0);
+  }
   // how much of `line` runs along `ref` (0 to 1), ignoring the first and last few km
   function share(line, ref) {
     const pts = sample(line, 5000).slice(3, -3); if (!pts.length) return 1;
@@ -492,6 +509,7 @@
         const dr = r.distance / base.distance, tr = r.duration / (base.duration || 1);
         if ((dr > dMax || tr > tMax) && c.key !== cur) { log(`${what}: too long (${Math.round(r.distance / 1000)} km, x${dr.toFixed(2)} distance, x${tr.toFixed(2)} time)`); continue; }
         const line = buildLine(r);
+        if (doubling(line) > doubling(baseLine) + 0.06 && c.key !== cur) { log(`${what}: goes out and back (${Math.round(doubling(line) * 100)}% twice)`); continue; }
         const twin = found.find((f) => share(line, f.line) >= 0.65);   // mostly the same roads as one we have
         if (twin) { log(`${what}: same roads as ${twin.key || "the fastest"}`); if (c.key === cur) twin.alias = cur; continue; }
         if (c.side && !sideOk() && c.key !== cur) { log(`${what}: enough ways already`); continue; }
@@ -502,7 +520,7 @@
     return finish(found, a, b, cur);
   }
 
-  const api = { choices, corridors, forcing, describe, dirtOn, buildLine, share, order, hubs: () => [...graph().hubs.values()], _graph: graph };
+  const api = { choices, corridors, forcing, describe, dirtOn, buildLine, share, doubling, order, hubs: () => [...graph().hubs.values()], _graph: graph };
   root.CFRoutes = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
