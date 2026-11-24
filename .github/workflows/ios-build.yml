@@ -1,0 +1,49 @@
+name: iOS build check
+
+# Builds the iPhone app and its widget extension on a Mac (simulator, no signing) whenever the native
+# code changes, and draws the Drive mode Live Activity and widget designs to pictures for checking.
+on:
+  push:
+    paths: ["ios-native/**", ".github/workflows/ios-build.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          X=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
+          sudo xcode-select -s "$X/Contents/Developer"
+          xcodebuild -version
+      - name: Draw the Drive mode designs
+        run: |
+          cd ios-native
+          swiftc -parse-as-library Shared/DriveShared.swift Shared/DriveViews.swift tools/RenderPreviews.swift -o /tmp/render
+          /tmp/render "$GITHUB_WORKSPACE/previews"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: drive-previews
+          path: previews
+      - name: Build the app and widgets (simulator, unsigned)
+        run: |
+          cd ios-native
+          set -o pipefail
+          xcodebuild -project CampFinder.xcodeproj -target CampFinder -configuration Debug -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES ARCHS=arm64 build > build.log 2>&1 || true
+          grep -E "error:|warning: .*(Drive|Nearby|Widget|Route)" build.log | sort -u | head -80 || true
+          tail -5 build.log
+          grep -q "BUILD SUCCEEDED" build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: ios-native/build.log

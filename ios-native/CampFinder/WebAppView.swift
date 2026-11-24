@@ -26,7 +26,7 @@ struct WebAppView: UIViewRepresentable {
         config.websiteDataStore = .default()
 
         let controller = config.userContentController
-        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile", "offlineMap", "store", "weather"] { controller.add(context.coordinator, name: name) }
+        for name in ["location", "nativeFetch", "log", "places", "route", "geocode", "journey", "speech", "shareFile", "offlineMap", "store", "weather", "drive"] { controller.add(context.coordinator, name: name) }
         controller.addUserScript(WKUserScript(source: Coordinator.logShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: Coordinator.geolocationShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -371,6 +371,17 @@ struct WebAppView: UIViewRepresentable {
                 guard let d = message.body as? [String: Any] else { return }
                 let result = JourneyRecorder.shared.handle(d) ?? NSNull()
                 if let id = d["reply"] as? Int { reply("__cfJourneyDone", id, ok: true, result) }
+            case "drive":
+                // Drive mode: what's coming up on the Lock Screen, Dynamic Island and CarPlay (DriveMode.swift)
+                guard let d = message.body as? [String: Any] else { return }
+                if DriveMode.shared.send == nil {
+                    DriveMode.shared.send = { [weak self] payload in
+                        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+                        DispatchQueue.main.async { self?.webView?.evaluateJavaScript("window.__cfDriveEvent && window.__cfDriveEvent(\(String(decoding: data, as: UTF8.self)))") }
+                    }
+                }
+                let result = DriveMode.shared.handle(d)
+                if let id = d["id"] as? Int { reply("__cfDriveDone", id, ok: true, result) }
             case "store": handleStore(message.body)
             case "weather": handleWeather(message.body)
             case "log": cfLog("web \(message.body)")

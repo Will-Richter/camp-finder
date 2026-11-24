@@ -14,7 +14,40 @@
 		C31EC03CBF87D36906C17E0B /* Speech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4EFFEB92CF26E47225D1AB /* Speech.swift */; };
 		D0317420F376B6D550DD3011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C951E0F6049D00803F4AB93 /* Assets.xcassets */; };
 		FDC660B7C2E37A9C3907B809 /* web in Resources */ = {isa = PBXBuildFile; fileRef = 5552E6103EA45AD792817FFC /* web */; };
+		9AB0FFDD73DE47F07B6A4853 /* DriveMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65EFF068EAA7E2F212FD582E /* DriveMode.swift */; };
+		D573DFF21B64F0796CDEB7E2 /* DriveShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB070088C84947EA22A9FBD /* DriveShared.swift */; };
+		9559CDC92FF7784D825B2C71 /* drive-places.json in Resources */ = {isa = PBXBuildFile; fileRef = 6671D691144E804AFE8E29C6 /* drive-places.json */; };
+		EF1AB276CDD810F5D9FA9061 /* DriveShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB070088C84947EA22A9FBD /* DriveShared.swift */; };
+		196009BE74816982B6EA6A2A /* DriveViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE47C96BC79A472B58675938 /* DriveViews.swift */; };
+		ED23F1FB716478B43A70273D /* drive-places.json in Resources */ = {isa = PBXBuildFile; fileRef = 6671D691144E804AFE8E29C6 /* drive-places.json */; };
+		87FF8D02830ECCF0ECDB6150 /* CampFinderWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F897476F1A1D81BEEEB89D6 /* CampFinderWidgets.swift */; };
+		5FEFE1A04A3F0FF140F1AE36 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1D6EC7D44A1F752FAE2C9287 /* PrivacyInfo.xcprivacy */; };
+		0771ADFB8CED6AF78D26AA77 /* CampFinderWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 94DA54ECECF0D72C9507051D /* CampFinderWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F24772FA7734ECDC46187942 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A64D1381CB9BEBCFD711E0C8;
+			remoteInfo = CampFinderWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		75B5BD09A33F2656FD565EFE /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0771ADFB8CED6AF78D26AA77 /* CampFinderWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0A4EFFEB92CF26E47225D1AB /* Speech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Speech.swift; sourceTree = "<group>"; };
@@ -25,10 +58,25 @@
 		9C951E0F6049D00803F4AB93 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F5BF48AA40CAD7891EB709FC /* CampFinder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CampFinder.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		65EFF068EAA7E2F212FD582E /* DriveMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMode.swift; sourceTree = "<group>"; };
+		ACB070088C84947EA22A9FBD /* DriveShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveShared.swift; sourceTree = "<group>"; };
+		EE47C96BC79A472B58675938 /* DriveViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveViews.swift; sourceTree = "<group>"; };
+		6671D691144E804AFE8E29C6 /* drive-places.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "drive-places.json"; sourceTree = "<group>"; };
+		3F897476F1A1D81BEEEB89D6 /* CampFinderWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampFinderWidgets.swift; sourceTree = "<group>"; };
+		38DC9F9B021CA72A7DF03AB0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1D6EC7D44A1F752FAE2C9287 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		94DA54ECECF0D72C9507051D /* CampFinderWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CampFinderWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A82E6F678DA6193022955957 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ACF4AF3BBAEB643AACB24092 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -48,6 +96,7 @@
 				5552E6103EA45AD792817FFC /* web */,
 				A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */,
 				9C951E0F6049D00803F4AB93 /* Assets.xcassets */,
+				65EFF068EAA7E2F212FD582E /* DriveMode.swift */,
 			);
 			path = CampFinder;
 			sourceTree = "<group>";
@@ -57,6 +106,8 @@
 			children = (
 				20F4BD606C0F6D1645AE4919 /* CampFinder */,
 				86024CAD1E83101D97359D73 /* Products */,
+				4B516BC2DD1A52B25852CC95 /* Shared */,
+				98F06AF28E8F7F9568C2E9E3 /* CampFinderWidgets */,
 			);
 			sourceTree = "<group>";
 		};
@@ -64,8 +115,29 @@
 			isa = PBXGroup;
 			children = (
 				F5BF48AA40CAD7891EB709FC /* CampFinder.app */,
+				94DA54ECECF0D72C9507051D /* CampFinderWidgets.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		4B516BC2DD1A52B25852CC95 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				ACB070088C84947EA22A9FBD /* DriveShared.swift */,
+				EE47C96BC79A472B58675938 /* DriveViews.swift */,
+				6671D691144E804AFE8E29C6 /* drive-places.json */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		98F06AF28E8F7F9568C2E9E3 /* CampFinderWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				3F897476F1A1D81BEEEB89D6 /* CampFinderWidgets.swift */,
+				38DC9F9B021CA72A7DF03AB0 /* Info.plist */,
+				1D6EC7D44A1F752FAE2C9287 /* PrivacyInfo.xcprivacy */,
+			);
+			path = CampFinderWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -78,15 +150,34 @@
 				F6BE306E6A9E42DE559F6EDC /* Sources */,
 				A82E6F678DA6193022955957 /* Frameworks */,
 				7414EC6B391964FAEC8B0E90 /* Resources */,
+				75B5BD09A33F2656FD565EFE /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D3D310153E8FC7D78DFEA912 /* PBXTargetDependency */,
 			);
 			name = CampFinder;
 			productName = CampFinder;
 			productReference = F5BF48AA40CAD7891EB709FC /* CampFinder.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A64D1381CB9BEBCFD711E0C8 /* CampFinderWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC84AB41B010DBCABDB0BFAA /* Build configuration list for PBXNativeTarget "CampFinderWidgets" */;
+			buildPhases = (
+				C8C57A04BEB950FDDB8984A1 /* Sources */,
+				ACF4AF3BBAEB643AACB24092 /* Frameworks */,
+				531EBFC811C7416068EB74BF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CampFinderWidgets;
+			productName = CampFinderWidgets;
+			productReference = 94DA54ECECF0D72C9507051D /* CampFinderWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -99,6 +190,9 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					42AEFBAE01D2DFD981F7DA7D = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					A64D1381CB9BEBCFD711E0C8 = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
@@ -117,6 +211,7 @@
 			projectRoot = "";
 			targets = (
 				42AEFBAE01D2DFD981F7DA7D /* CampFinder */,
+				A64D1381CB9BEBCFD711E0C8 /* CampFinderWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -129,6 +224,16 @@
 				D0317420F376B6D550DD3011 /* Assets.xcassets in Resources */,
 				FDC660B7C2E37A9C3907B809 /* web in Resources */,
 				B1C2D3E4F5061728394A5B6C /* PrivacyInfo.xcprivacy in Resources */,
+				9559CDC92FF7784D825B2C71 /* drive-places.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		531EBFC811C7416068EB74BF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ED23F1FB716478B43A70273D /* drive-places.json in Resources */,
+				5FEFE1A04A3F0FF140F1AE36 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -143,10 +248,30 @@
 				9DFAC49294F7473AB5D7ECDE /* WebAppView.swift in Sources */,
 				5BCB4347824C5E59A7737BA4 /* Journey.swift in Sources */,
 				C31EC03CBF87D36906C17E0B /* Speech.swift in Sources */,
+				9AB0FFDD73DE47F07B6A4853 /* DriveMode.swift in Sources */,
+				D573DFF21B64F0796CDEB7E2 /* DriveShared.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C8C57A04BEB950FDDB8984A1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				87FF8D02830ECCF0ECDB6150 /* CampFinderWidgets.swift in Sources */,
+				EF1AB276CDD810F5D9FA9061 /* DriveShared.swift in Sources */,
+				196009BE74816982B6EA6A2A /* DriveViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D3D310153E8FC7D78DFEA912 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A64D1381CB9BEBCFD711E0C8 /* CampFinderWidgets */;
+			targetProxy = F24772FA7734ECDC46187942 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3150B3FDE68737734F4F5273 /* Release */ = {
@@ -156,7 +281,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CampFinder/CampFinder.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 26;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = X6542QMADY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -166,7 +291,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camp Finder uses the camera so you can share photos of camps with other travellers.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Camp Finder records your journey while you drive, even when the app is in the background, so your trip log and family sharing stay up to date.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Camp Finder uses your location to show camps near you and to give directions from where you are.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Camp Finder uses your location to show camps near you, give directions from where you are and, in Drive mode, show the camps, fuel and must-sees coming up on your Lock Screen and CarPlay.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Camp Finder listens when you tap the microphone so you can search by voice.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Camp Finder saves your trip videos and pictures to your Photos when you choose Save.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Camp Finder lets you choose photos of camps to share with other travellers.";
@@ -180,7 +305,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = au.com.gonelappin.campfinder;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -198,7 +323,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CampFinder/CampFinder.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 26;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = X6542QMADY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -208,7 +333,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camp Finder uses the camera so you can share photos of camps with other travellers.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Camp Finder records your journey while you drive, even when the app is in the background, so your trip log and family sharing stay up to date.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Camp Finder uses your location to show camps near you and to give directions from where you are.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Camp Finder uses your location to show camps near you, give directions from where you are and, in Drive mode, show the camps, fuel and must-sees coming up on your Lock Screen and CarPlay.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Camp Finder listens when you tap the microphone so you can search by voice.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Camp Finder saves your trip videos and pictures to your Photos when you choose Save.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Camp Finder lets you choose photos of camps to share with other travellers.";
@@ -222,7 +347,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = au.com.gonelappin.campfinder;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -283,6 +408,62 @@
 			};
 			name = Debug;
 		};
+		E1977D26853C05D97066877C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 27;
+				DEVELOPMENT_TEAM = X6542QMADY;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CampFinderWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Camp Finder";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.5;
+				PRODUCT_BUNDLE_IDENTIFIER = au.com.gonelappin.campfinder.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		37060CBA671A574AC4A0B16D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 27;
+				DEVELOPMENT_TEAM = X6542QMADY;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CampFinderWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Camp Finder";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.5;
+				PRODUCT_BUNDLE_IDENTIFIER = au.com.gonelappin.campfinder.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -300,6 +481,15 @@
 			buildConfigurations = (
 				F266F7208C15B816933A8F5C /* Debug */,
 				E391A5B2BC934F0B7E4ED79B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BC84AB41B010DBCABDB0BFAA /* Build configuration list for PBXNativeTarget "CampFinderWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E1977D26853C05D97066877C /* Debug */,
+				37060CBA671A574AC4A0B16D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

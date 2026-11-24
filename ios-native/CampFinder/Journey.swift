@@ -165,7 +165,7 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
     // "Last fuel for 280 km": a heads-up as you reach the last servo before a long stretch.
     // The app shows its own banner when it's open, so this only fires in the background.
     private func checkFuelAlert(_ loc: CLLocation) {
-        guard !fuelAlerts.isEmpty else { return }
+        guard !fuelAlerts.isEmpty, !DriveMode.shared.isOn else { return }   // Drive mode gives this heads-up itself (it shows in CarPlay too)
         for f in fuelAlerts {
             guard let lat = f["lat"] as? Double, let lon = f["lon"] as? Double else { continue }
             let key = String(format: "%.4f,%.4f", lat, lon)
@@ -225,7 +225,7 @@ final class JourneyRecorder: NSObject, CLLocationManagerDelegate {
     // Between 3 and 5 pm, one nudge a day about a well-rated free camp ahead
     private func checkCampAlert(_ loc: CLLocation) {
         let cal = Calendar.current, hour = cal.component(.hour, from: Date())
-        guard hour >= 15 && hour < 17, !campAlerts.isEmpty else { return }
+        guard hour >= 15 && hour < 17, !campAlerts.isEmpty, !DriveMode.shared.isOn else { return }
         let day = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
         guard day != alertedDay else { return }
         let near = campAlerts.compactMap { c -> (String, String, Double)? in
