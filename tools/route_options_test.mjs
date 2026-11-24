@@ -62,7 +62,7 @@ async function appleRoute(points) {
   const bad = legs.find((l) => !l.ok); if (bad) throw new Error(bad.error || "No route");
   const coordinates = [];
   legs.forEach((l, i) => coordinates.push(...(i ? l.coordinates.slice(1) : l.coordinates)));
-  return { distance: legs.reduce((s, l) => s + l.distance, 0), duration: legs.reduce((s, l) => s + l.duration, 0), geometry: { coordinates } };
+  return { distance: legs.reduce((s, l) => s + l.distance, 0), duration: legs.reduce((s, l) => s + l.duration, 0), geometry: { coordinates }, legs: legs.map((l) => ({ distance: l.distance, duration: l.duration })) };
 }
 function poly6(str) {
   const pts = []; let i = 0, lat = 0, lon = 0;
@@ -93,7 +93,7 @@ async function valhallaRoute(points) {
       if (!j.trip?.legs?.length) throw new Error(j.error || "No route");
       const coordinates = [];
       j.trip.legs.forEach((l, k) => { const c = poly6(l.shape); coordinates.push(...(k ? c.slice(1) : c)); });
-      return { distance: j.trip.summary.length * 1000, duration: j.trip.summary.time, geometry: { coordinates } };
+      return { distance: j.trip.summary.length * 1000, duration: j.trip.summary.time, geometry: { coordinates }, legs: j.trip.legs.map((l) => ({ distance: l.summary.length * 1000, duration: l.summary.time })) };
     }
     throw new Error("Valhalla busy");
   })();

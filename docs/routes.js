@@ -502,10 +502,16 @@
     const log = o.log || (() => {});
     for (let i = 0; i < cands.length && found.length < max; i += 3) {
       if (o.stop?.()) break;   // nobody's looking any more
-      const batch = await Promise.all(cands.slice(i, i + 3).filter((c) => !c.side || sideOk()).map(async (c) => ({ c, r: await within(o.route(order(a, b, mine, c.pts)), o.timeout || 45000) })));
-      for (const { c, r } of batch) {
+      const batch = await Promise.all(cands.slice(i, i + 3).filter((c) => !c.side || sideOk()).map(async (c) => { const pts = order(a, b, mine, c.pts); return { c, pts, r: await within(o.route(pts), o.timeout || 45000) }; }));
+      for (const { c, pts, r } of batch) {
         const what = `${c.side ? "town" : "way"} ${c.key}`;
         if (!r || !(r.distance > 0) || !r.geometry?.coordinates?.length) { log(`${what}: no route`); continue; }
+        // a stretch between two of its towns far longer than they are apart: the router wouldn't take the road we
+        // meant (often dirt) and went the long way round
+        if (r.legs?.length === pts.length - 1 && c.key !== cur) {
+          const k = r.legs.findIndex((l, j) => l.distance > Math.max(200000, 1.9 * hav(ll(pts[j]), ll(pts[j + 1]))));
+          if (k >= 0) { log(`${what}: the long way round to ${pts[k + 1].name || "the end"} (${Math.round(r.legs[k].distance / 1000)} km)`); continue; }
+        }
         const dr = r.distance / base.distance, tr = r.duration / (base.duration || 1);
         if ((dr > dMax || tr > tMax) && c.key !== cur) { log(`${what}: too long (${Math.round(r.distance / 1000)} km, x${dr.toFixed(2)} distance, x${tr.toFixed(2)} time)`); continue; }
         const line = buildLine(r);
