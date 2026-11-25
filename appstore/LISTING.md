@@ -129,6 +129,6 @@ Data not linked to the user:
 Note: searches and map views are sent to Apple Maps, Google Places, Stadia Maps, the OpenStreetMap routing service and Wikipedia to get results, but we don't store them.
 
 ## Screenshots
-appstore/screenshots/ has 7 ready to upload (1290 x 2796, accepted for the 6.9" iPhone slot), in order:
+appstore/screenshots/ has the 7 masters (1290 x 2796, the size for the "iPhone with Dynamic Island (large display)" slot). App Store Connect's required slot is now "iPhone with Dynamic Island (medium display)", which takes 1206 x 2622: those copies are in appstore/screenshots/1206x2622/. In order:
 01 A camp for every night · 02 4WD tracks on the map · 03 Camp tonight · 04 About 10,000 camps on the map · 05 Know before you go · 06 Iconic 4WD trips · 07 Works with no signal
 (02 and 04 were redone for 1.0.5: they used to say "Every 4WD track in Australia" and "10,000+ camps", which claimed more than the data can promise. The app has 9,998 camps.)
