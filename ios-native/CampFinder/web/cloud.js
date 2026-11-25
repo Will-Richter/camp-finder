@@ -91,6 +91,16 @@
     async signOut() { must(); const { error } = await sb.auth.signOut(); fail(error); },
     async deleteAccount() {
       mustUser();
+      // photo files first (the database rows go with the account; the files would otherwise stay in storage)
+      try {
+        const uid = session.user.id, bucket = sb.storage.from("camp-photos");
+        for (let i = 0; i < 20; i++) {
+          const { data } = await bucket.list(uid, { limit: 100 });
+          if (!data?.length) break;
+          await bucket.remove(data.map((f) => `${uid}/${f.name}`));
+          if (data.length < 100) break;
+        }
+      } catch { /* the account still goes; we tidy up any leftover files */ }
       const { error } = await sb.rpc("delete_my_account"); fail(error);
       await sb.auth.signOut().catch(() => {});
     },

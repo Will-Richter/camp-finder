@@ -1,3 +1,8 @@
+@font-face { font-family: "Atkinson Hyperlegible"; src: url("fonts/AtkinsonHyperlegible-Regular.woff") format("woff"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Atkinson Hyperlegible"; src: url("fonts/AtkinsonHyperlegible-Bold.woff") format("woff"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/BarlowCondensed-SemiBold.woff") format("woff"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/BarlowCondensed-Bold.woff") format("woff"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/BarlowCondensed-ExtraBold.woff") format("woff"); font-weight: 800; font-display: swap; }
 /* Gone Lappin' Camp Finder website. Road-sign vernacular: highway green, warning yellow, red dirt. */
 :root {
   --green: #0E5A3E;      /* guide-sign green */
@@ -189,3 +194,9 @@ footer small { display: block; margin-top: 10px; color: rgba(255,255,255,.6); ma
   .km { flex-direction: row; gap: 6px; width: auto; height: auto; padding: 22px 14px 8px; display: inline-flex; justify-self: start; }
   section.block { padding: 64px 0; }
 }
+
+/* business details in the footer, and "Example" on the made-up trip cards */
+footer .biz { display: block; margin-top: 10px; color: rgba(255,255,255,.75); font-size: 15px; }
+.demo-tag { display: inline-block; margin: 0 0 8px; padding: 2px 9px; border-radius: 999px; background: rgba(0,0,0,.07); font: 700 13px/1.6 var(--text); letter-spacing: .04em; text-transform: uppercase; }
+.legal-nav { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 18px; }
+header.top nav a { display: inline-block; padding: 6px 4px; }

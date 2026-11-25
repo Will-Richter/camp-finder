@@ -13,20 +13,20 @@
 **Copyright:** 2026 Will Richter (Gone Lappin')
 
 ## Promotional text (170)
-Free camps, caravan parks and every 4WD track in Australia. Plan a camp for every night, find somewhere for tonight before dark, and keep going with no signal.
+Free camps, caravan parks and 4WD tracks across Australia. Plan a camp for every night, find somewhere for tonight before dark, and keep going with no signal.
 
 ## Keywords (100, comma-separated, no spaces)
-free camps,camping,caravan,4wd,4x4 tracks,rest areas,campsite,fraser island,big lap,rv,offroad,hema
+free camps,camping,caravan,4wd,4x4 tracks,rest areas,campsite,k'gari,big lap,rv,offroad,campground
 
 ## Description
 Tell Camp Finder where you're headed and it plans a free or cheap camp for every night of the trip, picked for your rig, whether that's a swag, a rooftop tent, a camper trailer or a 22-foot van.
 
 EVERY NIGHT SORTED
-• Over 10,000 free camps, rest areas, national park campgrounds and caravan parks across Australia, built in and working without signal
-• Every Queensland Parks campground, with access (2WD, 4WD, boat or walk-in) and facilities
-• Caravan parks with price guides and booking links. BIG4 and the best-rated parks first
+• About 10,000 free camps, rest areas, national park campgrounds and caravan parks across Australia, built in and working without signal
+• Queensland national park campgrounds from the Queensland Parks website, with access (2WD, 4WD, boat or walk-in) and facilities
+• Caravan parks with price guides and booking links, the big park chains and highest-rated parks first
 • Camps chosen for what you need: toilets, water, showers, dogs, power, campfires
-• Return trips with a different road home, your own stops on the way, and up to five routes to choose from
+• Return trips with a different road home, your own stops on the way, and up to three routes to choose from
 
 CAMP TONIGHT
 • Say how far you want to drive and which way you're heading
@@ -34,7 +34,7 @@ CAMP TONIGHT
 • See the best camps you'll reach before sunset, with arrival times
 
 4WD AND OFF-ROAD
-• Every 4WD track in Australia over the normal map or satellite: beach driving, sand tracks, 4WD only and hard 4WD, each on or off with a tap
+• 4WD tracks from OpenStreetMap over the normal map or satellite: beach driving, sand tracks, 4WD only and hard 4WD, each on or off with a tap
 • Turn on 4WD mode and your route follows the tracks: K'gari, Moreton, Cape York, the Old Telegraph Track
 • Barges and ferries to the islands, with timetables, permits and island camps
 • Ready-made 4WD trips: the Old Telegraph Track, the Simpson, the Gibb, the Canning, K'gari, Teewah and more
@@ -46,9 +46,9 @@ WORKS WITH NO SIGNAL
 • Download a whole state's map, and your camps, fuel, water and dump points are always on your phone
 • Downloaded trips keep your route and turn-by-turn directions
 
-KNOW YOU'LL MAKE IT
+PLAN YOUR FUEL
 • Pick your car and it knows your fuel use, tank size and the extra it burns towing
-• Warns you if any stretch is longer than your range, with live fuel prices where available
+• Warns you if a stretch between the servos it knows about is longer than your range, with live fuel prices where available
 • Sunset at camp and the time to leave so you arrive before dark
 • Bushfire warnings, heavy rain, extreme heat, steep climbs and low clearances for your rig's height
 
@@ -64,11 +64,13 @@ KEEP EVERY KILOMETRE
 • Your journey recorded, a travel journal, badges for famous roads, and a short video of your trip to share
 
 CAMP FINDER PRO (OPTIONAL SUBSCRIPTION)
-Planning trips, the camp map, government fuel prices, water, Camp tonight and one state offline are free. Pro adds Google photos and reviews for every camp, caravan park, servo and must-see, every 4WD track and 4WD trips, all of Australia offline, Camp tonight filters, unlimited saved trips, family sharing and trip videos.
+Planning trips, the camp map, government fuel prices, water, Camp tonight and one state offline are free. Pro adds Google photos and reviews (wherever Google has them), the 4WD tracks map and 4WD trips, all of Australia offline, Camp tonight filters, unlimited saved trips, family sharing and trip videos. There's also a one-off Pro forever purchase.
 • Monthly or yearly, with a 7-day free trial for new subscribers
 • Payment is charged to your Apple ID when you confirm (after the free trial). The subscription renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel in your Apple ID settings.
-Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Terms of Use (Apple): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Camp Finder terms: https://gonelappin.au/terms.html
 Privacy: https://gonelappin.au/privacy.html
+Refunds: https://gonelappin.au/refunds.html
 
 Camp and track details come from OpenStreetMap, Queensland Parks and Australian government open data, and other travellers. Camps close, tracks change and rules vary, so always check signs, tides, permits and local rules.
 
@@ -79,6 +81,8 @@ Camp and track details come from OpenStreetMap, Queensland Parks and Australian 
 • Open the app mid-journey and it asks whether you're still on your way, so an old journey never hangs around.
 • Trips start from where you are, every time.
 • Fixes: the trip cost could show $0, and a 4WD card could show on trips with no 4WD tracks.
+• Easier to read and use: stronger colour contrast, clear focus outlines, labelled buttons, and fields that stay above the keyboard.
+• Report or hide any traveller's review or photo, and new refund, cookie and credits pages with our business details.
 • Drive mode: the next free camp, servo and must-see ahead on your route, right on your Lock Screen, in the Dynamic Island and on the CarPlay Dashboard. A heads-up pops up as you get close: "Check out Mon Repos Turtles, 4 km ahead". It also tells you when tonight's camp is coming up and when a servo is the last fuel before a long stretch.
 • New Near me widget for your Home Screen and CarPlay: the closest camps, fuel or must-sees, with one tap to switch.
 • Drive mode turns on by itself when you start a journey, and switches off after 45 minutes parked.
@@ -115,14 +119,16 @@ Contact: hello@gonelappin.au
 Tracking: No (no ads, no data sold, no tracking across other companies' apps).
 Data linked to the user, used for App Functionality only:
 - Location > Precise location (Family sharing and live trip sharing, only when turned on)
-- Contact info > Email address (sign-in)
+- Contact info > Email address (sign-in, and the optional reply address in feedback)
 - Contact info > Name (Family sharing display name)
-- User content > Photos (camp photos you upload), Other user content (camps you add, ratings, check-ins, signal reports)
+- User content > Photos (camp photos you upload), Other user content (camps you add, ratings and reviews, check-ins, signal and AdBlue reports, trip notes and bookings), Customer support (feedback messages, linked to the account when signed in)
+- Diagnostics > Other diagnostic data (app version, phone model, screen and app settings sent with feedback)
 - Identifiers > User ID (your account)
 Data not linked to the user:
-- User content > Customer support (feedback messages)
+- User content > Other user content (shared trip plan links: places, camps and route, with the start and end only to about 1 km)
 Note: searches and map views are sent to Apple Maps, Google Places, Stadia Maps, the OpenStreetMap routing service and Wikipedia to get results, but we don't store them.
 
 ## Screenshots
 appstore/screenshots/ has 7 ready to upload (1290 x 2796, accepted for the 6.9" iPhone slot), in order:
 01 A camp for every night · 02 Every 4WD track · 03 Camp tonight · 04 10,000+ camps · 05 Know before you go · 06 Iconic 4WD trips · 07 Works with no signal
+Before the next submission, redo 02 and 04: their headlines ("Every 4WD track", "10,000+ camps") claim more than the data can promise. Use "4WD tracks on the map" and "About 10,000 camps".

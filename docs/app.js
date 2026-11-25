@@ -158,11 +158,11 @@
     const c = document.getElementById("stPro"); if (!c) return;
     c.classList.toggle("is-pro", on);
     c.querySelector("b").textContent = on ? "Camp Finder Pro is on" : "Get Camp Finder Pro";
-    c.querySelector("small").textContent = on ? (pro.forever ? "Pro forever. Thanks for supporting the app." : "Thanks for supporting the app. Tap to manage your subscription.") : "Google photos and reviews, every 4WD track, all of Australia offline and more. 7 days free.";
+    c.querySelector("small").textContent = on ? (pro.forever ? "Pro forever. Thanks for supporting the app." : "Thanks for supporting the app. Tap to manage your subscription.") : "Google photos and reviews, 4WD tracks, all of Australia offline and more. 7 days free for new subscribers.";
   }
   async function showPaywall(why, then) {
     let plan = "year";
-    const FEATS = [["📸", "Google photos and reviews", "Photos and reviews of every camp, caravan park, servo and must-see"], ["🛞", "Every 4WD track", "Beach runs, sand and hard 4WD on the map, and trips that follow the tracks"], ["📶", "All of Australia offline", "Download every state for when there's no signal"], ["🌅", "Camp tonight filters", "Beach, river, lake, dam or gorge, with toilets, showers or dogs OK"], ["🧭", "Unlimited saved trips", "Keep every trip you plan"], ["👨‍👩‍👧", "Family sharing", "Let family follow your trip live"], ["🎬", "Trip videos", "A short film of every trip to share"]];
+    const FEATS = [["📸", "Google photos and reviews", "Photos and reviews of camps, caravan parks, servos and must-sees, wherever Google has them"], ["🛞", "4WD tracks", "Beach runs, sand and hard 4WD tracks from OpenStreetMap on the map, and trips that follow them"], ["📶", "All of Australia offline", "Download every state for when there's no signal"], ["🌅", "Camp tonight filters", "Beach, river, lake, dam or gorge, with toilets, showers or dogs OK"], ["🧭", "Unlimited saved trips", "Keep every trip you plan"], ["👨‍👩‍👧", "Family sharing", "Let family follow your trip live"], ["🎬", "Trip videos", "A short film of every trip to share"]];
     const P = (u) => pro.products?.find((p) => p.unit === u) || PRO_FALLBACK[u];
     const draw = () => {
       const m = P("month"), y = P("year"), o = P("once"), sel = P(plan), once = plan === "once";
@@ -183,7 +183,7 @@
           <button class="link pw-restore" type="button" id="pwRestore">Restore purchases</button>
           <button class="link pw-restore pw-code" type="button" id="pwRedeem">Have a tester or gift code? Redeem it</button>`
         : `<p class="pw-then">Pro is bought in the Camp Finder iPhone app. <a href="https://gonelappin.au" target="_blank" rel="noopener">Get the app</a></p>`}
-        <p class="pw-legal">${once ? "Pro forever is a one-off purchase charged to your Apple ID when you confirm. It doesn't renew. " : `Payment is charged to your Apple ID when you confirm${trial ? " (after the free trial ends)" : ""}. `}Subscriptions renew automatically at the same price each ${once ? "period" : plan} unless cancelled at least 24 hours before the end of the current period, and your account is charged for renewal within 24 hours before the period ends. Manage or cancel any time in your Apple ID settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://gonelappin.au/privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
+        <p class="pw-legal">${once ? "Pro forever is a one-off purchase charged to your Apple ID when you confirm. It doesn't renew. " : `Payment is charged to your Apple ID when you confirm${trial ? " (after the free trial ends)" : ""}. `}Subscriptions renew automatically at the same price each ${once ? "period" : plan} unless cancelled at least 24 hours before the end of the current period, and your account is charged for renewal within 24 hours before the period ends. Manage or cancel any time in your Apple ID settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use (Apple)</a> · <a href="https://gonelappin.au/terms.html" data-legal="terms">Camp Finder terms</a> · <a href="https://gonelappin.au/privacy.html" data-legal="privacy">Privacy policy</a> · <a href="https://gonelappin.au/refunds.html" data-legal="refunds">Refund policy</a></p>
       </div>`);
       $("#detailBody").querySelectorAll("[data-plan]").forEach((b) => b.addEventListener("click", () => { plan = b.dataset.plan; draw(); }));
       $("#pwBuy")?.addEventListener("click", async (e) => {
@@ -897,7 +897,7 @@
         .filter((p) => commonsOK(p, c))
         .map((p) => p.imageinfo?.[0]).filter(Boolean)
         .filter((i) => /\.(jpe?g|png|webp)$/i.test(i.url))
-        .map((i) => ({ thumb: i.thumburl, page: i.descriptionurl, by: (i.extmetadata?.Artist?.value || "").replace(/<[^>]+>/g, "").trim() }))
+        .map((i) => ({ thumb: i.thumburl, page: i.descriptionurl, by: (i.extmetadata?.Artist?.value || "").replace(/<[^>]+>/g, "").trim().slice(0, 60), lic: (i.extmetadata?.LicenseShortName?.value || "").replace(/<[^>]+>/g, "").trim() }))
         .slice(0, 8);
     } catch { /* photos are optional */ }
     photoCache.set(c.id, out);
@@ -1866,6 +1866,52 @@
     if (!el || !sheet.contains(el) || !/^(INPUT|TEXTAREA)$/.test(el.tagName)) { document.body.classList.remove("typing"); document.documentElement.style.setProperty("--kb", "0px"); }
   }, 120));
   window.visualViewport?.addEventListener("resize", () => { if (document.body.classList.contains("typing")) { kbLayout(); const el = document.activeElement; if (el) bringIntoView(el); } });
+
+  // Typing anywhere else (a camp, feedback, sign-in, the journal): the box you're typing in stays above the keyboard,
+  // and when the keyboard goes away the screen goes back to how it was (iPhones can leave it pushed up).
+  const isTextField = (el) => !!el && (el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|file|color)$/.test(el.type)));
+  function keepAboveKeyboard(el) {
+    const vv = window.visualViewport;
+    const kb = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+    document.documentElement.style.setProperty("--kb", `${kb}px`);
+    const box = el.closest("#detail, .login, .welcome");
+    if (!box || box.scrollHeight <= box.clientHeight + 2) return;
+    const r = el.getBoundingClientRect(), top = box.getBoundingClientRect().top + 12;
+    const bottom = (vv ? vv.height + vv.offsetTop : window.innerHeight) - 16;
+    if (r.bottom > bottom) box.scrollTop += r.bottom - bottom + 8;
+    else if (r.top < top) box.scrollTop -= top - r.top;
+  }
+  document.addEventListener("focusin", (e) => {
+    const el = e.target;
+    if (!isTextField(el) || sheet.contains(el)) return;
+    document.body.classList.add("typing-any");
+    [80, 350, 700].forEach((ms) => setTimeout(() => { if (document.activeElement === el) keepAboveKeyboard(el); }, ms));
+  });
+  window.visualViewport?.addEventListener("resize", () => { const el = document.activeElement; if (document.body.classList.contains("typing-any") && isTextField(el)) keepAboveKeyboard(el); });
+  document.addEventListener("focusout", () => setTimeout(() => {
+    if (isTextField(document.activeElement)) return;
+    if (document.body.classList.contains("typing-any")) { document.body.classList.remove("typing-any"); if (!document.body.classList.contains("typing")) document.documentElement.style.setProperty("--kb", "0px"); }
+    if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+  }, 150));
+  // Only the panels inside the app scroll, never the app itself. Moving to something off-screen with the keyboard
+  // (or the iPhone keyboard opening) can scroll it, which slides everything up and leaves a gap at the bottom.
+  const appBox = $("#app");
+  appBox.addEventListener("scroll", () => { if (appBox.scrollTop || appBox.scrollLeft) { appBox.scrollTop = 0; appBox.scrollLeft = 0; } });
+  window.addEventListener("scroll", () => { if ((window.scrollY || window.scrollX) && !isTextField(document.activeElement)) window.scrollTo(0, 0); }, { passive: true });
+  // Moving through map pins with the keyboard: bring the pin you're on into view, clear of the panel
+  map.getContainer().addEventListener("focusin", (e) => {
+    const el = e.target.closest?.(".leaflet-marker-icon"); if (el) requestAnimationFrame(() => setTimeout(() => pinIntoView(el), 0));
+  });
+  function pinIntoView(el) {
+    if (document.activeElement !== el) return;
+    const box = map.getContainer(); box.scrollTop = 0; box.scrollLeft = 0;   // the browser scrolls the map box to show the pin; pan the map instead
+    const r = el.getBoundingClientRect(), m = box.getBoundingClientRect(), pad = 56;
+    const sh = sheet.getBoundingClientRect(), bottom = (sh.top > m.top && sh.top < m.bottom ? sh.top : m.bottom) - pad;
+    let dx = 0, dy = 0;
+    if (r.left < m.left + pad) dx = r.left - (m.left + pad); else if (r.right > m.right - pad) dx = r.right - (m.right - pad);
+    if (r.top < m.top + pad) dy = r.top - (m.top + pad); else if (r.bottom > bottom) dy = r.bottom - bottom;
+    if (dx || dy) { if (following && !journey) setFollow(false); map.panBy([dx, dy], { animate: false }); }   // you're looking around: stop snapping back to you
+  }
   const sheetState = () => (sheet.classList.contains("is-peek") ? "peek" : sheet.classList.contains("is-full") ? "full" : "half");
   // what the slim bar says when the panel is swiped down
   function updatePeek() {
@@ -2370,7 +2416,7 @@
     const g = { id: `poi:${x.id}`, name: x.name, named: true, sight: true, lat: x.lat, lon: x.lon };
     // photos (a swipeable strip), Google rating and reviews, and a description
     soon(googlePhotos(g, 6), 10000, []).then(async (phs) => {
-      if (!phs.length) phs = (await soon(photosNear(g), 9000, [])).slice(0, 6).map((p) => ({ src: p.thumb, credit: p.by ? `${p.by} · Wikimedia` : "Wikimedia Commons" }));
+      if (!phs.length) phs = (await soon(photosNear(g), 9000, [])).slice(0, 6).map((p) => ({ src: p.thumb, href: p.page, credit: `${[p.by, p.lic].filter(Boolean).join(" · ") || "Wikimedia Commons"} · Wikimedia` }));
       const el = $("#pdPhoto"); if (!el || !phs.length || !el.isConnected) return;
       el.classList.add("pd-strip");
       el.innerHTML = phs.map((ph) => `<img src="${esc(ph.src)}" alt="" loading="lazy">`).join("");
@@ -2471,7 +2517,7 @@
       return `<li class="fuel-check bad"><span class="fck-ic">⛽</span><div><b>Fuel warning: you can't make it on one tank</b><p>${km(g.worst.len)} with no fuel (${where}). Your range${tow} is about ${km(range)}. Carry at least <b>${spare} L</b> spare (${Math.ceil(spare / 20)} × 20 L jerry can${spare > 20 ? "s" : ""}) and fill up before this stretch.</p></div></li>`;
     }
     if (g.worst.len > range * 0.75) return `<li class="fuel-check warn"><span class="fck-ic">⛽</span><div><b>Fuel check: tight</b><p>Longest stretch without fuel is ${km(g.worst.len)} (${where}). Your range${tow} is about ${km(range)}. Fill up at every chance before it.</p></div></li>`;
-    return `<li class="fuel-check ok"><span class="fck-ic">⛽</span><div><b>Fuel check: you're fine</b><p>Longest stretch without fuel is ${km(g.worst.len)} (${where}). Your range${tow} is about ${km(range)}.</p></div></li>`;
+    return `<li class="fuel-check ok"><span class="fck-ic">⛽</span><div><b>Fuel check: looks OK</b><p>Longest stretch without fuel is ${km(g.worst.len)} (${where}). Your range${tow} is about ${km(range)}. Based on the servos we know about, so fill up when you can.</p></div></li>`;
   }
   // stations that are the last fuel before a long stretch (used for alerts on the road)
   function lastFuelList(p) {
@@ -2542,8 +2588,8 @@
     const p = plan; if (!p) return;
     L.polyline(p.line.pts, { color: "#ffffff", weight: 10, opacity: .95, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
     const line = L.polyline(p.line.pts, { color: ROUTE_GREEN, weight: 6, opacity: 1, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
-    L.marker([p.from.lat, p.from.lon], { icon: divIcon(`<div class="mk-start"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
-    L.marker([p.to.lat, p.to.lon], { icon: divIcon(`<div class="mk-end"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
+    L.marker([p.from.lat, p.from.lon], { icon: divIcon(`<div class="mk-start"></div>`, [18, 18]), interactive: false, keyboard: false }).addTo(tripLayer);
+    L.marker([p.to.lat, p.to.lon], { icon: divIcon(`<div class="mk-end"></div>`, [18, 18]), interactive: false, keyboard: false }).addTo(tripLayer);
     const pickIds = new Set(p.picks.map((x) => x.camp?.id));
     const drawn = new Set(), others = [];
     for (const c of p.camps) if (!pickIds.has(c.id) && !drawn.has(c.id)) { drawn.add(c.id); others.push(campMarker(c)); }
@@ -2744,14 +2790,17 @@
   const PLAN_PAGE = "https://gonelappin.au/plan.html";
   function planPayload(p) {
     const r = (n, d = 4) => +(+n).toFixed(d);
-    const pt = (x) => x && { name: short(x.name || ""), lat: r(x.lat), lon: r(x.lon) };
+    const pt = (x) => x && { name: short(x.name || ""), lat: r(x.lat, 2), lon: r(x.lon, 2) };
     const step = Math.max(2000, p.line.total / 600);
+    // where the trip starts and ends is often someone's home: only to about a kilometre, and no route line near either
+    const ends = [p.from, p.to].filter(Boolean), nearEnd = ([la, lo]) => ends.some((e) => hav([la, lo], [e.lat, e.lon]) < 1500);
+    const pts = sample(p.line, step), keep = pts.filter((q) => !nearEnd(q));
     const t = tripCosts(p);
     return {
       v: 1, made: new Date().toISOString().slice(0, 10),
       from: pt(p.from), to: pt(p.to), km: Math.round(p.route.distance / 1000), hours: Math.round(p.route.duration / 360) / 10,
       days: totalDays(p), rig: p.opts.rig, leave: p.opts.leave || "", ret: !!p.opts.ret, via: p.home?.via || "",
-      line: sample(p.line, step).map(([la, lo]) => [r(la), r(lo)]),
+      line: (keep.length > 1 ? keep : pts.slice(1, -1)).map(([la, lo]) => [r(la), r(lo)]),
       nights: p.picks.map((pk, i) => {
         const st = pk.refresh?.options?.[0], c = st || pk.camp, x = c || pointAt(p.line, pk.target);
         return { day: dayNo(i), km: Math.round(nightKm(i) / 1000), name: c ? c.name : "No camp found", lat: r(x.lat), lon: r(x.lon), stay: 1 + extraAt(i),
@@ -2851,8 +2900,26 @@
   }
 
   // ---------------------------------------------------------------- camp detail
-  function showDetail(html) { $("#detailBody").innerHTML = html; const d = $("#detail"); d.hidden = false; d.scrollTop = 0; $("#app").classList.add("detail-open"); }
-  function closeDetail() { $("#detail").hidden = true; $("#app").classList.remove("detail-open"); }
+  let detailReturn = null;
+  function showDetail(html) {
+    const d = $("#detail");
+    if (d.hidden) detailReturn = document.activeElement;
+    $("#detailBody").innerHTML = html; d.hidden = false; d.scrollTop = 0; $("#app").classList.add("detail-open");
+    if (!d.contains(document.activeElement) || document.activeElement === $("#detailBody")) focusDetail();
+  }
+  // the panel's title gets focus, so a screen reader starts reading there and Tab moves through the panel
+  function focusDetail() {
+    const t = $("#detailBody .d-title") || $("#detailClose"); if (!t) return;
+    if (!/^(BUTTON|A|INPUT)$/.test(t.tagName)) t.setAttribute("tabindex", "-1");
+    try { t.focus({ preventScroll: true }); } catch { /* not focusable */ }
+  }
+  function closeDetail() {
+    const d = $("#detail"), inside = d.contains(document.activeElement);
+    d.hidden = true; $("#app").classList.remove("detail-open");
+    if (inside && detailReturn?.isConnected && !detailReturn.closest("[hidden]")) try { detailReturn.focus({ preventScroll: true }); } catch { /* gone */ }
+    detailReturn = null;
+  }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#detail").hidden && $("#askPop").hidden) closeDetail(); });
   $("#detailClose").addEventListener("click", closeDetail);
 
   function amenTile(id, state, extra = "") {
@@ -2891,7 +2958,7 @@
     const saved = store.get("cf-camps", []).some((x) => x.id === c.id);
     const cost = c.cost === "free" ? (c.donation ? "Free, donations welcome" : "Free") : c.cost === "paid" ? (c.charge || "Paid, price not listed") : "Not recorded";
     const site = c.website && /^https?:\/\//i.test(c.website) ? `<a href="${esc(c.website)}" target="_blank" rel="noopener">${esc(c.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "").slice(0, 38))}</a>` : "";
-    const ownPhoto = c.image && /^https:\/\/.+\.(jpe?g|png|webp)$/i.test(c.image) ? c.image : "";
+    const ownPhoto = c.image && /^https:\/\/upload\.wikimedia\.org\/.+\.(jpe?g|png|webp)$/i.test(c.image) ? c.image : "";
     const ramp = isFinite(c.rampM) && c.rampM <= 20000;
     const dump = isFinite(c.dumpM) && c.dumpM <= 30000;
     const fact = (k, v) => (v ? `<div><dt>${k}</dt><dd>${v}</dd></div>` : "");
@@ -2908,7 +2975,7 @@
         </div>
         ${c.cpark ? parkBox(c) : ""}
         <section class="rate" id="rateBox" aria-label="Ratings and reviews">
-          <div class="rate-sum"><span class="stars-lg" id="rateStars">${starsHtml(0)}</span><b id="rateAvg"></b><span class="help" id="rateCount">Loading ratings</span></div>
+          <div class="rate-sum"><span class="stars-lg" id="rateStars" aria-hidden="true">${starsHtml(0)}</span><b id="rateAvg"></b><span class="help" id="rateCount">Loading ratings</span></div>
         </section>
         <div class="amen-grid">
           ${amenTile("toilets", c.a.toilets)}${amenTile("water", c.a.water)}${amenTile("showers", c.a.showers)}${amenTile("dogs", c.a.dogs)}
@@ -2923,6 +2990,7 @@
           <p class="crowd-now" id="crowdNow" hidden></p>
           <div class="ci-crowd"><span>Here now?</span>${CROWD.map(([k, l]) => `<button type="button" data-crowd="${k}">${l}</button>`).join("")}</div>
           <div class="ci-head"><b>Been here lately?</b><span id="ciLatest" class="help"></span></div>
+          <p class="help ci-note">What you tap here is shown to other travellers, without your name.</p>
           <div class="ci-btns">
             <button class="btn" type="button" data-ci="free">Still free</button>
             <button class="btn" type="button" data-ci="price_changed">Price changed</button>
@@ -2994,11 +3062,19 @@
     const add = (list) => { for (const p of list) if (p && p.src && !shots.some((x) => x.src === p.src)) shots.push(p); };
     const render = (done) => {
       if (!$("#gallery") || $("#gallery").dataset.key !== key) return;
-      const tiles = shots.map((p, i) => `<figure class="ph">${p.href ? `<a href="${esc(p.href)}" target="_blank" rel="noopener">` : ""}<img ${i ? 'loading="lazy"' : ""} src="${esc(p.src)}" alt="Photo of ${esc(c.name)}">${p.href ? "</a>" : ""}${p.credit ? `<figcaption>${esc(p.credit)}</figcaption>` : ""}${p.mine ? `<button class="ph-del" type="button" data-del="${p.id}" aria-label="Remove my photo">×</button>` : ""}</figure>`).join("");
+      const tiles = shots.map((p, i) => `<figure class="ph">${p.href ? `<a href="${esc(p.href)}" target="_blank" rel="noopener">` : ""}<img ${i ? 'loading="lazy"' : ""} src="${esc(p.src)}" alt="Photo of ${esc(c.name)}">${p.href ? "</a>" : ""}${p.credit ? `<figcaption>${esc(p.credit)}</figcaption>` : ""}${p.mine ? `<button class="ph-del" type="button" data-del="${p.id}" aria-label="Remove my photo">×</button>` : p.uid ? `<button class="ph-flag" type="button" data-flag="${p.id}" aria-label="Report or hide this photo">⚑</button>` : ""}</figure>`).join("");
       const addTile = `<button type="button" class="ph-add" id="phAdd">${icon("photo")}<span>${shots.length ? "Add your photo" : "Be the first to add a photo"}</span></button>`;
       const proTile = !isPro() && CFG.googleKey && !isOffline() ? `<button type="button" class="ph-add ph-pro" id="phPro"><span aria-hidden="true">📸</span><span>See Google photos and reviews with Pro</span></button>` : "";
       g.innerHTML = tiles + (done ? proTile + addTile : `<div class="none"><span class="spinner"></span></div>`);
       if (done) { wirePhotoAdd(c); $("#phPro")?.addEventListener("click", () => showPaywall("photos", () => openDetail(c))); }
+      g.querySelectorAll("[data-flag]").forEach((b) => b.addEventListener("click", async (e) => {
+        e.preventDefault(); const p = shots.find((x) => String(x.id) === b.dataset.flag); if (!p) return;
+        const r = await askPopup({ ic: "⚑", title: "Report or hide this photo?", cancel: "Cancel", text: "Report it if it's offensive, shows people or number plates, or isn't this camp. Or hide every photo and review from this traveller on your phone.", yes: "Report photo", no: "Hide this traveller" });
+        if (r === "yes") {
+          try { await window.CFCloud.reportPhoto(p.id); toast("Thanks. We'll check it. Photos with several reports are hidden."); }
+          catch { location.href = `mailto:hello@gonelappin.au?subject=${encodeURIComponent("Report a photo")}&body=${encodeURIComponent(`Camp: ${c.name} (${c.id})\nPhoto: ${p.src}\nWhat's wrong: `)}`; }
+        } else if (r === "no") { hideTraveller(p.uid); shots.splice(shots.indexOf(p), 1); render(true); }
+      }));
       g.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async (e) => {
         e.preventDefault(); const p = shots.find((x) => String(x.id) === b.dataset.del);
         try { await window.CFCloud.deletePhoto(p); shots.splice(shots.indexOf(p), 1); render(true); toast("Photo removed"); } catch { toast("Couldn't remove it right now"); }
@@ -3008,12 +3084,12 @@
     };
     g.dataset.key = key; g.scrollLeft = 0;
     if (c.photo) add([{ src: c.photo, credit: "Added by a traveller" }]);
-    if (ownPhoto) add([{ src: ownPhoto, href: ownPhoto, credit: "From the camp listing" }]);
+    if (ownPhoto) { const f = ownPhoto.match(/\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/?#]+)/)?.[1]; add([{ src: ownPhoto, href: f ? `https://commons.wikimedia.org/wiki/File:${f}` : ownPhoto, credit: "Wikimedia Commons · tap for photographer and licence" }]); }
     render(false);
     const jobs = [
-      soon(window.CFCloud?.enabled ? window.CFCloud.photosFor(key) : Promise.resolve([]), 8000, []).then((l) => l.map((p) => ({ src: p.url, credit: "Traveller photo", mine: p.mine, id: p.id }))),
+      soon(window.CFCloud?.enabled ? window.CFCloud.photosFor(key) : Promise.resolve([]), 8000, []).then((l) => l.filter((p) => p.mine || !hiddenTravellers().has(p.user_id)).map((p) => ({ src: p.url, credit: "Traveller photo", mine: p.mine, id: p.id, uid: p.user_id }))),
       soon(googlePhotos(c, 3), 12000, []),
-      soon(photosNear(c), 10000, []).then((l) => l.map((p) => ({ src: p.thumb, href: p.page, credit: p.by ? `Nearby · ${p.by} · Wikimedia` : "Nearby · Wikimedia Commons" }))),
+      soon(photosNear(c), 10000, []).then((l) => l.map((p) => ({ src: p.thumb, href: p.page, credit: `Nearby · ${[p.by, p.lic, "Wikimedia Commons"].filter(Boolean).join(" · ")}` }))),
     ];
     // travellers first, then Google, then nearby free photos
     const [mine, goog, wiki] = await Promise.all(jobs.map((j, i) => j.then((v) => { if (i === 0) { add(v); render(false); } return v; })));
@@ -3041,6 +3117,7 @@
       const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
       inp.addEventListener("change", async () => {
         const f = inp.files?.[0]; if (!f) return;
+        store.set("cf-photo-ok", true);
         btn.disabled = true; btn.querySelector("span").textContent = "Uploading…";
         try {
           const data = await shrinkImage(f, 1600);
@@ -3050,7 +3127,9 @@
           await loadGallery(c, ""); const gg = $("#gallery"); if (gg) gg.scrollTo({ left: 0, behavior: "smooth" });
         } catch { toast("Couldn't upload that photo. Try again with signal."); btn.disabled = false; btn.querySelector("span").textContent = "Add your photo"; }
       });
-      inp.click();
+      if (store.get("cf-photo-ok", false)) return inp.click();
+      askPopup({ ic: "📷", title: "Share a photo with other travellers?", yes: "Choose a photo", no: "Cancel", onYes: () => inp.click(),
+        html: `Your photo will be public in Camp Finder. Only add photos you took yourself, and please leave out people's faces and number plates. <a href="https://gonelappin.au/terms.html" data-legal="terms">Terms</a>` });
     });
   }
   function goSignIn() { closeDetail(); $("#tab-saved")?.click(); setTimeout(() => $("#acctEmail")?.focus(), 300); }
@@ -3236,18 +3315,27 @@
     try { data = await window.CFCloud.ratingsFor(c.id); } catch { $("#rateCount").textContent = "Ratings couldn't load just now."; return; }
     if (!$("#rateBox") || $("#rateBox") !== box) return;
     ratingCache.set(c.id, { avg: data.avg, n: data.n });
-    const mine = data.mine;
+    const mine = data.mine, hid = hiddenTravellers();
+    const revs = data.list.filter((r) => r.review && (r.mine || !hid.has(r.user_id)));
     box.innerHTML = `
-      <div class="rate-sum"><span class="stars-lg">${starsHtml(data.avg)}</span>${data.n ? `<b>${data.avg.toFixed(1)}</b>` : ""}<span class="help">${data.n ? `${data.n} rating${data.n === 1 ? "" : "s"}` : "No ratings yet"}</span></div>
+      <div class="rate-sum"><span class="stars-lg" role="img" aria-label="${data.n ? `Rated ${data.avg.toFixed(1)} out of 5` : "No ratings yet"}">${starsHtml(data.avg)}</span>${data.n ? `<b>${data.avg.toFixed(1)}</b>` : ""}<span class="help">${data.n ? `${data.n} rating${data.n === 1 ? "" : "s"}` : "No ratings yet"}</span></div>
       <div class="rate-mine">
         <span>${mine ? "Your rating" : "Rate this camp"}</span>
         <div class="star-in" role="radiogroup" aria-label="Your rating">${[1, 2, 3, 4, 5].map((i) => `<button type="button" role="radio" aria-checked="${mine?.stars === i}" aria-label="${i} star${i > 1 ? "s" : ""}" data-star="${i}" class="${mine && mine.stars >= i ? "on" : ""}">★</button>`).join("")}</div>
       </div>
       <div class="rate-form" id="rateForm" ${mine ? "" : "hidden"}>
+        <label class="sr" for="rateText">Your review</label>
         <textarea id="rateText" maxlength="600" rows="3" placeholder="What's it like? Shade, flat sites, phone signal, the road in, how busy…">${esc(mine?.review || "")}</textarea>
+        <p class="help">Reviews are public. They show your setup (like "Caravan traveller"), never your name. Keep it honest and about your own visit.</p>
         <div class="rate-btns"><button class="cta" type="button" id="rateSave">${mine ? "Update review" : "Post rating"}</button>${mine ? `<button class="btn line" type="button" id="rateDel">Remove</button>` : ""}</div>
       </div>
-      ${data.list.filter((r) => r.review).length ? `<ul class="reviews">${data.list.filter((r) => r.review).slice(0, 12).map((r) => `<li><div class="rv-head"><span class="stars-sm">${starsHtml(r.stars)}</span><span class="help">${esc(RIG_WORD[r.rig] ? RIG_WORD[r.rig] + " traveller" : "Traveller")}${r.mine ? " (you)" : ""} · ${new Date(r.updated_at).toLocaleDateString("en-AU", { month: "short", year: "numeric" })}</span></div><p>${esc(r.review)}</p></li>`).join("")}</ul>` : ""}`;
+      ${revs.length ? `<ul class="reviews">${revs.slice(0, 12).map((r, i) => `<li><div class="rv-head"><span class="stars-sm" role="img" aria-label="${r.stars} out of 5 stars">${starsHtml(r.stars)}</span><span class="help">${esc(RIG_WORD[r.rig] ? RIG_WORD[r.rig] + " traveller" : "Traveller")}${r.mine ? " (you)" : ""} · ${new Date(r.updated_at).toLocaleDateString("en-AU", { month: "short", year: "numeric" })}</span>${r.mine ? "" : `<button class="rv-flag" type="button" data-rv="${i}" aria-label="Report or hide this review">⚑</button>`}</div><p>${esc(r.review)}</p></li>`).join("")}</ul>` : ""}`;
+    box.querySelectorAll("[data-rv]").forEach((b) => b.addEventListener("click", async () => {
+      const r = revs[+b.dataset.rv]; if (!r) return;
+      const a = await askPopup({ ic: "⚑", title: "Report or hide this review?", cancel: "Cancel", text: "Report it if it's offensive, untrue or not about this camp. Or hide every review and photo from this traveller on your phone.", yes: "Report review", no: "Hide this traveller" });
+      if (a === "yes") location.href = `mailto:hello@gonelappin.au?subject=${encodeURIComponent("Report a review")}&body=${encodeURIComponent(`Camp: ${c.name} (${c.id})\nReview: "${r.review}"\nWhat's wrong: `)}`;
+      else if (a === "no") { hideTraveller(r.user_id); wireRating(c); }
+    }));
     let picked = mine?.stars || 0;
     box.querySelectorAll("[data-star]").forEach((b) => b.addEventListener("click", () => {
       if (!window.CFCloud.signedIn()) { toast("Sign in (free) to rate camps"); return goSignIn(); }
@@ -3269,6 +3357,14 @@
     $("#rateDel")?.addEventListener("click", async () => {
       try { await window.CFCloud.deleteRating(c.id); ratingCache.delete(c.id); wireRating(c); toast("Rating removed"); } catch { toast("Couldn't remove it right now"); }
     });
+  }
+
+  // Travellers you've chosen to hide: their reviews and photos aren't shown on this phone
+  const hiddenTravellers = () => new Set(store.get("cf-hidden-travellers", []));
+  function hideTraveller(id) {
+    if (!id) return;
+    const s = hiddenTravellers(); s.add(id); store.set("cf-hidden-travellers", [...s].slice(-500));
+    toast("You won't see reviews or photos from this traveller any more", 3500);
   }
 
   function sourceLine(c) {
@@ -3759,7 +3855,8 @@
         </fieldset>
         <div class="field"><label for="acStay">Maximum stay</label><input id="acStay" type="text" placeholder="e.g. 48 hours" value="${esc(c.maxstay || "")}"></div>
         <div class="field"><label for="acNotes">Notes</label><textarea id="acNotes" rows="3" placeholder="Road in, phone signal, best sites, anything worth knowing">${esc(c.desc || "")}</textarea></div>
-        <div class="field"><label for="acPhoto">Photo</label><input id="acPhoto" type="file" accept="image/*"><img id="acPreview" class="ac-preview" alt="" ${c.photo ? `src="${esc(c.photo)}"` : "hidden"}></div>
+        <div class="field"><label for="acPhoto">Photo</label><input id="acPhoto" type="file" accept="image/*"><img id="acPreview" class="ac-preview" alt="Your photo of this camp" ${c.photo ? `src="${esc(c.photo)}"` : "hidden"}></div>
+        <p class="help">${window.CFCloud?.signedIn?.() ? "Because you're signed in, this camp and its photo will be shared with other travellers." : "This camp stays on your phone. Sign in to share it with other travellers."} Only add photos you took, and leave out people's faces and number plates. <a href="https://gonelappin.au/terms.html" data-legal="terms">Terms</a></p>
         <button class="cta" type="submit">${existing ? "Save changes" : "Add camp"}</button>
         <p class="msg" id="acMsg" role="status" aria-live="polite"></p>
       </form></div>`);
@@ -4015,6 +4112,7 @@
       <div class="coord-row"><label class="sr" for="acctEmail">Email</label><input id="acctEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"><button class="btn gold" type="submit" id="acctSend">Send link</button></div>
       <div class="coord-row" id="acctCodeRow" hidden><label class="sr" for="acctCode">Code</label><input id="acctCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6-digit code"><button class="btn gold" type="button" id="acctVerify">Sign in</button></div>
       <p class="msg" id="acctMsg" role="status" aria-live="polite"></p>
+      <p class="help">By signing in you agree to the <a href="https://gonelappin.au/terms.html" data-legal="terms">Terms</a> and <a href="https://gonelappin.au/privacy.html" data-legal="privacy">Privacy policy</a>.</p>
       <details class="acct-pw"><summary>Sign in with a password</summary>
         <div class="coord-row"><label class="sr" for="acctPw">Password</label><input id="acctPw" type="password" autocomplete="current-password" placeholder="Password"><button class="btn line" type="button" id="acctPwGo">Sign in</button></div>
       </details></form>`;
@@ -4731,9 +4829,9 @@
     const serious = items.filter((x) => x.lvl >= 1).length;
     const row = (x) => `<details class="al lvl${x.lvl}"><summary><span class="al-ic">${x.icon}</span><b>${esc(x.title)}</b></summary><small>${esc(x.text)}${x.link ? ` <a href="${esc(x.link)}" target="_blank" rel="noopener">Details</a>` : ""}</small></details>`;
     const first = items.slice(0, 3), rest = items.slice(3);
-    if (!items.length) { box.innerHTML = `<p class="road-ok">✅ Road check: no fires${a.weatherOk ? ", low bridges or bad weather" : " or low bridges"} for your rig${a.weatherOk ? weatherCredit(p) : ""}</p>`; return; }
+    if (!items.length) { box.innerHTML = `<p class="road-ok">✅ Road check: no fire${a.weatherOk ? ", severe weather" : ""} or low bridge warnings found for your rig${a.weatherOk ? weatherCredit(p) : ""}</p>`; return; }
     box.innerHTML = `<div class="alerts">
-      <div class="al-head"><b>${serious ? `${serious} thing${serious > 1 ? "s" : ""} to know` : "Road check: all clear"}</b><span class="help">${a.weatherOk ? "Weather, fires and your rig" : "Fires and your rig"}</span></div>
+      <div class="al-head"><b>${serious ? `${serious} thing${serious > 1 ? "s" : ""} to know` : "Road check: nothing serious found"}</b><span class="help">${a.weatherOk ? "Weather, fires and your rig" : "Fires and your rig"}</span></div>
       ${items.length ? first.map(row).join("") + (rest.length ? `<details class="al-more"><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : "") : `<p class="help">No fires, low clearances${a.weatherOk ? " or severe weather" : ""} for your ${h} m rig.</p>`}
       <details class="al-more links"><summary>Road and fire updates</summary><p class="al-links">Road conditions: ${links || "check the state road authority"}<br>Fire warnings: ${fireLinks}</p></details>
       ${a.weatherOk ? weatherCredit(p) : ""}
@@ -5169,22 +5267,49 @@
   $("#dvEnd").addEventListener("click", endJourney);
   $("#dvDone").addEventListener("click", () => finishJourney());
 
+  // ---- A plain question in the middle of the screen. Resolves "yes", "no" or "dismiss" (Escape).
+  // onYes runs inside the tap itself, for things iPhones only allow straight after a tap (like choosing a photo).
+  function askPopup({ ic = "❓", title, text = "", html = "", yes = "OK", no = "Cancel", cancel = "", onYes }) {
+    return new Promise((resolve) => {
+      const pop = $("#askPop"); if (!pop.hidden) return resolve("dismiss");
+      $("#apIc").textContent = ic; $("#apTitle").textContent = title;
+      if (html) $("#apText").innerHTML = html; else $("#apText").textContent = text;
+      $("#apYes").textContent = yes; $("#apNo").textContent = no;
+      $("#apCancel").hidden = !cancel; $("#apCancel").textContent = cancel || "Cancel";
+      const back = document.activeElement;
+      const done = (v) => { pop.hidden = true; document.removeEventListener("keydown", key, true); pop.onclick = null; try { back?.focus?.({ preventScroll: true }); } catch { /* gone */ } resolve(v); };
+      const key = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done("dismiss"); return; }
+        if (e.key !== "Tab") return;
+        const f = [...pop.querySelectorAll("a[href], button")].filter((x) => x.offsetParent);
+        const i = f.indexOf(document.activeElement);
+        if (e.shiftKey && i <= 0) { e.preventDefault(); f.at(-1).focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+      };
+      $("#apYes").onclick = () => { try { onYes?.(); } finally { done("yes"); } };
+      $("#apNo").onclick = () => done("no");
+      $("#apCancel").onclick = () => done("dismiss");
+      pop.onclick = (e) => { if (e.target.closest("[data-legal]")) done("dismiss"); };
+      document.addEventListener("keydown", key, true);
+      pop.hidden = false; setTimeout(() => { try { $("#apYes").focus({ preventScroll: true }); } catch { /* fine */ } }, 30);
+    });
+  }
+
   // ---- Coming back to the app with a journey still on: keep going, or end it (it says so if you've arrived)
-  function askJourney() {
+  async function askJourney() {
     if (!journey || !$("#askPop").hidden) return;
     const list = navTargets(), end = list.at(-1) || { name: short(journey.to?.name || "your destination"), lat: journey.to?.lat, lon: journey.to?.lon };
     // near the end counts once you're on the last leg (a return trip ends where it started)
     const lastLeg = (journey.reached || 0) >= list.length - 1;
     const there = !!journey.arrivedAt || (lastLeg && me && end.lat != null && hav([me.lat, me.lon], [end.lat, end.lon]) < 400);
-    $("#apIc").textContent = there ? "🎉" : "🚐";
-    $("#apTitle").textContent = there ? `You made it to ${end.name}` : `Still on your way to ${end.name}?`;
-    $("#apText").textContent = there ? "End this journey and keep it in your journal?" : "Keep going with this journey, or end it if you're done.";
-    $("#apYes").textContent = there ? "End journey" : "Keep going";
-    $("#apNo").textContent = there ? "Keep going" : "End journey";
-    const close = () => { $("#askPop").hidden = true; };
-    $("#apYes").onclick = () => { close(); if (there) finishJourney(); else { drivingView = true; showJourneyBar(); } };
-    $("#apNo").onclick = () => { close(); if (there) { drivingView = true; showJourneyBar(); } else finishJourney(); };
-    $("#askPop").hidden = false;
+    const r = await askPopup({
+      ic: there ? "🎉" : "🚐",
+      title: there ? `You made it to ${end.name}` : `Still on your way to ${end.name}?`,
+      text: there ? "End this journey and keep it in your journal?" : "Keep going with this journey, or end it if you're done.",
+      yes: there ? "End journey" : "Keep going", no: there ? "Keep going" : "End journey",
+    });
+    if (!journey) return;
+    if ((there && r === "yes") || (!there && r === "no")) finishJourney();
+    else { drivingView = true; showJourneyBar(); }   // keep going (also when the question is just closed)
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) syncJourney(); });
   setInterval(() => { if (journey && !document.hidden) syncJourney(); }, 60000);
@@ -5291,6 +5416,11 @@
     const C = window.CFCloud;
     if (!C?.enabled) return toast("Sharing isn't switched on in this version yet");
     if (!C.signedIn()) { toast("Sign in (free) to share your trip"); return goSignIn(); }
+    if (!journey.share) {
+      const r = await askPopup({ ic: "📍", title: "Share your trip live?", yes: "Share my trip", no: "Not now",
+        html: `Anyone you send the link to can see where you are, how fast you're going and tonight's camp, until you end this journey. <a href="https://gonelappin.au/privacy.html" data-legal="privacy">Privacy policy</a>` });
+      if (r !== "yes" || !journey) return;
+    }
     try {
       if (!journey.share) {
         const tonight = journey.nights.find((n) => n.name)?.name || short(journey.to.name);
@@ -5482,7 +5612,7 @@
     if (!d || !d.trip) return;
     if (d.trip.route?.length > 1) L.polyline(d.trip.route, { color: "#0E5A3E", weight: 4, opacity: .55, dashArray: "6 8" }).addTo(famTripLayer);
     if (d.trip.track?.length > 1) L.polyline(d.trip.track, { color: "#E07A1F", weight: 5, opacity: .9 }).addTo(famTripLayer);
-    (d.trip.nights || []).forEach((n, i) => L.marker([n.lat, n.lon], { icon: divIcon(`<div class="fam-night${n.done ? " done" : ""}">${i + 1}</div>`, [24, 24]), title: n.name, interactive: false }).addTo(famTripLayer));
+    (d.trip.nights || []).forEach((n, i) => L.marker([n.lat, n.lon], { icon: divIcon(`<div class="fam-night${n.done ? " done" : ""}">${i + 1}</div>`, [24, 24]), title: n.name, interactive: false, keyboard: false }).addTo(famTripLayer));
   }
   function famOpen(code) {
     famWatch = code;
@@ -5537,7 +5667,7 @@
         </details></div>`
       : `<div class="fam-share">
         <div class="fs-head"><span class="fs-ic">📍</span><b>Share your trips with family</b></div>
-        <p class="help">Let family watch you travel live, like Life360 for road trips: where you are, how fast you're going, tonight's camp, your kilometres and badges. You get a code to send them. Pause or turn it off any time.</p>
+        <p class="help">Let family watch you travel live: where you are, how fast you're going, tonight's camp, your kilometres and badges. You get a code to send them, and anyone with the code can see this until you pause or turn it off. <a href="https://gonelappin.au/privacy.html" data-legal="privacy">Privacy policy</a></p>
         <label class="field-lab" for="famName">Your name (what family see)</label>
         <input id="famName" type="text" maxlength="40" autocomplete="name" value="${esc(settings.famName || (C?.email?.() || "").split("@")[0] || "")}" placeholder="e.g. Mum and Dad">
         <button class="cta" type="button" id="famOn" style="width:100%;margin-top:10px">${C && !C.signedIn() ? "Sign in to turn on" : "Turn on family sharing"}</button>
@@ -6474,7 +6604,7 @@
         <textarea id="fbText" rows="6" maxlength="4000" required placeholder="What happened, or what would make the app better?">${esc(prefill)}</textarea>
         <label class="field-lab" for="fbContact">Email, if you'd like a reply (optional)</label>
         <input id="fbContact" type="email" autocomplete="email" maxlength="200" value="${esc(C?.email?.() || "")}">
-        <p class="help">We'll also send your app version, phone type and settings (no location) to help fix things.</p>
+        <p class="help">We'll also send your app version, phone type and app settings, like your vehicle, to help fix things. Never your location. <a href="https://gonelappin.au/privacy.html" data-legal="privacy">Privacy policy</a></p>
         <button class="cta" type="submit" style="width:100%">Send</button>
         <p class="msg" id="fbMsg" role="status"></p>
       </form></div>`);
@@ -6482,7 +6612,7 @@
       e.preventDefault();
       const text = $("#fbText").value.trim(); if (!text) return;
       const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true; btn.textContent = "Sending…";
-      const device = { ua: navigator.userAgent.slice(0, 300), screen: `${screen.width}x${screen.height}@${devicePixelRatio}`, native: !!window.webkit?.messageHandlers?.journey, simple: !!settings.simple, rig: prefs.rig, car: [settings.make, settings.model].filter(Boolean).join(" "), online: navigator.onLine, view, trip: plan ? `${short(plan.from.name)} to ${short(plan.to.name)}` : "", data: campDB.info()?.built || "", lang: navigator.language };
+      const device = { ua: navigator.userAgent.slice(0, 300), screen: `${screen.width}x${screen.height}@${devicePixelRatio}`, native: !!window.webkit?.messageHandlers?.journey, simple: !!settings.simple, rig: prefs.rig, car: [settings.make, settings.model].filter(Boolean).join(" "), online: navigator.onLine, view, data: campDB.info()?.built || "", lang: navigator.language };
       try {
         if (!C?.enabled || !C.sendFeedback) throw new Error("off");
         await C.sendFeedback(text, $("#fbContact").value.trim(), $("input[name=fbk]:checked")?.value || "other", device);
@@ -6497,10 +6627,12 @@
   }
 
   function openLegal(kind) {
-    const L = window.CF_LEGAL; if (!L) return;
-    const html = (L[kind] || "").replaceAll("{contact}", esc(L.contact));
-    showDetail(`<div class="d-pad legal" style="padding-top:22px"><h2 class="d-title">${kind === "terms" ? "Terms and conditions" : "Privacy policy"}</h2><p class="d-kind">Last updated ${esc(L.updated)}</p>${html}</div>`);
+    const L = window.CF_LEGAL; if (!L || !L[kind]) return;
+    showDetail(`<div class="d-pad legal" style="padding-top:22px"><h2 class="d-title">${esc(L.titles?.[kind] || "Legal")}</h2><p class="d-kind">Last updated ${esc(L.updated)}</p>${L[kind]}</div>`);
+    focusDetail();
   }
+  // links from one legal page to another open in the app, not the browser
+  document.addEventListener("click", (e) => { const a = e.target.closest("[data-legal]"); if (a && window.CF_LEGAL?.[a.dataset.legal]) { e.preventDefault(); openLegal(a.dataset.legal); } });
 
   // ---- settings screen
   function fillMakes(sel, make) {
@@ -6568,6 +6700,11 @@
     paintPro();
     $("#stTerms").addEventListener("click", () => openLegal("terms"));
     $("#stPrivacy").addEventListener("click", () => openLegal("privacy"));
+    $("#stCookies")?.addEventListener("click", () => openLegal("cookies"));
+    $("#stRefunds")?.addEventListener("click", () => openLegal("refunds"));
+    $("#stCredits")?.addEventListener("click", () => openLegal("credits"));
+    const B = window.CF_LEGAL?.business;
+    if (B && $("#stBiz")) $("#stBiz").innerHTML = `Camp Finder is made by ${esc(B.owner)}, ABN ${esc(B.abn)}, ${esc(B.town.replace(/, Australia$/, ""))}. <a href="mailto:${esc(B.email)}">${esc(B.email)}</a> · <a href="tel:+61${B.phone.replace(/\D/g, "").slice(1)}">${esc(B.phone)}</a>`;
   })();
   if (settings.sat || prefs.mapMode === "sat") setMapMode("sat");
   if (store.get("cf-loc-ok", false)) { startTracking(); if (settings.follow) setFollow(true); }
@@ -6680,8 +6817,8 @@
     const box = $("#rateBox"); if (!box || !place || !place.rating || $("#gRate")) return;
     const revs = (place.reviews || []).filter((r) => r.text?.text).slice(0, 5);
     box.insertAdjacentHTML("beforeend", `<div class="g-rate" id="gRate">
-      <div class="rate-sum"><span class="stars-sm">${starsHtml(place.rating)}</span><b>${place.rating.toFixed(1)}</b><span class="help">on Google · ${place.count.toLocaleString("en-AU")} review${place.count === 1 ? "" : "s"}</span></div>
-      ${revs.length ? `<ul class="reviews">${revs.map((r) => `<li><div class="rv-head"><span class="stars-sm">${starsHtml(r.rating || 0)}</span><b>${esc(r.authorAttribution?.displayName || "Google user")}</b><span class="help">${esc(r.relativePublishTimeDescription || "")}</span></div><p>${esc(r.text.text.length > 420 ? r.text.text.slice(0, 420) + "…" : r.text.text)}</p></li>`).join("")}</ul>` : ""}
+      <div class="rate-sum"><span class="stars-sm" role="img" aria-label="Rated ${place.rating.toFixed(1)} out of 5 on Google">${starsHtml(place.rating)}</span><b>${place.rating.toFixed(1)}</b><span class="help">on Google · ${place.count.toLocaleString("en-AU")} review${place.count === 1 ? "" : "s"}</span></div>
+      ${revs.length ? `<ul class="reviews">${revs.map((r) => `<li><div class="rv-head"><span class="stars-sm" role="img" aria-label="${r.rating || 0} out of 5 stars">${starsHtml(r.rating || 0)}</span><b>${esc(r.authorAttribution?.displayName || "Google user")}</b><span class="help">${esc(r.relativePublishTimeDescription || "")}</span></div><p>${esc(r.text.text.length > 420 ? r.text.text.slice(0, 420) + "…" : r.text.text)}</p></li>`).join("")}</ul>` : ""}
       <p class="g-attr">Reviews from Google${place.uri ? ` · <a href="${esc(place.uri)}" target="_blank" rel="noopener">See all on Google Maps</a>` : ""}</p>
     </div>`);
   }
