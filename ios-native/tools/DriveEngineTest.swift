@@ -85,8 +85,16 @@ struct DriveEngineTest {
         check(!st.onRoute && st.camp != nil && st.fuel != nil, "without a route it still finds a camp and fuel ahead")
         if let c = st.camp, let pl = places.camps.first(where: { $0.name == c.name }) {
             let b = Geo.bearing(-24.8660, 152.3480, pl.lat, pl.lon)
-            check(Geo.angle(b, 250) < 40, "the camp it shows is in front (bearing \(Int(b))°)")
+            check(Geo.angle(b, 250) < 30, "the camp it shows is in front (bearing \(Int(b))°)")
         }
+        if let f = st.fuel, let pl = places.fuel.first(where: { $0.name == f.name }) {
+            let b = Geo.bearing(-24.8660, 152.3480, pl.lat, pl.lon)
+            check(Geo.angle(b, 250) < 30, "the servo it shows is in front, not behind (bearing \(Int(b))°)")
+        }
+        // Not moving yet and no route: nothing "ahead" until it knows which way you're going
+        var parked = DriveEngine(places: places, opts: DriveEngine.Options())
+        let still = parked.state(lat: -24.8660, lon: 152.3480)
+        check(still.camp == nil && still.fuel == nil && still.sight == nil, "standing still with no route it shows nothing behind you")
         print("  no route, heading west: camp \(st.camp?.name ?? "-") \(st.camp.map { DriveFormat.distance($0.meters) } ?? ""), fuel \(st.fuel?.name ?? "-"), must-see \(st.sight?.name ?? "-")")
 
         // Well off the planned route: falls back to looking ahead

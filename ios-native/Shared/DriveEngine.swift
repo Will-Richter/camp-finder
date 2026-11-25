@@ -81,20 +81,21 @@ struct DriveEngine {
             if let r = next(.fuel, within: .infinity) { st.fuel = stop(.fuel, r.0, r.1) }
             if let r = next(.sights, within: 150_000) { st.sight = stop(.sight, r.0, r.1) }
         } else {
-            // no planned route, or well off it: what's ahead in the direction you're driving
+            // no planned route, or well off it: only what's straight ahead in the direction you're driving, once
+            // you're moving (standing still, "ahead" could be anywhere, even behind you)
             func next(_ cat: DrivePlaces.Category, radius: Double, freeFirst: Bool = false) -> (DrivePlaces.Place, Double)? {
+                guard course >= 0 else { return nil }
                 let list = places.list(cat)
                 let near = places.near(cat, lat: lat, lon: lon, radius: radius).filter { n in
-                    guard course >= 0 else { return true }
                     let p = list[n.index]
-                    return n.meters >= 400 && Geo.angle(Geo.bearing(lat, lon, p.lat, p.lon), course) < 40
+                    return n.meters >= 400 && Geo.angle(Geo.bearing(lat, lon, p.lat, p.lon), course) < 30
                 }
                 if freeFirst, let a = near.first(where: { isFree(list[$0.index]) }) { return (list[a.index], a.meters) }
                 return near.first.map { (list[$0.index], $0.meters) }
             }
             if let r = next(.camps, radius: 60_000, freeFirst: opts.freeFirst) { st.camp = stop(.camp, r.0, r.1) }
-            if let r = next(.fuel, radius: 60_000) { st.fuel = stop(.fuel, r.0, r.1) }
-            if let r = next(.sights, radius: 100_000) { st.sight = stop(.sight, r.0, r.1) }
+            if let r = next(.fuel, radius: 50_000) { st.fuel = stop(.fuel, r.0, r.1) }
+            if let r = next(.sights, radius: 60_000) { st.sight = stop(.sight, r.0, r.1) }
             if let n = opts.nights.first(where: { !alerted.contains("arrived:\($0.name)") }) {
                 let m = Geo.meters(lat, lon, n.lat, n.lon)
                 if m < 300 { alerted.insert("arrived:\(n.name)") }

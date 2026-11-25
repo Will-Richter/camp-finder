@@ -105,7 +105,8 @@
     window[done] = (id, ok, v) => { const c = cbs[id]; delete cbs[id]; if (c) ok ? c.res(v) : c.rej(new Error(String(v || "Failed"))); };
     return (msg, ms = 20000) => new Promise((res, rej) => {
       const id = ++n; cbs[id] = { res, rej };
-      h.postMessage({ id, ...msg });
+      // the journey recorder takes its own id (the journey's) in `id`, so it answers to `reply`: this call's number
+      h.postMessage({ id, ...msg, ...(msg.reply ? { reply: id } : {}) });
       setTimeout(() => { if (cbs[id]) { delete cbs[id]; rej(new Error("timeout")); } }, ms);
     });
   }
@@ -857,6 +858,13 @@
     }
   }
   async function resolvePlace(input) {
+    if (input.dataset.live === "1" && input.value === "My location") {
+      const p = me && lastFixAt && Date.now() - lastFixAt < 10 * 60000 ? me : { lat: +input.dataset.lat, lon: +input.dataset.lon };
+      if (!isFinite(p.lat)) throw new Error("Couldn't find where you are. Type your town instead.");
+      let name = input.dataset.town;
+      if (!name || hav([p.lat, p.lon], [+input.dataset.tlat || 0, +input.dataset.tlon || 0]) > 3000) name = await soon(whereIs(p), 6000, "") || name || "My location";
+      return { name: name.split(",")[0], lat: p.lat, lon: p.lon };
+    }
     if (input.dataset.lat) return { name: input.value.split(",")[0], lat: +input.dataset.lat, lon: +input.dataset.lon };
     const q = input.value.trim();
     if (!q) throw new Error(`Enter a ${input.id === "from" ? "starting point" : "destination"}.`);
@@ -1526,6 +1534,7 @@
   const openLayerMenu = (open) => { $("#layerMenu").hidden = !open; $("#layerBtn").setAttribute("aria-expanded", open); if (open) paintLayerMenu?.(); };
   $("#layerBtn").addEventListener("click", (e) => { e.stopPropagation(); openLayerMenu($("#layerMenu").hidden); });
   $("#lmClose").addEventListener("click", () => openLayerMenu(false));
+  $("#lmAdd").addEventListener("click", () => { openLayerMenu(false); startPinMode(); });
   $("#layerMenu").addEventListener("click", (e) => { const b = e.target.closest("[data-mode]"); if (b) setMapMode(b.dataset.mode); });
   document.addEventListener("click", (e) => { if (!$("#layerMenu").hidden && !e.target.closest("#layerMenu,#layerBtn")) openLayerMenu(false); });
   // ---------------------------------------------------------------- offline state maps (iPhone app)
@@ -1696,6 +1705,7 @@
   window.addEventListener("resize", () => { clearTimeout(fixMapSize.t); fixMapSize.t = setTimeout(fixMapSize, 120); });
   const tripLayer = L.layerGroup().addTo(map);
   const legLayer = L.layerGroup().addTo(map);
+  const ROUTE_GREEN = "#17A34A", DRIVEN_GREEN = "#A6E3B8";   // the road ahead, and where you've already driven
   const travelLayer = L.layerGroup().addTo(map);   // the part of your route you've already driven
   // Explore camps: every camp shown as its own dot (no tap-to-open clusters). Dots are drawn on the map canvas, so even
   // thousands stay smooth; caravan parks keep their little caravan badge.
@@ -1775,6 +1785,8 @@
     $("#trackBtn").setAttribute("aria-pressed", on);
     $("#trackBtn span").textContent = on ? "Tracking you" : "Track me";
     if (on && me) showAt(me, null, { pan: true });
+    let on_trip = false; try { on_trip = !!journey; } catch { /* called before the journey is loaded */ }
+    const rc = $("#dvCentre"); if (rc) rc.hidden = on || !on_trip;
   }
   map.on("dragstart", () => { if (following) setFollow(false); });
 
@@ -1807,6 +1819,9 @@
     if (typeof onRoadCheck === "function") try { onRoadCheck(me); } catch {}
     if (typeof famOnPos === "function") try { famOnPos(c); } catch {}
     if (typeof travelOnPos === "function") try { travelOnPos(me); } catch {}
+    if (typeof navUpdate === "function") try { if (journey) navUpdate(me); } catch {}
+    const fromBox = $("#from"); if (fromBox?.dataset.live === "1" && fromBox.value === "My location") { fromBox.dataset.lat = me.lat; fromBox.dataset.lon = me.lon; }
+    else if (fromBox && !fromBox.value.trim() && typeof fromFollowsMe === "function" && document.activeElement !== fromBox) try { fromFollowsMe(me); } catch {}
   }
   function startTracking() {
     if (tracking != null || !navigator.geolocation?.watchPosition) return;
@@ -2045,13 +2060,7 @@
     hereBusy = true;
     const busy = (t) => { b.hidden = false; b.classList.add("busy"); b.disabled = true; b.innerHTML = `<span class="spinner"></span>${esc(t)}`; f.value = ""; f.placeholder = `${t}…`; f.classList.add("locating"); };
     const done = () => { hereBusy = false; b.disabled = false; b.classList.remove("busy"); b.textContent = "Use my location"; f.placeholder = "Starting from"; f.classList.remove("locating"); };
-    const set = async (p) => {
-      busy("Finding your town");
-      f.dataset.lat = p.lat; f.dataset.lon = p.lon;
-      const name = await whereIs(p);
-      done(); f.value = name; f.dataset.lat = p.lat; f.dataset.lon = p.lon; f.dataset.here = "1"; b.hidden = true;
-      f.dispatchEvent(new Event("change"));
-    };
+    const set = async (p) => { done(); fromFollowsMe(p); f.dispatchEvent(new Event("change")); };
     if (me && lastFixAt && Date.now() - lastFixAt < 5 * 60000) return set(me);   // a recent fix: no GPS wait
     busy("Finding you");
     let settled = false, tries = 0;
@@ -2076,8 +2085,22 @@
     e.preventDefault(); inp.value = ""; delete inp.dataset.lat; delete inp.dataset.lon; delete inp.dataset.here;
     inp.dispatchEvent(new Event("input", { bubbles: true })); inp.focus();
   });
+  // The start box says "My location" and follows you: a trip always starts from where you are when you plan it
+  function fromFollowsMe(p) {
+    const f = $("#from"); if (!p || !f) return;
+    f.value = "My location"; f.classList.add("is-live");
+    Object.assign(f.dataset, { live: "1", here: "1", lat: p.lat, lon: p.lon });
+    $("#useHere").hidden = true;
+    if (!f.dataset.town || hav([p.lat, p.lon], [+f.dataset.tlat || 0, +f.dataset.tlon || 0]) > 3000) {
+      Object.assign(f.dataset, { tlat: p.lat, tlon: p.lon });
+      whereIs(p).then((name) => { if (name && f.dataset.live === "1") f.dataset.town = name; }).catch(() => {});
+    }
+  }
+  function unlive() { const f = $("#from"); delete f.dataset.live; delete f.dataset.town; f.classList.remove("is-live"); }
+  function followFromIfEmpty() { const f = $("#from"); if (me && f && (!f.value.trim() || f.dataset.live === "1")) fromFollowsMe(me); }
   $("#useHere").addEventListener("click", locateFrom);
-  $("#from").addEventListener("input", () => { $("#useHere").hidden = !!$("#from").value; delete $("#from").dataset.here; });
+  $("#from").addEventListener("input", () => { const f = $("#from"); $("#useHere").hidden = !!f.value; delete f.dataset.here; delete f.dataset.live; f.classList.remove("is-live"); });
+  $("#from").addEventListener("focus", () => { const f = $("#from"); if (f.dataset.live === "1") f.select(); });
   attachSuggest($("#from"), () => ($("#useHere").hidden = true));
   attachSuggest($("#to"));
 
@@ -2175,7 +2198,8 @@
   function tripMeta(p) {
     const days = totalDays(p);
     if (p._via == null) { p._via = ""; try { if (window.CFRoutes && !p.opts.ret && p.route.distance > 600000) p._via = CFRoutes.describe(p.line, p.from, p.to); } catch { /* just the numbers */ } }
-    return `${esc(`${km(p.route.distance)} and ${hrs(p.route.duration)} of driving over ${days} day${days > 1 ? "s" : ""}`)}${p._via ? `<span class="trip-via">via ${esc(p._via)}</span>` : ""}`;
+    const words = days > 1 ? `${km(p.route.distance)} and ${hrs(p.route.duration)} of driving over ${days} days` : `${km(p.route.distance)} · ${hrs(p.route.duration)} drive`;
+    return `${esc(words)}${p._via ? `<span class="trip-via">via ${esc(p._via)}</span>` : ""}`;
   }
   function showPlan() {
     const p = plan;
@@ -2185,6 +2209,7 @@
     let more = false;
     try { more = !p.opts.ret && !!window.CFRoutes && hav([p.from.lat, p.from.lon], [p.to.lat, p.to.lon]) > 800000 && CFRoutes.corridors(p.from, p.to).length > 1; } catch { /* plain label */ }
     $("#otherRouteHome").hidden = !p.opts.ret; $("#otherRoute").lastChild.textContent = p.opts.ret ? "Routes there" : more ? "Other ways to go" : "Route options";
+    $("#otherRoute").closest(".other-route-row").hidden = hav([p.from.lat, p.from.lon], [p.to.lat, p.to.lon]) < 40000 && !p.opts.ret;
     $("#tripMeta").innerHTML = tripMeta(p);
     renderItinerary();
     renderBudget();
@@ -2502,8 +2527,10 @@
     const lastAlong = p.picks.at(-1)?.camp?.along ?? p.picks.at(-1)?.target ?? 0;
     fuelUpTo(p.line.total);
     stops.push(`<li class="stop"><div class="plate end" aria-hidden="true"></div><div class="stop-body"><p class="stop-leg">Day ${totalDays(p)}: ${km(p.line.total - lastAlong)}${legExtra(p.line.total - lastAlong)}</p>${seeTodayLine(p.nights)}<div class="stop-place" style="padding-top:0">${esc(short((p.opts.ret ? p.from : p.to).name))}${p.opts.ret ? " (home)" : ""}</div></div></li>`);
-    { const pt = poiTeaserHtml(p); if (pt) stops.unshift(pt); }
-    if (p.fuelState === "done") { const fc = fuelCheckHtml(p); if (fc) stops.unshift(fc); }
+    // things to see and the fuel check only where they help: not on a drive across town, and the fuel check
+    // only says something when fuel is tight or the trip is a long one
+    if (p.route.distance > 60000) { const pt = poiTeaserHtml(p); if (pt) stops.unshift(pt); }
+    if (p.fuelState === "done") { const fc = fuelCheckHtml(p); if (fc && (!/fuel-check ok/.test(fc) || p.route.distance > 300000)) stops.unshift(fc); }
     if (p.fuelState === "loading") stops.splice(1, 0, `<li class="stop fuel-wait"><div class="plate fuel" aria-hidden="true">${icon("fuel")}</div><div class="stop-body"><p class="help"><span class="spinner"></span>Working out where you'll need fuel</p></div></li>`);
     $("#nightList").innerHTML = stops.join("");
     cardPhotos();
@@ -2513,8 +2540,8 @@
   function drawPlan() {
     tripLayer.clearLayers(); legLayer.clearLayers();
     const p = plan; if (!p) return;
-    L.polyline(p.line.pts, { color: "#ffffff", weight: 9, opacity: .9, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
-    const line = L.polyline(p.line.pts, { color: "#0E5A3E", weight: 5, opacity: .95, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
+    L.polyline(p.line.pts, { color: "#ffffff", weight: 10, opacity: .95, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
+    const line = L.polyline(p.line.pts, { color: ROUTE_GREEN, weight: 6, opacity: 1, smoothFactor: 1.6, interactive: false }).addTo(tripLayer);
     L.marker([p.from.lat, p.from.lon], { icon: divIcon(`<div class="mk-start"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
     L.marker([p.to.lat, p.to.lon], { icon: divIcon(`<div class="mk-end"></div>`, [18, 18]), interactive: false }).addTo(tripLayer);
     const pickIds = new Set(p.picks.map((x) => x.camp?.id));
@@ -2690,7 +2717,7 @@
     };
     try {
       const base = await osrm([a, ...mine, b]);
-      const opts = { route: (pts) => osrm(pts), townNear: campDB.townNear, mine, max: 5, current: now.key ? now : null, onUpdate: (l) => { list = markNow(l); draw(); },
+      const opts = { route: (pts) => osrm(pts), townNear: campDB.townNear, mine, max: 3, current: now.key ? now : null, onUpdate: (l) => { list = markNow(l); draw(); },
         stop: () => routeOptsRun !== run || $("#detail").hidden || !$(`#detailBody [data-ro="${run}"]`) };
       list = window.CFRoutes ? markNow(await CFRoutes.choices(a, b, base, opts)) : [{ key: "", pts: [], route: base, line: buildLine(base), base: true, cur: true, fastest: true, dirt: [], title: "Fastest route" }];
     } catch (e) { console.warn("route options", e); failed = !list.length; }
@@ -2699,14 +2726,16 @@
   $("#otherRoute").addEventListener("click", () => openRouteOptions("there"));
   $("#otherRouteHome").addEventListener("click", () => openRouteOptions("home"));
   $("#editTrip").addEventListener("click", () => { $("#planForm").hidden = false; $("#results").hidden = true; tripLayer.clearLayers(); legLayer.clearLayers(); try { if (journey) drawTravelled(); } catch {} });
+  // A trip as it's saved (and kept with a journey, so the plan can come back after the app restarts)
+  const tripRecord = (p) => ({
+    id: Date.now(), from: p.from, to: p.to, nights: p.nights, opts: p.opts, km: p.route.distance,
+    picks: p.picks.map((x) => x.camp && { id: x.camp.id, name: x.camp.name }),
+    vias: viaStops.map(({ name, lat, lon, poi, leg, alt, route, rk }) => ({ name, lat, lon, poi: !!poi, ...(leg ? { leg } : {}), ...(alt ? { alt: true, route, rk } : {}) })), see: [...seeIds], stays: p.stays || {},
+  });
   $("#saveTrip").addEventListener("click", (e) => {
     const trips = store.get("cf-trips", []);
     if (trips.length >= 3 && !isPro()) { showPaywall("trips"); return; }
-    trips.unshift({
-      id: Date.now(), from: plan.from, to: plan.to, nights: plan.nights, opts: plan.opts, km: plan.route.distance,
-      picks: plan.picks.map((p) => p.camp && { id: p.camp.id, name: p.camp.name }),
-      vias: viaStops.map(({ name, lat, lon, poi, leg, alt, route, rk }) => ({ name, lat, lon, poi: !!poi, ...(leg ? { leg } : {}), ...(alt ? { alt: true, route, rk } : {}) })), see: [...seeIds], stays: plan.stays || {},
-    });
+    trips.unshift(tripRecord(plan));
     store.set("cf-trips", trips.slice(0, 30));
     e.currentTarget.classList.add("is-on"); toast("Trip saved");
   });
@@ -3629,20 +3658,22 @@
     const trips = store.get("cf-trips", []);
     if (del) { store.set("cf-trips", trips.filter((t) => String(t.id) !== del.dataset.del)); renderSaved(); return; }
     if (!load) return;
-    const t = trips.find((x) => String(x.id) === load.dataset.load); if (!t) return;
+    const t = trips.find((x) => String(x.id) === load.dataset.load); if (t) loadTrip(t);
+  });
+  function loadTrip(t) {
     setView("plan");
     const f = $("#from"), to = $("#to");
-    f.value = t.from.name; f.dataset.lat = t.from.lat; f.dataset.lon = t.from.lon; $("#useHere").hidden = true;
+    f.value = t.from.name; f.dataset.lat = t.from.lat; f.dataset.lon = t.from.lon; $("#useHere").hidden = true; unlive();
     to.value = t.to.name; to.dataset.lat = t.to.lat; to.dataset.lon = t.to.lon;
     setNights(t.opts?.retOut ?? t.nights);
     viaStops = (t.vias || []).map((v) => ({ ...v })); seeIds.clear(); (t.see || []).forEach((id) => seeIds.add(id)); renderVia();
     pendingStays = t.stays && Object.keys(t.stays).length ? { ...t.stays } : null;
     const pick = (name, v) => { const el = $(`input[name="${name}"][value="${v}"]`); if (el) el.checked = true; };
     pick("rig", t.opts.rig); pick("cost", t.opts.cost); pick("detour", t.opts.detour); pick("tripType", t.opts.ret ? "ret" : "one"); if (t.opts.retBack != null) { setThere(t.opts.retThere); setBack(t.opts.retBack); pick("retWay", t.opts.retWay || "diff"); } retSum();
-    $$("#planWants input").forEach((i) => (i.checked = t.opts.wants.includes(i.value)));
+    $$("#planWants input").forEach((i) => (i.checked = (t.opts.wants || []).includes(i.value)));
     $("#planForm").hidden = false; $("#results").hidden = true;
     $("#planForm").requestSubmit();
-  });
+  }
   $("#savedCamps").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(findCamp(card.dataset.id)); });
   $("#mineCamps").addEventListener("click", (e) => { const card = e.target.closest(".camp-card"); if (card) openDetail(userCamps().find((c) => c.id === card.dataset.id)); });
 
@@ -4113,12 +4144,13 @@
   function renderTripExtras() {
     const box = $("#tripExtras"); if (!box || !plan) return;
     const key = tripKey(plan), gs = guidesForPlan(plan), n = notesFor(key);
-    const offroad = plan.opts?.fourwd ? `<div class="island-card offroad"><div class="ic-head"><span aria-hidden="true">🛞</span><b>4WD route</b><span class="ic-4wd">High clearance</span></div>
+    const offroad = plan.opts?.fourwd && tripIslands(plan).length ? `<div class="island-card offroad"><div class="ic-head"><span aria-hidden="true">🛞</span><b>4WD route</b><span class="ic-4wd">High clearance</span></div>
       <p class="ic-note">This plan follows 4WD tracks and beaches (switch kinds of track on and off from the map button). Drive beaches around low tide, let your tyres down for sand, and check track closures, permits and recent rain with the park or council before you go. Times on tracks are rough.</p></div>` : "";
+    const bookings = plan.picks.length || n.bookings.length || tripIslands(plan).length;
     box.innerHTML = `${offroad}${tripIslands(plan).map((i) => islandCard(i, true)).join("")}${gs.map((g) => guideCard(g, key)).join("")}
-      <div class="bookings-box">
+      <div class="bookings-box${n.bookings.length ? "" : " is-empty"}"${bookings ? "" : " hidden"}>
         <div class="bb-head"><b>Bookings for this trip</b><button class="btn line small-btn" type="button" data-add-booking="">${icon("plus", "ic sm")}Add</button></div>
-        ${n.bookings.length ? `<ul class="bookings">${n.bookings.map(bookingRow).join("")}</ul>` : `<p class="help">Ferries, permits and camp bookings, kept offline with this trip.</p>`}
+        ${n.bookings.length ? `<ul class="bookings">${n.bookings.map(bookingRow).join("")}</ul>` : ""}
       </div>`;
   }
   document.addEventListener("click", (e) => {
@@ -4189,7 +4221,7 @@
   ["#from", "#to"].forEach((s) => $(s).addEventListener("input", showTryExample));
   $("#tryExample").addEventListener("click", () => {
     const f = $("#from"), t = $("#to");
-    f.value = "Bundaberg, Queensland"; f.dataset.lat = -24.8661; f.dataset.lon = 152.3489; $("#useHere").hidden = true;
+    f.value = "Bundaberg, Queensland"; f.dataset.lat = -24.8661; f.dataset.lon = 152.3489; $("#useHere").hidden = true; unlive();
     t.value = "Agnes Water, Queensland"; t.dataset.lat = -24.2117; t.dataset.lon = 151.9035;
     viaStops = []; seeIds.clear(); renderVia();
     setNights(0); showTryExample();
@@ -4198,7 +4230,7 @@
   // ---------------------------------------------------------------- first open: example trip
   if (!store.get("cf-seen", false)) {
     const f = $("#from"), t = $("#to");
-    f.value = "Bundaberg, Queensland"; f.dataset.lat = -24.8661; f.dataset.lon = 152.3489; $("#useHere").hidden = true;
+    f.value = "Bundaberg, Queensland"; f.dataset.lat = -24.8661; f.dataset.lon = 152.3489; $("#useHere").hidden = true; unlive();
     t.value = "Cairns, Queensland"; t.dataset.lat = -16.9186; t.dataset.lon = 145.7781;
     $("#planMsg").textContent = "We've filled in an example trip. Change it to yours, or tap Find camps to see how it works.";
     store.set("cf-seen", true);
@@ -4255,14 +4287,21 @@
     if (!settings.use) return null;
     const k = meters / 1000;
     const litres = k * settings.use / 100 * (towing(rig) ? 1 + settings.tow / 100 : 1);
-    return { litres, cost: litres * (settings.prices[settings.fuel] || 0) };
+    return { litres, cost: litres * fuelPrice() };
+  }
+  // the price per litre you set, or today's typical price when it's blank (never $0)
+  function fuelPrice() {
+    const mine = +settings.prices?.[settings.fuel];
+    if (mine > 0) return mine;
+    let today = 0; try { today = +PRICES.fuel?.[settings.fuel] || 0; } catch { /* before the price list loads */ }
+    return today || DEFAULT_PRICE[settings.fuel] || DEFAULT_PRICE.petrol;
   }
   const rangeKm = (rig = plan?.opts?.rig || prefs.rig) => settings.tank && settings.use ? settings.tank / (settings.use * (towing(rig) ? 1 + settings.tow / 100 : 1)) * 100 * 0.9 : Infinity;
   function legExtra(meters) {
     const f = fuelFor(meters);
     let out = f ? ` <span class="leg-cost">· ~${money(f.cost)} fuel</span>` : "";
     const k = meters / 1000;
-    if (k > rangeKm()) out += ` <span class="leg-warn">· plan a fuel stop</span>`;
+    if (k > rangeKm() && !(plan?.fuel || []).length) out += ` <span class="leg-warn">· plan a fuel stop</span>`;   // the fuel stops already show in the list
     else if (settings.maxKm && k > settings.maxKm) out += ` <span class="leg-warn">· long day</span>`;
     return out;
   }
@@ -4335,7 +4374,7 @@
   function tripCosts(p) {
     const f = fuelFor(p.route.distance); if (!f) return null;
     const live = liveFuelPrice(p);
-    const price = live || settings.prices[settings.fuel];
+    const price = live || fuelPrice();
     const fuel = f.litres * price;
     const nightsList = p.picks.map((pk, i) => { const c = nightCost(pk), n = 1 + Math.max(0, +(p.stays?.[i]) || 0); return { i, ...c, n, v: c.v * n }; });
     const camps = nightsList.filter((n) => !p.picks[n.i].refresh).reduce((a, n) => a + n.v, 0);
@@ -4347,21 +4386,19 @@
   function renderBudget() {
     const box = $("#tripBudget"); if (!box || !plan) return;
     const t = tripCosts(plan);
-    if (!t) { box.innerHTML = ""; return; }
+    if (!t || !plan.picks.length) { box.innerHTML = ""; return; }   // no nights away: the fuel cost shows on the day, and that's all it costs
     const fills = settings.tank ? t.f.litres / settings.tank : 0;
     const refreshN = plan.picks.filter((pk) => pk.refresh).length;
     const vname = settings.model ? `${settings.make === "Other" ? "" : settings.make + " "}${settings.model}` : "your vehicle";
     box.innerHTML = `<div class="budget" id="budgetCard" role="button" tabindex="0" aria-label="See the cost breakdown">
-      <div class="bg-top"><span>Trip cost estimate</span><b class="bg-total" id="bgTotal">$0</b></div>
+      <div class="bg-top"><span>Trip cost estimate</span><b class="bg-total" id="bgTotal">${money(t.total)}</b></div>
       <div class="bg-rows">
-        <div><b id="bgFuel">$0</b><small>Fuel · ${Math.round(t.f.litres)} L</small></div>
-        <div><b>${money(t.camps)}</b><small>Camps</small></div>
-        <div><b>${refreshN ? money(t.stays) : t.daily ? money(t.daily) : money(t.nightsN ? (t.camps + t.stays) / t.nightsN : 0)}</b><small>${refreshN ? `Motels · ${refreshN} night${refreshN > 1 ? "s" : ""}` : t.daily ? `Spending · ${t.days} days` : "Average a night"}</small></div>
+        <div><b id="bgFuel">${money(t.fuel)}</b><small>Fuel · ${Math.round(t.f.litres)} L</small></div>
+        <div><b>${t.camps ? money(t.camps) : "Free"}</b><small>Camps</small></div>
+        <div><b>${refreshN ? money(t.stays) : t.daily ? money(t.daily) : t.camps + t.stays ? money(t.nightsN ? (t.camps + t.stays) / t.nightsN : 0) : "Free"}</b><small>${refreshN ? `Motels · ${refreshN} night${refreshN > 1 ? "s" : ""}` : t.daily ? `Spending · ${t.days} days` : "Average a night"}</small></div>
       </div>
       <p class="bg-note">${esc(vname)}, ${settings.use} L/100 km${towing(plan.opts.rig) && settings.tow ? ` +${settings.tow}% towing` : ""} at ${money(t.price)}/L ${t.live ? "(live prices on your route)" : "(your set price)"}${fills >= 0.5 ? ` · about ${fills < 1.5 ? "1 tank" : Math.round(fills) + " tanks"}` : ""}. <button type="button" id="bgMore">See breakdown</button></p>
     </div>`;
-    countUp($("#bgTotal"), t.total, money);
-    countUp($("#bgFuel"), t.fuel, money);
     const open = (e) => { if (e.target.id === "bgMore" || e.currentTarget === e.target || e.target.closest(".budget")) openBudget(); };
     $("#budgetCard").addEventListener("click", open);
   }
@@ -4694,6 +4731,7 @@
     const serious = items.filter((x) => x.lvl >= 1).length;
     const row = (x) => `<details class="al lvl${x.lvl}"><summary><span class="al-ic">${x.icon}</span><b>${esc(x.title)}</b></summary><small>${esc(x.text)}${x.link ? ` <a href="${esc(x.link)}" target="_blank" rel="noopener">Details</a>` : ""}</small></details>`;
     const first = items.slice(0, 3), rest = items.slice(3);
+    if (!items.length) { box.innerHTML = `<p class="road-ok">✅ Road check: no fires${a.weatherOk ? ", low bridges or bad weather" : " or low bridges"} for your rig${a.weatherOk ? weatherCredit(p) : ""}</p>`; return; }
     box.innerHTML = `<div class="alerts">
       <div class="al-head"><b>${serious ? `${serious} thing${serious > 1 ? "s" : ""} to know` : "Road check: all clear"}</b><span class="help">${a.weatherOk ? "Weather, fires and your rig" : "Fires and your rig"}</span></div>
       ${items.length ? first.map(row).join("") + (rest.length ? `<details class="al-more"><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : "") : `<p class="help">No fires, low clearances${a.weatherOk ? " or severe weather" : ""} for your ${h} m rig.</p>`}
@@ -4717,20 +4755,52 @@
       list = (campDB.waterIn ? campDB.waterIn(bb) : []).map((w) => ({ ...w, name: w.tank ? "Water fill point" : "Drinking water tap" }));
       list.push(...campDB.inArea(bb, 0).camps.filter((c) => c.a.water === true).map((c) => ({ id: c.id, lat: c.lat, lon: c.lon, name: `Water at ${c.name}` })));
     }
-    if (kind === "fuel") list = (campDB.fuelIn ? campDB.fuelIn(from, 90000) : []);
-    // ahead on the planned route first, then closest
-    const onTrip = journey && plan;
-    const here = onTrip ? project(plan.line, from).along : 0;
-    list.forEach((x) => { x.d = hav([from.lat, from.lon], [x.lat, x.lon]); if (onTrip) Object.assign(x, project(plan.line, x)); });
-    if (onTrip) list = list.filter((x) => x.off < 8000 && x.along > here - 1500).sort((a, b) => a.along - b.along);
-    else list.sort((a, b) => a.d - b.d);
-    return list.slice(0, 6);
+    if (kind === "fuel" && campDB.fuelIn) {
+      list = campDB.fuelIn(from, 90000);
+      // on a journey, the next servo can be a long way off in the outback: look further along the route too
+      const tr = tripSpot(from);
+      if (tr) { const seen = new Set(list.map((x) => `${x.lat},${x.lon}`)); for (const x of campDB.fuelIn(pointAt(tr.line, tr.here + 150000), 90000)) if (!seen.has(`${x.lat},${x.lon}`)) list.push(x); }
+    }
+    list.forEach((x) => { x.d = hav([from.lat, from.lon], [x.lat, x.lon]); });
+    // on a journey: only what's ahead on the route, in the order you get to it (never one behind you)
+    const ahead = aheadOnTrip(list, from, kind === "fuel" ? 3000 : 8000);
+    if (ahead) return ahead.slice(0, 6);
+    return list.sort((a, b) => a.d - b.d).slice(0, 6);
+  }
+  // Where you are along the journey's route (how far you've driven counts, so the way back of a return trip works),
+  // or null with no journey or when you're well away from its route
+  function tripSpot(from) {
+    const tl = journey ? travelLine() : null;
+    if (!tl || !from) return null;
+    const near = projectAll(tl.line, from).filter((q) => q.off < 15000).sort((a, b) => a.along - b.along);
+    if (!near.length) return null;
+    const done = travel && travel.key === tl.key ? travel.done : 0;
+    const here = near.find((q) => q.along >= done - 2000)?.along ?? near.at(-1).along;
+    return { line: tl.line, here };
+  }
+  function aheadOnTrip(list, from, maxOff) {
+    const tr = tripSpot(from);
+    if (!tr) return null;
+    const out = [];
+    for (const x of list) {
+      const pr = projectAll(tr.line, x).filter((q) => q.off <= maxOff && q.along > tr.here + 100).sort((a, b) => a.along - b.along)[0];
+      if (pr) out.push({ ...x, along: pr.along, off: pr.off, ahead: pr.along - tr.here });
+    }
+    return out.sort((a, b) => a.along - b.along);
   }
   async function showNeeds(kind) {
     const title = { water: "Water nearby", dump: "Dump points nearby", fuel: "Fuel nearby" }[kind];
     const go = async (from, label) => {
       let list = nearbyNeeds(kind, from);
-      if (kind === "fuel" && (CFG.googleKey || window.CFCloud?.fuelPricesIn) && !isOffline()) { const live = await soon(stationsNear(from, 30000), 8000, []); if (live.length) list = live.map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 10); }
+      const onRoute = !!tripSpot(from);
+      if (kind === "fuel" && (CFG.googleKey || window.CFCloud?.fuelPricesIn) && !isOffline()) {
+        let live = (await soon(stationsNear(from, 30000), 8000, [])).map((x) => ({ ...x, d: hav([from.lat, from.lon], [x.lat, x.lon]) }));
+        if (onRoute) live = aheadOnTrip(live, from, 3000) || [];
+        else live.sort((a, b) => a.d - b.d);
+        // live prices for the servos just ahead; the map data's list when none are in reach (further out, no signal)
+        if (live.length) list = live.slice(0, 10);
+      }
+      if (onRoute) label = list.length ? "Ahead of you on your route" : label;
       // AdBlue flags from the map data for stations that came from Google or the price feeds
       if (kind === "fuel" && campDB.fuelIn) for (const x of list) if (x.f == null) { const o = campDB.fuelIn(x, 200).find((y) => hav([x.lat, x.lon], [y.lat, y.lon]) < 150); x.f = o?.f || ""; }
       const priced = list.filter((x) => x.fuel?.price), low = priced.length ? Math.min(...priced.map((x) => x.fuel.price)) : 0;
@@ -4739,15 +4809,15 @@
       const fuelName = { diesel: "diesel", petrol: "unleaded", lpg: "LPG" }[settings.fuel] || settings.fuel;
       showDetail(`<div class="d-pad" style="padding-top:22px"><h2 class="d-title">${title}</h2><p class="d-kind">${esc(label)}</p>
         ${kind === "fuel" && priced.length > 1 ? `<div class="seg fuel-sort" role="group" aria-label="Sort"><button type="button" data-fsort="near" class="${sortBy === "near" ? "on" : ""}">Nearest</button><button type="button" data-fsort="cheap" class="${sortBy === "cheap" ? "on" : ""}">Cheapest ${esc(fuelName)}</button></div>` : ""}
-        ${list.length ? `<ul class="need-list">${list.map((x, k) => `<li><div${kind === "fuel" ? ` class="need-open" data-need-i="${k}" role="button" tabindex="0"` : ""}><b>${esc(x.name)}${kind === "fuel" && /A/.test(x.f || "") ? ' <span class="ad-chip">AdBlue</span>' : ""}</b><small>${x.along != null && journey ? `${km(Math.max(0, x.along - project(plan.line, from).along))} ahead on your route` : `${km(x.d)} away`}${x.fuel?.updated ? ` · ${esc(agoTime(x.fuel.updated))}` : ""}</small></div>${x.fuel?.price ? `<span class="fuel-pr${x.fuel.price <= low + 0.005 ? " cheap" : ""}">${(x.fuel.price * 100).toFixed(1)}<small>c/L</small></span>` : ""}<a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
-          : `<p class="msg">Nothing found within about 90 km. ${kind === "water" ? "Town visitor centres, roadhouses and caravan parks usually let you fill up." : kind === "dump" ? "Caravan parks often allow dump use for a small fee." : ""}</p>`}
+        ${list.length ? `<ul class="need-list">${list.map((x, k) => `<li><div${kind === "fuel" ? ` class="need-open" data-need-i="${k}" role="button" tabindex="0"` : ""}><b>${esc(x.name)}${kind === "fuel" && /A/.test(x.f || "") ? ' <span class="ad-chip">AdBlue</span>' : ""}</b><small>${x.ahead != null ? `${km(x.ahead)} ahead on your route` : `${km(x.d)} away`}${x.fuel?.updated ? ` · ${esc(agoTime(x.fuel.updated))}` : ""}</small></div>${x.fuel?.price ? `<span class="fuel-pr${x.fuel.price <= low + 0.005 ? " cheap" : ""}">${(x.fuel.price * 100).toFixed(1)}<small>c/L</small></span>` : ""}<a class="btn" href="${navUrl({ lat: x.lat, lon: x.lon, name: x.name }, "apple")}" target="_blank" rel="noopener">${icon("nav")}Go</a></li>`).join("")}</ul>`
+          : `<p class="msg">${onRoute ? "Nothing ahead on your route for a while." : "Nothing found within about 90 km."} ${kind === "water" ? "Town visitor centres, roadhouses and caravan parks usually let you fill up." : kind === "dump" ? "Caravan parks often allow dump use for a small fee." : ""}</p>`}
         <p class="caveat">From OpenStreetMap${kind === "fuel" && CFG.googleKey ? " and Google Maps" : ""}. ${kind === "fuel" ? "Tap a station for photos, every fuel price and AdBlue." : "Check water is drinkable and dump points are open before relying on them."}</p></div>`);
       if (kind === "fuel") {
         $$("[data-need-i]").forEach((el) => el.addEventListener("click", () => openUtil(list[+el.dataset.needI], "fuel")));
         $$("[data-fsort]").forEach((b) => b.addEventListener("click", () => { store.set("cf-fuel-sort", b.dataset.fsort); go(from, label); }));
       }
     };
-    if (me) return go(me, journey ? "Ahead of you on your route" : "Closest to you");
+    if (me) return go(me, "Closest to you");
     showDetail(`<div class="d-pad" style="padding-top:22px"><p class="msg"><span class="spinner"></span>Finding you</p></div>`);
     locate((pt) => go(pt, "Closest to you"));
   }
@@ -4764,9 +4834,9 @@
   const jcall = (cmd, extra = {}) => nativeJourney ? nativeJourney({ cmd, ...extra, reply: true }, 8000).catch(() => null) : Promise.resolve(null);
   // The journey's details live in localStorage (small), its points and notes in IndexedDB (no 5 MB limit),
   // so a long trip with photos can never fill up storage and lose anything.
-  const journeyMeta = (j) => { const m = {}; for (const k in j) if (k !== "points" && k !== "notes") m[k] = j[k]; return m; };
+  const journeyMeta = (j) => { const m = {}; for (const k in j) if (k !== "points" && k !== "notes" && k[0] !== "_") m[k] = j[k]; return m; };
   let journey = store.get("cf-journey", null);
-  if (journey) { journey.points ||= []; journey.notes ||= []; }
+  if (journey) { journey.points ||= []; journey.notes ||= []; delete journey._line; }
   const journeyLoaded = journey ? jkv.get(journey.id).then((full) => {
     if (!full || !journey || full.id !== journey.id) return;
     if ((full.points || []).length >= journey.points.length) journey.points = full.points;
@@ -4787,6 +4857,15 @@
       .sort((a, b) => b.s - a.s).slice(0, 40)
       .map(({ c }) => ({ name: c.name, lat: c.lat, lon: c.lon, why: [c.a.toilets ? "toilets" : "", c.a.water ? "water" : "", c.a.dogs ? "dogs OK" : "", ratingCache.get(c.id)?.avg ? `rated ${ratingCache.get(c.id).avg.toFixed(1)}★` : ""].filter(Boolean).join(", ") || "free camp" }));
   }
+  // Where you're driving to each day, in order: each night's camp, the destination (a return trip carries on home)
+  function journeyTargets(p) {
+    const t = p.picks.map((pk) => { const c = pk.refresh?.options?.[0] || pk.camp; return c && c.lat != null && { name: c.name, lat: c.lat, lon: c.lon, along: c.along ?? pk.target ?? null, night: true }; }).filter(Boolean);
+    if (p.opts.ret) t.push({ name: short(p.to.name), lat: p.to.lat, lon: p.to.lon, along: p.line.turn ?? null });
+    t.sort((x, y) => (x.along ?? 0) - (y.along ?? 0));
+    const end = p.opts.ret ? p.from : p.to;
+    t.push({ name: short(end.name), lat: end.lat, lon: end.lon, along: p.line.total, final: true });
+    return t;
+  }
   async function startJourney() {
     if (!plan) return;
     journey = {
@@ -4795,8 +4874,11 @@
       route: plan.route.geometry.coordinates.filter((_, k, a) => k % Math.max(1, Math.floor(a.length / 300)) === 0),
       points: [], notes: [], share: null, fuelAlerts: lastFuelList(plan), alerted: [], asked: [],
       nightSpots: plan.picks.map((pk) => pk.camp && { id: pk.camp.id, name: pk.camp.name, lat: pk.camp.lat, lon: pk.camp.lon }).filter(Boolean),
+      targets: journeyTargets(plan), reached: 0, trip: tripRecord(plan),
     };
+    drivingView = true; nav = null;
     saveJourney();
+    showJourneyBar();   // straight to the driving screen; the rest catches up behind it
     await jcall("start", { id: journey.id, notify: true, camps: settings.campAlerts ? campAlertList(plan) : [], fuel: journey.fuelAlerts });
     const firstGap = fuelGaps(plan).gaps[0];
     if (firstGap && firstGap.len >= 150000) setTimeout(() => roadAlert("⛽", "Fill up before you leave", `No fuel for ${km(firstGap.len)} after ${short(plan.from.name)}.`), 1500);
@@ -4804,7 +4886,7 @@
     await jkv.put({ ...journey }).catch(() => {});
     const driving = drive.supported && settings.driveAuto !== false && !drive.on ? await startDrive(true) : drive.on;
     if (driving && drive.on) dcall("update", driveOptions());
-    showJourneyBar(); toast(driving ? "Journey started. Drive mode is on, so what's coming up shows on your Lock Screen and CarPlay. Safe travels!" : "Journey started. Safe travels!", driving ? 4500 : 2600);
+    updateJourneyBar(); toast("Journey started. Safe travels!", 2600);
     if (famMe) { famLastPos = 0; famPushFull(); }
   }
   // One sync at a time, and only points newer than the last one we have, so nothing is counted twice
@@ -4871,13 +4953,143 @@
     if (journey.points.length % 5 === 0) saveJourney();
     updateJourneyBar();
   }
-  function showJourneyBar() { $("#journeyBar").hidden = !journey; $("#app").classList.toggle("on-journey", !!journey); updateJourneyBar(); }
+  // ---- Driving: while a journey is on, the map follows you, the next turn shows at the top and where you're going at
+  // the bottom. Fuel, water, dump points, the trip plan and the rest wait behind ⋯; "Trip plan" shows the whole app
+  // with a "Back to driving" button.
+  let drivingView = true;
+  function showJourneyBar() {
+    $("#app").classList.toggle("on-journey", !!journey);
+    setDriving(!!journey && drivingView);
+    updateJourneyBar();
+  }
+  function setDriving(on) {
+    $("#driveView").hidden = !on;
+    $("#backDrive").hidden = !(journey && !on);
+    $("#app").classList.toggle("driving", on);
+    trayOpen(false);
+    if (on) {
+      closeDetail(); openLayerMenu(false);
+      setFollow(true);
+      if (me) showAt(me, Math.max(map.getZoom(), 15), { animate: true });
+      navUpdate(me);
+    }
+    setTimeout(() => map.invalidateSize({ pan: false }), 60);
+  }
+  function trayOpen(open) {
+    $("#dvTray").hidden = !open; $("#dvMore").setAttribute("aria-expanded", open);
+    if (open) {
+      const cp = $("#dvCarPlay"); cp.hidden = !drive.supported; cp.classList.toggle("is-on", !!drive.on); cp.querySelector("em").textContent = drive.on ? "CarPlay: on" : "CarPlay: off";
+      const sat = $("#dvSat"); sat.classList.toggle("is-on", mapMode === "sat"); sat.querySelector("em").textContent = mapMode === "sat" ? "Satellite: on" : "Satellite";
+    }
+  }
+  $("#dvMore").addEventListener("click", () => trayOpen($("#dvTray").hidden));
+  $("#dvTray").addEventListener("click", (e) => { if (e.target.closest("[data-need]")) trayOpen(false); });
+  $("#dvTrip").addEventListener("click", () => {
+    drivingView = false; setDriving(false); setView("plan"); setSheet("half");
+    const mine = plan && journey && journey.name === `${short(plan.from.name)} to ${short(plan.to.name)}`;
+    if (!mine && journey?.trip) return loadTrip(journey.trip);   // the app was closed: plan it again
+    if (plan) { $("#planForm").hidden = true; $("#results").hidden = false; }
+  });
+  $("#backDrive").addEventListener("click", () => { drivingView = true; setDriving(true); });
+  $("#dvShare").addEventListener("click", () => { trayOpen(false); shareJourney(); });
+  $("#dvJournal").addEventListener("click", () => { trayOpen(false); if (journey) addJournalEntry(journey); });
+  $("#dvCarPlay").addEventListener("click", async () => { if (drive.on) await stopDrive(); else await startDrive(); trayOpen(true); });
+  $("#dvSat").addEventListener("click", () => { setMapMode(mapMode === "sat" ? "map" : "sat"); trayOpen(true); });
+  $("#dvCentre").addEventListener("click", () => { setFollow(true); if (me) showAt(me, Math.max(map.getZoom(), 15), { animate: true }); });
+
+  // ---- Turn by turn to the next place you're driving to (tonight's camp, then the next, then the end of the trip),
+  // from where you are. Asked for again if you go off it.
+  let nav = null, navBusy = false, navOff = 0, navAskedAt = 0;
+  function navTargets() {
+    if (!journey) return [];
+    if (!journey.targets) {   // journeys started before turn by turn: the camps, then the destination
+      const t = (journey.nights || []).filter((n) => n.lat != null).map((n) => ({ name: n.name, lat: n.lat, lon: n.lon, night: true }));
+      if (journey.to) t.push({ name: short(journey.to.name), lat: journey.to.lat, lon: journey.to.lon, final: true });
+      journey.targets = t;
+    }
+    return journey.targets;
+  }
+  function navTarget() {
+    const list = navTargets();
+    // gone past a planned stop without stopping (stayed somewhere else): on to the next one
+    while (journey && (journey.reached || 0) < list.length - 1 && list[journey.reached || 0].along != null && travel?.done > list[journey.reached || 0].along + 5000) journey.reached = (journey.reached || 0) + 1;
+    return list[journey?.reached || 0] || null;
+  }
+  function navStepsOf(r) {
+    const out = []; let at = 0;
+    for (const s of (r.legs || []).flatMap((l) => l.steps || [])) {
+      const text = String(s.text || (s.maneuver?.type !== "apple" ? stepText(s) : "") || "").trim();
+      if (text) out.push({ at, text, icon: manIcon(s.text ? { text } : s) });
+      at += s.distance || 0;
+    }
+    return out;
+  }
+  async function navFetch(pos) {
+    const t = navTarget(); if (!t || !pos || navBusy) return;
+    if (nav?.target === t && Date.now() - navAskedAt < 20000) return;   // not more often than every 20 seconds
+    navBusy = true; navAskedAt = Date.now();
+    try {
+      const r = await soon(osrm([{ lat: pos.lat, lon: pos.lon }, { lat: t.lat, lon: t.lon }], true), 25000, null);
+      if (r && journey && navTarget() === t) { nav = { target: t, line: buildLine(r), steps: navStepsOf(r), dist: r.distance, dur: r.duration, along: 0 }; navOff = 0; }
+    } catch { /* no signal: the green line and the distance left will do */ }
+    navBusy = false;
+    navPaint(me);
+  }
+  function navUpdate(pos) {
+    if (!journey) return;
+    const t = navTarget();
+    if (!t || !pos) return navPaint(pos);
+    if (hav([pos.lat, pos.lon], [t.lat, t.lon]) < 150) {   // there
+      if (!t.final) { journey.reached = (journey.reached || 0) + 1; nav = null; saveJourney(); toast(`You're at ${t.name}`, 3500); }
+      else if (!journey.arrivedAt) { journey.arrivedAt = new Date().toISOString(); saveJourney(); }
+      return navPaint(pos);
+    }
+    if (!nav || nav.target !== t) { navFetch(pos); return navPaint(pos); }
+    const pr = project(nav.line, pos);
+    nav.along = pr.along;
+    if (pr.off > 250) { if (++navOff >= 3) { navOff = 0; navFetch(pos); } } else navOff = 0;   // off the route: a new one from here
+    navPaint(pos);
+  }
+  const navDist = (d) => (d < 1000 ? `${Math.max(10, Math.round(d / 10) * 10)} m` : `${(d / 1000).toFixed(d < 10000 ? 1 : 0)} km`);
+  function navPaint(pos) {
+    if (!journey || $("#driveView").hidden) return;
+    const t = navTarget(), arrived = !!(t?.final && journey.arrivedAt);
+    let big = "Follow the green line", small = t ? `to ${t.name}` : "", ic = "nav", steps = false;
+    if (arrived) { big = "You've arrived"; small = t.name; ic = "m-arrive"; }
+    else if (nav && nav.target === t) {
+      const next = nav.steps.find((s) => s.at > nav.along + 15);
+      if (next) { big = navDist(next.at - nav.along); small = next.text; ic = next.icon; steps = true; }
+      else { big = "Nearly there"; small = t.name; ic = "m-arrive"; steps = true; }
+    }
+    $("#dvTurn").classList.toggle("is-plain", !steps && !arrived);
+    $("#dvTurn").classList.toggle("is-here", arrived);
+    $("#dvDist").textContent = big; $("#dvText").textContent = small;
+    $("#dvIcUse").setAttribute("href", `#i-${ic}`);
+    $("#dvDone").hidden = !arrived; $("#dvEnd").hidden = arrived;   // one End button at a time
+    $("#dvDest").textContent = t ? (t.final ? t.name : `Tonight: ${t.name}`) : journey.name;
+    // time left, distance left and arrival time, shortened until it fits on one line (big text, small phones)
+    const left = $("#dvLeft"), ways = navLeft(pos, t);
+    if (!ways.length) { const d = trackKm(journey.points); left.textContent = d > 200 ? `${km(d)} driven` : ""; }
+    for (const w of ways) { left.textContent = w; if (left.scrollWidth <= left.clientWidth + 1) break; }
+  }
+  function navLeft(pos, t) {
+    if (!t || journey.arrivedAt) return [];
+    let m = null, sec = null;
+    if (nav && nav.target === t) { m = Math.max(0, nav.dist - nav.along); sec = nav.dur * (m / (nav.dist || 1)); }
+    else if (pos) { m = hav([pos.lat, pos.lon], [t.lat, t.lon]) * 1.25; sec = m / 22; }   // rough, until the route's in
+    if (m == null) return [];
+    const eta = new Date(Date.now() + sec * 1000).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
+    return [`${hrs(sec)} · ${km(m)} · arrive ${eta}`, `Arrive ${eta} · ${km(m)}`, `Arrive ${eta}`];
+  }
   // ---- Driven so far: the route changes colour behind you as you travel it
   let travel = null;   // { key, line, done, n, last }
   function travelLine() {
     if (!journey) return null;
     if (plan && journey.name === `${short(plan.from.name)} to ${short(plan.to.name)}`) return { key: `p:${plan.line.total}`, line: plan.line, own: !(tripLayer.getLayers?.() || [1]).length };
-    if ((journey.route || []).length > 1) return { key: `j:${journey.id}`, line: (journey._line ||= buildLine({ geometry: { coordinates: journey.route } })), own: true };
+    if ((journey.route || []).length > 1) {   // kept off the saved journey (not enumerable)
+      if (!journey._line) Object.defineProperty(journey, "_line", { value: buildLine({ geometry: { coordinates: journey.route } }), writable: true, configurable: true });
+      return { key: `j:${journey.id}`, line: journey._line, own: true };
+    }
     return null;
   }
   // move "done" forward only: a point counts if it's near the route and not an impossible jump ahead
@@ -4899,15 +5111,15 @@
     travelLayer.clearLayers();
     const line = travel.line;
     if (tl.own) { // no plan on screen: show the journey's route too
-      L.polyline(line.pts, { color: "#ffffff", weight: 8, opacity: .85, interactive: false }).addTo(travelLayer);
-      L.polyline(line.pts, { color: "#0E5A3E", weight: 4.5, opacity: .9, interactive: false }).addTo(travelLayer);
+      L.polyline(line.pts, { color: "#ffffff", weight: 10, opacity: .95, interactive: false }).addTo(travelLayer);
+      L.polyline(line.pts, { color: ROUTE_GREEN, weight: 6, opacity: 1, interactive: false }).addTo(travelLayer);
     }
-    if (travel.done > 0) {
+    if (travel.done > 0) {   // where you've driven: light green
       let i = line.cum.findIndex((c) => c >= travel.done); if (i < 0) i = line.pts.length - 1;
       const driven = line.pts.slice(0, i + 1);
       if (driven.length > 1) {
         L.polyline(driven, { color: "#ffffff", weight: 10, opacity: .95, interactive: false }).addTo(travelLayer);
-        L.polyline(driven, { color: "#E07A1F", weight: 6, opacity: 1, interactive: false }).addTo(travelLayer);
+        L.polyline(driven, { color: DRIVEN_GREEN, weight: 6, opacity: 1, interactive: false }).addTo(travelLayer);
       }
     }
   }
@@ -4930,16 +5142,21 @@
     $("#startJourney").textContent = "Journey in progress";
     $("#startJourney").disabled = true;
   }
-  async function endJourney() {
-    const b = $("#jbEnd");
+  async function endJourney(e) {
+    const b = e?.currentTarget?.id === "dvEnd" ? $("#dvEnd") : $("#jbEnd");
     if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Tap to end"; setTimeout(() => { b.dataset.sure = ""; b.textContent = "End"; }, 3000); return; }
+    return finishJourney();
+  }
+  async function finishJourney() {
+    if (!journey) return;
     await syncJourney();
+    if (!journey) return;
     await jcall("stop");
     if (drive.on) await stopDrive();
     if (journey.share && window.CFCloud?.updateShare) window.CFCloud.updateShare(journey.share, me, null, true).catch(() => {});
     journey.ended = new Date().toISOString();
     clearTimeout(jsaveT); await jkv.put({ ...journey }).catch(() => {});
-    const done = journey; journey = null; store.set("cf-journey", null); doneJourneys = null;
+    const done = journey; journey = null; store.set("cf-journey", null); doneJourneys = null; nav = null; drivingView = true;
     showJourneyBar();
     $("#startJourney").disabled = false; $("#startJourney").innerHTML = `${icon("nav")}Start journey`;
     updateBadges(true);
@@ -4949,6 +5166,26 @@
   }
   $("#startJourney").addEventListener("click", startJourney);
   $("#jbEnd").addEventListener("click", endJourney);
+  $("#dvEnd").addEventListener("click", endJourney);
+  $("#dvDone").addEventListener("click", () => finishJourney());
+
+  // ---- Coming back to the app with a journey still on: keep going, or end it (it says so if you've arrived)
+  function askJourney() {
+    if (!journey || !$("#askPop").hidden) return;
+    const list = navTargets(), end = list.at(-1) || { name: short(journey.to?.name || "your destination"), lat: journey.to?.lat, lon: journey.to?.lon };
+    // near the end counts once you're on the last leg (a return trip ends where it started)
+    const lastLeg = (journey.reached || 0) >= list.length - 1;
+    const there = !!journey.arrivedAt || (lastLeg && me && end.lat != null && hav([me.lat, me.lon], [end.lat, end.lon]) < 400);
+    $("#apIc").textContent = there ? "🎉" : "🚐";
+    $("#apTitle").textContent = there ? `You made it to ${end.name}` : `Still on your way to ${end.name}?`;
+    $("#apText").textContent = there ? "End this journey and keep it in your journal?" : "Keep going with this journey, or end it if you're done.";
+    $("#apYes").textContent = there ? "End journey" : "Keep going";
+    $("#apNo").textContent = there ? "Keep going" : "End journey";
+    const close = () => { $("#askPop").hidden = true; };
+    $("#apYes").onclick = () => { close(); if (there) finishJourney(); else { drivingView = true; showJourneyBar(); } };
+    $("#apNo").onclick = () => { close(); if (there) { drivingView = true; showJourneyBar(); } else finishJourney(); };
+    $("#askPop").hidden = false;
+  }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) syncJourney(); });
   setInterval(() => { if (journey && !document.hidden) syncJourney(); }, 60000);
   if (journey) { showJourneyBar(); startTracking(); jcall("status").then((s) => { if (s && !s.active) jcall("start", { id: journey.id, notify: !!settings.campAlerts, camps: [] }); }); syncJourney(); }
@@ -5828,11 +6065,11 @@
     viaStops = []; seeIds.clear(); renderVia();
     const okTo = await fill($("#to"), toQ);
     let okFrom = true;
-    if (fromQ) okFrom = await fill($("#from"), fromQ);
+    if (fromQ) { unlive(); okFrom = await fill($("#from"), fromQ); }
     else if (!$("#from").dataset.lat) {
       const f = $("#from");
       const here = me || await new Promise((res) => { locate((p) => res(p)); setTimeout(() => res(null), 12000); });
-      if (here) { f.value = await soon(whereIs(here), 6000, myPlaceName(here)); f.dataset.lat = here.lat; f.dataset.lon = here.lon; $("#useHere").hidden = true; }
+      if (here) { fromFollowsMe(here); }
       else { voiceResult("I couldn't find where you are. Say where you're starting from too, like \"Bundaberg to Cairns\".", false); return; }
     }
     if (okTo && okFrom) {
@@ -6040,7 +6277,7 @@
           if ($("#tsHome").checked) { stops.push(start); extraKm += d(last, start) / 1000 * 1.25; }
         }
       }
-      set($("#from"), stops[0]); set($("#to"), stops.at(-1));
+      unlive(); set($("#from"), stops[0]); set($("#to"), stops.at(-1));
       viaStops = stops.slice(1, -1); renderVia();
       setNights(t.nights + Math.round(extraKm / 450));
       if (t.fourwd && !isPro()) { showPaywall("fourwd"); return; }
@@ -6297,7 +6534,7 @@
     renderVehicleSummary();
   }
   function renderVehicleSummary() {
-    const per100 = settings.use * (settings.prices[settings.fuel] || 0);
+    const per100 = settings.use * fuelPrice();
     const rng = rangeKm("tent"), rngTow = rangeKm("caravan");
     $("#stSummary").innerHTML = `<div><b>${money(per100)}</b><span>per 100 km</span></div><div><b>${isFinite(rng) ? Math.round(rng).toLocaleString("en-AU") + " km" : "—"}</b><span>range</span></div><div><b>${isFinite(rngTow) ? Math.round(rngTow).toLocaleString("en-AU") + " km" : "—"}</b><span>range towing</span></div>`;
   }
@@ -6377,12 +6614,13 @@
     showAt(homeAt, HOME_ZOOM);
   }
   const centreSoon = centreOnMe(false);   // starts during the opening animation if location is already allowed
-  playIntro(true).then(async () => { await centreSoon; if (!homeAt) centreOnMe(true); });
+  playIntro(true).then(async () => { await centreSoon; if (!homeAt && !journey) centreOnMe(true); if (journey) setTimeout(askJourney, 400); });
   // iPhones keep apps open in the background, so replay the intro when you come back after a while
   let hiddenAt = 0;
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { hiddenAt = Date.now(); return; }
     if (hiddenAt && Date.now() - hiddenAt > 3 * 60 * 1000 && $("#welcome").hidden) { playIntro(false); centreOnMe(false); }
+    if (hiddenAt && journey && Date.now() - hiddenAt > 2 * 3600 * 1000) setTimeout(askJourney, 900);   // back after a long break
   });
 
   const hasCar = () => !!(settings.make && (settings.model || settings.make === "Other"));

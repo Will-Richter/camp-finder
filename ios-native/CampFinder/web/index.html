@@ -223,6 +223,36 @@
     </div>
   </div>
 
+  <!-- Driving: the map follows you, the next turn at the top, where you're going at the bottom. Everything else waits
+       behind the ⋯ button, or "Trip plan" for the full app (with a button back). -->
+  <div id="driveView" class="dv" hidden>
+    <div class="dv-turn" id="dvTurn" aria-live="polite">
+      <span class="dv-ic" aria-hidden="true"><svg class="ic"><use id="dvIcUse" href="#i-nav"/></svg></span>
+      <div class="dv-txt"><b id="dvDist">Follow the green line</b><span id="dvText"></span></div>
+      <button type="button" class="cta dv-done" id="dvDone" hidden>End journey</button>
+    </div>
+    <button type="button" class="dv-centre" id="dvCentre" hidden><svg class="ic sm"><use href="#i-nav"/></svg>Re-centre</button>
+    <div class="dv-panel">
+      <div class="dv-tray" id="dvTray" hidden>
+        <button type="button" data-need="fuel"><span aria-hidden="true">⛽</span>Fuel</button>
+        <button type="button" data-need="water"><span aria-hidden="true">💧</span>Water</button>
+        <button type="button" data-need="dump"><span aria-hidden="true">🚐</span>Dump point</button>
+        <button type="button" id="dvTrip"><span aria-hidden="true">🗺️</span>Trip plan</button>
+        <button type="button" id="dvShare"><span aria-hidden="true">📍</span>Share where I am</button>
+        <button type="button" id="dvJournal"><span aria-hidden="true">📷</span>Journal</button>
+        <button type="button" id="dvCarPlay" hidden><span aria-hidden="true">🚗</span><em>CarPlay</em></button>
+        <button type="button" id="dvSat"><span aria-hidden="true">🛰️</span><em>Satellite</em></button>
+      </div>
+      <div class="dv-bar">
+        <div class="dv-dest"><b id="dvDest">On the road</b><span id="dvLeft">Recording your journey</span></div>
+        <button type="button" class="dv-more" id="dvMore" aria-expanded="false" aria-label="More"><svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><circle cx="5" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg></button>
+        <button type="button" class="dv-end" id="dvEnd">End</button>
+      </div>
+    </div>
+  </div>
+  <button type="button" class="back-drive" id="backDrive" hidden><svg class="ic sm"><use href="#i-nav"/></svg>Back to driving</button>
+  <div id="askPop" class="ask-pop" hidden><div class="ap-card" role="dialog" aria-modal="true" aria-labelledby="apTitle"><div class="ap-ic" id="apIc" aria-hidden="true">🚐</div><h2 id="apTitle"></h2><p id="apText"></p><div class="ap-acts"><button type="button" class="cta" id="apYes"></button><button type="button" class="btn" id="apNo"></button></div></div></div>
+
   <div id="pinMode" class="pin-mode" hidden>
     <div class="pin-bar">
       <b>Move the map so the pin sits on the camp</b>
@@ -681,6 +711,7 @@
     </div>
     <div class="lm-foot"><button type="button" class="lm-link" id="lmAllTracks">All tracks</button><button type="button" class="lm-link" id="lmNoTracks">Hide tracks</button></div>
     <p class="lm-note">Camps, fuel and water appear when you zoom in to a town.</p>
+    <button type="button" class="btn lm-add" id="lmAdd"><svg class="ic sm"><use href="#i-plus"/></svg>Add a camp that's missing</button>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>
