@@ -83,12 +83,12 @@ struct DriveEngineTest {
         free.course = 250
         let st = free.state(lat: -24.8660, lon: 152.3480)
         check(!st.onRoute && st.camp != nil && st.fuel != nil, "without a route it still finds a camp and fuel ahead")
-        if let c = st.camp, let pl = places.camps.first(where: { $0.name == c.name }) {
-            let b = Geo.bearing(-24.8660, 152.3480, pl.lat, pl.lon)
+        if let c = st.camp {
+            let b = Geo.bearing(-24.8660, 152.3480, c.lat, c.lon)
             check(Geo.angle(b, 250) < 30, "the camp it shows is in front (bearing \(Int(b))°)")
         }
-        if let f = st.fuel, let pl = places.fuel.first(where: { $0.name == f.name }) {
-            let b = Geo.bearing(-24.8660, 152.3480, pl.lat, pl.lon)
+        if let f = st.fuel {   // by its own spot: several servos can share a name (like Ampol Bundaberg)
+            let b = Geo.bearing(-24.8660, 152.3480, f.lat, f.lon)
             check(Geo.angle(b, 250) < 30, "the servo it shows is in front, not behind (bearing \(Int(b))°)")
         }
         // Not moving yet and no route: nothing "ahead" until it knows which way you're going
