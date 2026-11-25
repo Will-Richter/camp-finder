@@ -106,11 +106,12 @@ Camp and track details come from OpenStreetMap, Queensland Parks and Australian 
 First release. Tell us what's missing with the Send feedback button in Settings.
 
 ## App Review notes
-Camp Finder works fully without an account: plan a trip (e.g. "Bundaberg" to "Cairns"), explore camps on the map, try Camp tonight, and open the map button (top right) for map/satellite and what's shown.
-Camp Finder Pro (auto-renewing subscription, monthly au.com.gonelappin.campfinder.pro.monthly and yearly au.com.gonelappin.campfinder.pro.yearly, 7-day free trial): tap any 4WD track in the map menu, the "See Google photos and reviews with Pro" tile in any camp's photos, or Settings > Get Camp Finder Pro, to see the subscription screen with prices, the auto-renew terms, Terms of Use and Privacy Policy links, and Restore purchases. An account is only needed to add camps, rate them, upload photos and share your location with family.
-Demo account: review@gonelappin.au / (the password you set in Supabase). Go to My stuff > Saved > Sign in, type the email, then open "Sign in with a password".
+(As entered in App Store Connect for 1.0.5. "Sign-in required" is off: no demo account is given, because everything except adding camps, rating, uploading photos and family sharing works without one. If Apple asks for one, Will sets a password for review@gonelappin.au in Supabase and enters it himself.)
+Camp Finder works fully without an account: plan a trip (e.g. "Bundaberg" to "Cairns"), explore camps on the map, try Camp tonight, and open the map button (top right) to choose what's shown on the map.
+Camp Finder Pro (auto-renewing subscription, monthly au.com.gonelappin.campfinder.pro.monthly and yearly au.com.gonelappin.campfinder.pro.yearly, 7-day free trial, plus a one-off non-consumable "Pro forever" au.com.gonelappin.campfinder.pro.lifetime): tap any 4WD track in the map menu, the "See Google photos and reviews with Pro" tile in any camp's photos, or Settings > Get Camp Finder Pro, to see the subscription screen with prices, the auto-renew terms, Terms of Use, Privacy Policy and Refund policy links, and Restore purchases. An account is only needed to add camps, rate them, upload photos and share your location with family.
+Drive mode (new in 1.0.5): start a journey from a planned trip (Drive mode turns on with it), or go to Settings > Drive mode and CarPlay > Start Drive mode. While it's on, the app keeps location updates running so its Live Activity shows the next camp, fuel station and attraction ahead and gives heads-ups as the driver gets close. It switches off when the user taps Stop, ends the journey, or has been parked for 45 minutes. Camp Finder does not use a CarPlay entitlement: the Live Activity and the Near me widget appear in CarPlay through the standard iOS 26 support for Live Activities and widgets.
+User-generated content (new in 1.0.5): every traveller photo and review has a flag button. "Report" sends it to us (photos and camps are hidden automatically after 3 reports, and we check every report), and "Hide this traveller" hides everything from that person on this phone. Users agree to the terms of use (https://gonelappin.au/terms.html) when they sign in.
 Background location: used only while the user has started a journey (to record the route and give "last fuel" alerts), turned on Drive mode, or turned on Family sharing (so family they invited can see where they are). All are started by the user and can be stopped at any time; the blue location indicator is shown.
-Drive mode (new in 1.0.5): start a journey from a planned trip (Drive mode turns on with it), or go to Settings → Drive mode and CarPlay → Start Drive mode. While it's on, the app keeps location updates running so its Live Activity shows the next camp, fuel station and attraction ahead and gives heads-ups as the driver gets close. It switches off when the user taps Stop, ends the journey, or has been parked for 45 minutes. Camp Finder does not use a CarPlay entitlement: the Live Activity and the Near me widget appear in CarPlay through the standard iOS 26 support for Live Activities and widgets.
 Microphone/speech: voice search when the user taps the microphone.
 Offline maps: state map files (OpenStreetMap data via Protomaps) are downloaded only when the user taps Download.
 Contact: hello@gonelappin.au
@@ -124,8 +125,8 @@ Data linked to the user, used for App Functionality only:
 - User content > Photos (camp photos you upload), Other user content (camps you add, ratings and reviews, check-ins, signal and AdBlue reports, trip notes and bookings), Customer support (feedback messages, linked to the account when signed in)
 - Diagnostics > Other diagnostic data (app version, phone model, screen and app settings sent with feedback)
 - Identifiers > User ID (your account)
-Data not linked to the user:
-- User content > Other user content (shared trip plan links: places, camps and route, with the start and end only to about 1 km)
+Shared trip plan links (places, camps and route, with the start and end only to about 1 km) aren't tied to an account, but Apple's form takes one answer per data type, so they're covered by "Other user content: linked" above.
+Published in App Store Connect on 25 Nov 2026: 8 data types, all App Functionality, all linked, no tracking.
 Note: searches and map views are sent to Apple Maps, Google Places, Stadia Maps, the OpenStreetMap routing service and Wikipedia to get results, but we don't store them.
 
 ## Screenshots
