@@ -77,9 +77,9 @@ Camp and track details come from OpenStreetMap, Queensland Parks and Australian 
 ## What's new (1.0.5)
 • A simpler, calmer Camp Finder. Start a journey and you get a proper driving screen: the next turn at the top, where you're headed and when you'll get there at the bottom, and nothing else in the way of the map. Fuel, water, dump points, your trip plan and sharing wait behind one button.
 • Your route shows in green, and the roads you've already driven turn light green.
-• Fuel, water and dump points on a journey only list what's ahead on your route, nearest first. Never a servo behind you.
+• Fuel, water and dump points on a journey only list what's ahead on your route, nearest first.
 • Open the app mid-journey and it asks whether you're still on your way, so an old journey never hangs around.
-• Trips start from where you are, every time.
+• Trips now start from where you are.
 • Fixes: the trip cost could show $0, and a 4WD card could show on trips with no 4WD tracks.
 • Easier to read and use: stronger colour contrast, clear focus outlines, labelled buttons, and fields that stay above the keyboard.
 • Report or hide any traveller's review or photo, and new refund, cookie and credits pages with our business details.
@@ -130,5 +130,5 @@ Note: searches and map views are sent to Apple Maps, Google Places, Stadia Maps,
 
 ## Screenshots
 appstore/screenshots/ has 7 ready to upload (1290 x 2796, accepted for the 6.9" iPhone slot), in order:
-01 A camp for every night · 02 Every 4WD track · 03 Camp tonight · 04 10,000+ camps · 05 Know before you go · 06 Iconic 4WD trips · 07 Works with no signal
-Before the next submission, redo 02 and 04: their headlines ("Every 4WD track", "10,000+ camps") claim more than the data can promise. Use "4WD tracks on the map" and "About 10,000 camps".
+01 A camp for every night · 02 4WD tracks on the map · 03 Camp tonight · 04 About 10,000 camps on the map · 05 Know before you go · 06 Iconic 4WD trips · 07 Works with no signal
+(02 and 04 were redone for 1.0.5: they used to say "Every 4WD track in Australia" and "10,000+ camps", which claimed more than the data can promise. The app has 9,998 camps.)
